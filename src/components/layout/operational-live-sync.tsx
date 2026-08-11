@@ -47,6 +47,9 @@ export function OperationalLiveSync({ role }: { role: AppRole }) {
         { event: "*", schema: "public", table },
         () => {
           void queryClient.invalidateQueries({ queryKey });
+          void queryClient.invalidateQueries({
+            queryKey: ["hospital-notifications"],
+          });
           if (document.visibilityState === "visible") router.refresh();
         },
       );

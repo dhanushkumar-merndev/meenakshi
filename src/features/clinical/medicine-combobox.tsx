@@ -73,6 +73,7 @@ export function MedicineCombobox({
           <Button
             variant="outline"
             role="combobox"
+            aria-label={value.medicine_name || "Search medicine"}
             className="w-full justify-between font-normal"
           />
         }

@@ -1,7 +1,6 @@
-import { Bell } from "lucide-react";
 import { SidebarTrigger } from "@/components/ui/sidebar";
-import { Button } from "@/components/ui/button";
 import { HeaderPatientSearch } from "./header-patient-search";
+import { NotificationMenu } from "./notification-menu";
 
 export function AppHeader() {
   return (
@@ -14,9 +13,7 @@ export function AppHeader() {
       </div>
       <div className="hidden min-w-0 flex-1 sm:block"><HeaderPatientSearch /></div>
       <div className="ml-auto shrink-0">
-        <Button size="icon" variant="ghost" aria-label="Notifications">
-          <Bell />
-        </Button>
+        <NotificationMenu />
       </div>
     </header>
   );

@@ -1,5 +1,5 @@
 begin;
-select plan(13);
+select plan(15);
 create temp table test_actor as select id from public.profiles where email='admin@meenakshihospital.com' limit 1;
 select ok(exists(select 1 from test_actor),'configured admin fixture exists');
 select set_config('request.jwt.claim.sub',(select id::text from test_actor),true);
@@ -16,6 +16,8 @@ select throws_ok($$select purchase_price_paise from public.medicine_batches limi
 select lives_ok($$select * from public.search_medicine_availability('par',20)$$,'doctor can query safe medicine availability');
 select throws_ok($$select public.dispense_prescription('00000000-0000-0000-0000-000000000001','[]'::jsonb,'cash','00000000-0000-0000-0000-000000000002')$$,'42501','forbidden','doctor cannot dispense prescriptions');
 select throws_ok($$select public.expire_stale_prescriptions()$$,'42501','forbidden','doctor cannot run pharmacy expiry maintenance');
+select lives_ok($$insert into public.notification_reads(user_id,notification_key) values(auth.uid(),'security-own-notification')$$,'users can persist their own notification read state');
+select throws_ok($$insert into public.notification_reads(user_id,notification_key) values(gen_random_uuid(),'security-other-notification')$$,'42501',null,'users cannot write another notification read state');
 select is((select count(*) from public.visit_payments),0::bigint,'doctor cannot read financial payment rows');
 select throws_ok($$select fee_paise from public.visits limit 1$$,'42501',null,'doctor cannot query visit fee columns');
 select throws_ok($$select * from public.get_visit_financial_summaries(array[]::uuid[])$$,'42501','forbidden','doctor cannot call guarded visit finance RPC');
