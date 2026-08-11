@@ -7,6 +7,9 @@ export type DashboardSummary = Record<string, number>;
 
 export async function getDashboardData(profile: Profile) {
   const supabase = await createSupabaseServerClient();
+  if (profile.role === "admin" || profile.role === "pharmacy") {
+    await supabase.rpc("expire_stale_prescriptions");
+  }
   const summaryPromise = supabase.rpc("dashboard_summary");
   if (profile.role === "pharmacy") {
     const [summaryResult, result] = await Promise.all([summaryPromise, supabase.from("prescriptions").select("id,status,created_at,visit_id,ip_ticket_id,doctors(display_name),visits(patients(name)),ip_tickets(patients(name)),prescription_items(id)").in("status", ["pending", "partially_dispensed"]).order("created_at").limit(8)]);

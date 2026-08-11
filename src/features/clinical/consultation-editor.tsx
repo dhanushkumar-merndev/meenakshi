@@ -4,6 +4,7 @@ import { FileCheck2, LoaderCircle, Plus, Save, Trash2 } from "lucide-react";
 import { saveConsultation } from "./actions";
 import { MedicineCombobox } from "./medicine-combobox";
 import type { ActionState } from "@/types/hospital";
+import { DatePickerField } from "@/components/shared/date-picker-field";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -82,6 +83,9 @@ export function ConsultationEditor({
     initialTests.map((line) => ({ ...line, key: crypto.randomUUID() })),
   );
   const [followUp, setFollowUp] = useState(initial?.follow_up_type ?? "none");
+  const [followUpDate, setFollowUpDate] = useState(
+    initial?.follow_up_date ?? "",
+  );
   const updateMedicine = (key: string, patch: Partial<MedicineLine>) =>
     setMedicines((rows) =>
       rows.map((row) => (row.key === key ? { ...row, ...patch } : row)),
@@ -406,11 +410,12 @@ export function ConsultationEditor({
           {followUp === "specific_date" ? (
             <div className="space-y-2">
               <Label htmlFor="follow-date">Date</Label>
-              <Input
+              <DatePickerField
                 id="follow-date"
                 name="followUpDate"
-                type="date"
-                defaultValue={initial?.follow_up_date ?? ""}
+                value={followUpDate}
+                onValueChange={setFollowUpDate}
+                placeholder="Select follow-up date"
               />
             </div>
           ) : null}
@@ -430,6 +435,7 @@ export function ConsultationEditor({
       </Card>
       <div className="sticky bottom-0 flex justify-end gap-2 border-t bg-background/95 py-3 backdrop-blur">
         <Button
+          type="submit"
           name="intent"
           value="draft"
           variant="outline"
@@ -438,7 +444,12 @@ export function ConsultationEditor({
           {pending ? <LoaderCircle className="animate-spin" /> : <Save />} Save
           Draft
         </Button>
-        <Button name="intent" value="complete" disabled={pending}>
+        <Button
+          type="submit"
+          name="intent"
+          value="complete"
+          disabled={pending}
+        >
           {pending ? <LoaderCircle className="animate-spin" /> : <FileCheck2 />}{" "}
           Complete Consultation
         </Button>

@@ -3,6 +3,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requirePermission } from "@/lib/auth/dal";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { databaseIdSchema } from "@/lib/validation/database-id";
 import type { ActionState } from "@/types/hospital";
 
 const optionalNumber = z.preprocess(
@@ -10,7 +11,7 @@ const optionalNumber = z.preprocess(
   z.number().positive().nullable(),
 );
 const schema = z.object({
-  visitId: z.uuid(),
+  visitId: databaseIdSchema,
   weight: optionalNumber,
   height: optionalNumber,
   temperature: optionalNumber,

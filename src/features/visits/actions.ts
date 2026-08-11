@@ -5,12 +5,13 @@ import { z } from "zod";
 import { requirePermission } from "@/lib/auth/dal";
 import { rupeesToPaise } from "@/lib/domain/money";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { databaseIdSchema } from "@/lib/validation/database-id";
 import type { ActionState } from "@/types/hospital";
 
 const visitSchema = z.object({
-  patientId: z.uuid(), doctorId: z.uuid(), visitType: z.enum(["op", "follow_up"]),
+  patientId: databaseIdSchema, doctorId: databaseIdSchema, visitType: z.enum(["op", "follow_up"]),
   fee: z.string(), collected: z.string().default("0"), paymentMode: z.enum(["cash", "upi", "card", "bank_transfer", "other"]),
-  previousVisitId: z.string().optional(), notes: z.string().max(500).optional(), idempotencyKey: z.uuid(),
+  previousVisitId: z.string().optional(), notes: z.string().max(500).optional(), idempotencyKey: databaseIdSchema,
 });
 
 export async function createVisit(_: ActionState, formData: FormData): Promise<ActionState> {
@@ -34,7 +35,7 @@ export async function createVisit(_: ActionState, formData: FormData): Promise<A
   return { ok: true, message: "Visit created.", data: { visitId: result.visit_id, token: result.token_number } };
 }
 
-const paymentSchema = z.object({ visitId: z.uuid(), patientId: z.uuid(), amount: z.string(), mode: z.enum(["cash", "upi", "card", "bank_transfer", "other"]), reference: z.string().max(100).optional(), idempotencyKey: z.uuid() });
+const paymentSchema = z.object({ visitId: databaseIdSchema, patientId: databaseIdSchema, amount: z.string(), mode: z.enum(["cash", "upi", "card", "bank_transfer", "other"]), reference: z.string().max(100).optional(), idempotencyKey: databaseIdSchema });
 export async function addVisitPayment(_: ActionState, formData: FormData): Promise<ActionState> {
   await requirePermission("viewVisitFinance");
   const parsed = paymentSchema.safeParse(Object.fromEntries(formData));

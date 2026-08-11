@@ -4,13 +4,14 @@ import { z } from "zod";
 import { requirePermission } from "@/lib/auth/dal";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { databaseIdSchema } from "@/lib/validation/database-id";
 import type { ActionState } from "@/types/hospital";
 const schema = z.object({
-  patientId: z.uuid(),
+  patientId: databaseIdSchema,
   visitId: z.string().optional(),
   ipTicketId: z.string().optional(),
   testOrderId: z.string().optional(),
-  categoryId: z.uuid(),
+  categoryId: databaseIdSchema,
   reportName: z.string().min(2).max(150),
   reportDate: z.string().date(),
   notes: z.string().max(1000).optional(),
@@ -102,10 +103,13 @@ export async function uploadReport(
   }
   revalidatePath("/reports");
   revalidatePath(`/patients/${parsed.data.patientId}`);
+  if (parsed.data.visitId) revalidatePath(`/visits/${parsed.data.visitId}`);
+  if (parsed.data.ipTicketId) revalidatePath(`/ip/${parsed.data.ipTicketId}`);
+  revalidatePath("/dashboard");
   return { ok: true, message: "Report uploaded privately." };
 }
 
-const reviewSchema = z.object({ reportId: z.uuid() });
+const reviewSchema = z.object({ reportId: databaseIdSchema });
 export async function reviewReport(_: ActionState, formData: FormData): Promise<ActionState> {
   await requirePermission("writeConsultation");
   const parsed = reviewSchema.safeParse(Object.fromEntries(formData));

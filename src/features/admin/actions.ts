@@ -4,6 +4,7 @@ import { z } from "zod";
 import { requirePermission } from "@/lib/auth/dal";
 import { rupeesToPaise } from "@/lib/domain/money";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { databaseIdSchema } from "@/lib/validation/database-id";
 import type { ActionState } from "@/types/hospital";
 const userSchema = z.object({
   fullName: z.string().trim().min(2),
@@ -51,7 +52,7 @@ export async function createStaffUser(
 }
 const doctorSchema = userSchema
   .extend({
-    departmentId: z.uuid(),
+    departmentId: databaseIdSchema,
     specialization: z.string().max(150).optional(),
     qualification: z.string().max(150).optional(),
     registrationNumber: z.string().min(2).max(100),
@@ -136,7 +137,7 @@ export async function createDoctor(
 }
 
 const staffUpdateSchema = z.object({
-  userId: z.uuid(),
+  userId: databaseIdSchema,
   fullName: z.string().trim().min(2).max(120),
   role: z.enum(["admin", "reception", "op", "ip", "pharmacy"]),
   status: z.enum(["active", "inactive"]),
@@ -174,8 +175,8 @@ export async function updateStaffUser(
 }
 
 const doctorUpdateSchema = z.object({
-  doctorId: z.uuid(),
-  departmentId: z.uuid(),
+  doctorId: databaseIdSchema,
+  departmentId: databaseIdSchema,
   displayName: z.string().trim().min(2).max(120),
   specialization: z.string().trim().max(150).optional(),
   qualification: z.string().trim().max(150).optional(),

@@ -6,6 +6,7 @@ import { LoaderCircle, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { createPatient } from "./actions";
 import type { ActionState } from "@/types/hospital";
+import { DatePickerField } from "@/components/shared/date-picker-field";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -38,6 +39,7 @@ const ErrorText = ({ errors }: { errors?: string[] }) =>
 export function NewPatientDialog() {
   const [open, setOpen] = useState(false);
   const [gender, setGender] = useState("unknown");
+  const [dob, setDob] = useState("");
   const [state, action, pending] = useActionState(createPatient, initial);
   const router = useRouter();
   useEffect(() => {
@@ -84,7 +86,14 @@ export function NewPatientDialog() {
             </div>
             <div className="space-y-2">
               <Label htmlFor="patient-dob">Date of birth</Label>
-              <Input id="patient-dob" name="dob" type="date" />
+              <DatePickerField
+                id="patient-dob"
+                name="dob"
+                value={dob}
+                onValueChange={setDob}
+                placeholder="Select date of birth"
+                disableFuture
+              />
             </div>
             <div className="space-y-2">
               <Label>Gender</Label>

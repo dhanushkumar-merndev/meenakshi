@@ -3,10 +3,11 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requirePermission } from "@/lib/auth/dal";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { databaseIdSchema } from "@/lib/validation/database-id";
 import type { ActionState } from "@/types/hospital";
 
 const schema = z.object({
-  visitId: z.uuid(),
+  visitId: databaseIdSchema,
   symptoms: z.string().max(5000).optional(),
   history: z.string().max(10000).optional(),
   examination: z.string().max(5000).optional(),

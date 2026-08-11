@@ -253,7 +253,6 @@ select
 from batch_seed
 on conflict (medicine_id, batch_number) do update
 set expiry_date = excluded.expiry_date,
-    quantity = excluded.quantity,
     purchase_price_paise = excluded.purchase_price_paise,
     selling_price_paise = excluded.selling_price_paise,
     low_stock_threshold = excluded.low_stock_threshold,
@@ -420,6 +419,10 @@ on conflict (id) do nothing;
 -- Historical OP visits become completed after vitals/clinical content is present.
 update public.visits
 set status = case
+  when exists (
+    select 1 from public.consultations c
+    where c.visit_id = public.visits.id and c.status = 'completed'
+  ) then 'completed'::public.visit_status
   when visit_date < current_date then 'completed'::public.visit_status
   when token_number % 5 = 0 then 'waiting'::public.visit_status
   when token_number % 5 = 1 then 'vitals_pending'::public.visit_status

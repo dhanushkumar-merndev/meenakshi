@@ -6,6 +6,7 @@ import { requirePermission } from "@/lib/auth/dal";
 import { normalizeIndianPhone } from "@/lib/domain/phone";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { databaseIdSchema } from "@/lib/validation/database-id";
 import type { ActionState } from "@/types/hospital";
 
 const patientSchema = z.object({
@@ -44,7 +45,7 @@ export async function createPatient(_: ActionState, formData: FormData): Promise
   return { ok: true, message: "Patient created.", data: { patientId: data.id } };
 }
 
-const patientUpdateSchema = patientSchema.extend({ patientId: z.uuid(), status: z.enum(["active", "archived"]) });
+const patientUpdateSchema = patientSchema.extend({ patientId: databaseIdSchema, status: z.enum(["active", "archived"]) });
 export async function updatePatient(_: ActionState, formData: FormData): Promise<ActionState> {
   const actor = await requirePermission("createPatient"); const parsed = patientUpdateSchema.safeParse(Object.fromEntries(formData)); if (!parsed.success) return { ok: false, fieldErrors: parsed.error.flatten().fieldErrors };
   let phone: string; try { phone = normalizeIndianPhone(parsed.data.phone); } catch (error) { return { ok: false, fieldErrors: { phone: [(error as Error).message] } }; }

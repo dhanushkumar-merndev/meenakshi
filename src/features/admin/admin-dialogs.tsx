@@ -110,6 +110,9 @@ export function AddDoctorDialog({
 }) {
   const [state, action, pending] = useActionState(createDoctor, initial);
   const [department, setDepartment] = useState(departments[0]?.id ?? "");
+  const departmentName =
+    departments.find((item) => item.id === department)?.name ??
+    "Select department";
   return (
     <Dialog>
       <DialogTrigger render={<Button />}>
@@ -162,17 +165,19 @@ export function AddDoctorDialog({
               </div>
             ))}
             <div className="space-y-2">
-              <Label>Department</Label>
+              <Label htmlFor="add-doctor-department">Department</Label>
               <Select
                 value={department}
-                onValueChange={(v) => setDepartment(v as string)}
+                onValueChange={(value) => setDepartment(String(value))}
               >
-                <SelectTrigger className="w-full">
-                  <SelectValue />
+                <SelectTrigger id="add-doctor-department" className="w-full">
+                  <SelectValue placeholder="Select department">
+                    {() => departmentName}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   {departments.map((d) => (
-                    <SelectItem key={d.id} value={d.id}>
+                    <SelectItem key={d.id} value={d.id} label={d.name}>
                       {d.name}
                     </SelectItem>
                   ))}
@@ -224,6 +229,9 @@ export function EditStaffDialog({ user }: { user: { id: string; fullName: string
 export function EditDoctorDialog({ doctor, departments }: { doctor: { id: string; displayName: string; departmentId: string; specialization: string | null; qualification: string | null; registrationNumber: string; opFee: string; followUpFee: string; ipFee: string; active: boolean }; departments: Array<{ id: string; name: string }> }) {
   const [state, action, pending] = useActionState(updateDoctor, initial);
   const [department, setDepartment] = useState(doctor.departmentId);
+  const departmentName =
+    departments.find((item) => item.id === department)?.name ??
+    "Select department";
   return (
     <Dialog>
       <DialogTrigger render={<Button size="sm" variant="ghost" />}>Edit</DialogTrigger>
@@ -234,7 +242,7 @@ export function EditDoctorDialog({ doctor, departments }: { doctor: { id: string
           {state.message ? <p className="rounded-md bg-secondary p-3 text-sm">{state.message}</p> : null}
           <div className="grid gap-4 sm:grid-cols-2">
             {[["displayName", "Name", doctor.displayName], ["qualification", "Qualification", doctor.qualification ?? ""], ["specialization", "Specialization", doctor.specialization ?? ""], ["registrationNumber", "Registration number", doctor.registrationNumber], ["opFee", "OP fee", doctor.opFee], ["followUpFee", "Follow-up fee", doctor.followUpFee], ["ipFee", "IP visit fee", doctor.ipFee]].map(([name, label, value]) => <div className="space-y-2" key={name}><Label htmlFor={`${name}-${doctor.id}`}>{label}</Label><Input id={`${name}-${doctor.id}`} name={name} defaultValue={value} required={["displayName", "registrationNumber", "opFee", "followUpFee", "ipFee"].includes(name)} /></div>)}
-            <div className="space-y-2"><Label>Department</Label><Select value={department} onValueChange={(value) => setDepartment(value as string)}><SelectTrigger className="w-full"><SelectValue /></SelectTrigger><SelectContent>{departments.map((item) => <SelectItem key={item.id} value={item.id}>{item.name}</SelectItem>)}</SelectContent></Select></div>
+            <div className="space-y-2"><Label htmlFor={`edit-doctor-department-${doctor.id}`}>Department</Label><Select value={department} onValueChange={(value) => setDepartment(String(value))}><SelectTrigger id={`edit-doctor-department-${doctor.id}`} className="w-full"><SelectValue placeholder="Select department">{() => departmentName}</SelectValue></SelectTrigger><SelectContent>{departments.map((item) => <SelectItem key={item.id} value={item.id} label={item.name}>{item.name}</SelectItem>)}</SelectContent></Select></div>
             <label className="flex items-center gap-2 self-end text-sm"><Checkbox name="active" defaultChecked={doctor.active} /> Active</label>
           </div>
           <DialogFooter showCloseButton><Button disabled={pending} type="submit">{pending ? <LoaderCircle className="animate-spin" /> : <UserCog />} Save Doctor</Button></DialogFooter>

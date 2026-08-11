@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Printer } from "lucide-react";
+import { FileText, Printer } from "lucide-react";
 import { requireRoute } from "@/lib/auth/dal";
 import { hasPermission } from "@/lib/auth/permissions";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
@@ -8,12 +8,21 @@ import { calculateAge, formatHospitalDate } from "@/lib/domain/date";
 import { formatInr, paymentSummary } from "@/lib/domain/money";
 import { ConsultationEditor } from "@/features/clinical/consultation-editor";
 import { VitalsDialog } from "@/features/op/vitals-dialog";
+import { UploadReportDialog } from "@/features/reports/upload-report-dialog";
 import { PageHeader } from "@/components/shared/page-header";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 
 type VisitDetail = {
   id: string;
@@ -39,7 +48,7 @@ type VisitDetail = {
     registration_number: string | null;
   } | null;
   departments: { name: string } | null;
-  vitals: Array<{
+  vitals: {
     weight_kg: number | null;
     height_cm: number | null;
     temperature_c: number | null;
@@ -49,8 +58,8 @@ type VisitDetail = {
     spo2: number | null;
     respiratory_rate: number | null;
     notes: string | null;
-  }>;
-  consultations: Array<{
+  } | null;
+  consultations: {
     symptoms: string | null;
     history: string | null;
     examination: string | null;
@@ -60,8 +69,8 @@ type VisitDetail = {
     follow_up_date: string | null;
     follow_up_days: number | null;
     status: string;
-  }>;
-  prescriptions: Array<{
+  } | null;
+  prescriptions: {
     id: string;
     status: string;
     prescription_items: Array<{
@@ -74,7 +83,7 @@ type VisitDetail = {
       notes: string | null;
       requested_quantity: number;
     }>;
-  }>;
+  } | null;
   test_orders: Array<{
     id: string;
     test_name: string;
@@ -86,6 +95,14 @@ type VisitDetail = {
     mode: string;
     created_at: string;
   }>;
+};
+type VisitReport = {
+  id: string;
+  report_name: string;
+  report_date: string;
+  status: string;
+  test_order_id: string | null;
+  report_categories: { name: string } | null;
 };
 export default async function VisitPage({
   params,
@@ -103,14 +120,35 @@ export default async function VisitPage({
     .single();
   if (error || !data) notFound();
   const visit = data as unknown as VisitDetail;
-  const { data: financialRows } = finance ? await supabase.rpc("get_visit_financial_summaries", { p_visit_ids: [id] }) : { data: [] };
+  const [financialResult, reportsResult, categoriesResult] = await Promise.all([
+    finance
+      ? supabase.rpc("get_visit_financial_summaries", { p_visit_ids: [id] })
+      : Promise.resolve({ data: [] }),
+    supabase
+      .from("patient_reports")
+      .select(
+        "id,report_name,report_date,status,test_order_id,report_categories(name)",
+      )
+      .eq("visit_id", id)
+      .order("created_at", { ascending: false }),
+    hasPermission(profile.role, "uploadReport")
+      ? supabase
+          .from("report_categories")
+          .select("id,name")
+          .eq("active", true)
+          .order("name")
+      : Promise.resolve({ data: [] }),
+  ]);
+  const financialRows = financialResult.data;
+  const patientReports = (reportsResult.data ?? []) as unknown as VisitReport[];
   visit.fee_paise = Number((financialRows?.[0] as { fee_paise?: number } | undefined)?.fee_paise ?? 0);
   visit.visit_payments = visit.visit_payments ?? [];
   const patient = visit.patients;
   if (!patient) notFound();
-  const vitals = visit.vitals?.[0];
-  const consultation = visit.consultations?.[0];
-  const prescription = visit.prescriptions?.[0];
+  const vitals = visit.vitals;
+  const consultation = visit.consultations;
+  const consultationCompleted = consultation?.status === "completed";
+  const prescription = visit.prescriptions;
   const money = paymentSummary(
     visit.fee_paise,
     visit.visit_payments?.map((p) => p.amount_paise) ?? [],
@@ -118,7 +156,8 @@ export default async function VisitPage({
   const canEditClinical =
     hasPermission(profile.role, "writeConsultation") &&
     (profile.role === "admin" || profile.doctorId === visit.doctor_id) &&
-    visit.status !== "completed";
+    visit.status !== "completed" &&
+    !consultationCompleted;
   const initialVitals = vitals
     ? {
         weight: vitals.weight_kg,
@@ -145,7 +184,7 @@ export default async function VisitPage({
             >
               <Printer /> Token
             </Button>
-            {visit.status === "completed" ? (
+            {visit.status === "completed" || consultationCompleted ? (
               <Button
                 render={<Link href={`/print/prescription/${visit.id}`} />}
               >
@@ -190,7 +229,8 @@ export default async function VisitPage({
         <CardHeader className="flex-row items-center justify-between">
           <CardTitle className="text-base">Vitals</CardTitle>
           {hasPermission(profile.role, "recordVitals") &&
-          visit.status !== "completed" ? (
+          visit.status !== "completed" &&
+          !consultationCompleted ? (
             <VitalsDialog
               visitId={visit.id}
               patientName={patient.name}
@@ -229,10 +269,100 @@ export default async function VisitPage({
           )}
         </CardContent>
       </Card>
+      <Card className="mb-4">
+        <CardHeader className="flex-row items-center justify-between gap-3">
+          <div>
+            <CardTitle className="text-base">Investigations & Reports</CardTitle>
+            <p className="mt-1 text-sm text-muted-foreground">
+              {visit.test_orders.length} ordered · {patientReports.length} uploaded
+            </p>
+          </div>
+          {hasPermission(profile.role, "uploadReport") ? (
+            <UploadReportDialog
+              patients={[
+                {
+                  id: visit.patient_id,
+                  label: `${patient.name} · ${patient.phone_normalized}`,
+                },
+              ]}
+              categories={categoriesResult.data ?? []}
+              testOrders={visit.test_orders.map((item) => ({
+                id: item.id,
+                patientId: visit.patient_id,
+                visitId: visit.id,
+                ipTicketId: null,
+                label: item.test_name,
+              }))}
+              initialPatientId={visit.patient_id}
+              initialVisitId={visit.id}
+              lockPatient
+            />
+          ) : null}
+        </CardHeader>
+        <CardContent className="p-0">
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Report</TableHead>
+                  <TableHead>Category</TableHead>
+                  <TableHead>Date</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead className="text-right">Action</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {patientReports.length ? (
+                  patientReports.map((report) => (
+                    <TableRow key={report.id}>
+                      <TableCell className="font-medium">
+                        {report.report_name}
+                      </TableCell>
+                      <TableCell>
+                        {report.report_categories?.name ?? "—"}
+                      </TableCell>
+                      <TableCell className="whitespace-nowrap">
+                        {formatHospitalDate(report.report_date)}
+                      </TableCell>
+                      <TableCell>
+                        <StatusBadge status={report.status} />
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          render={
+                            <a
+                              href={`/api/reports/${report.id}`}
+                              target="_blank"
+                              rel="noreferrer"
+                            />
+                          }
+                        >
+                          <FileText /> Open
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                ) : (
+                  <TableRow>
+                    <TableCell
+                      colSpan={5}
+                      className="h-24 text-center text-muted-foreground"
+                    >
+                      No reports uploaded for this visit yet.
+                    </TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+          </div>
+        </CardContent>
+      </Card>
       {canEditClinical ? (
         <ConsultationEditor
           visitId={visit.id}
-          initial={consultation}
+          initial={consultation ?? undefined}
           initialMedicines={(prescription?.prescription_items ?? []).map(
             (item) => ({
               medicine_id: item.medicine_id ?? undefined,

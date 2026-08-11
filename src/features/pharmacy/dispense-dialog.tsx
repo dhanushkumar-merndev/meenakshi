@@ -89,12 +89,15 @@ export function DispenseDialog({
         })),
     [lines],
   );
-  if (state.ok)
+  if (state.ok) {
+    const completed = state.data?.prescriptionStatus === "dispensed";
     return (
       <Button size="sm" variant="outline" disabled>
-        <CheckCircle2 /> Dispensed
+        <CheckCircle2 />
+        {completed ? "Completed" : "Partially Dispensed"}
       </Button>
     );
+  }
   return (
     <Dialog>
       <DialogTrigger render={<Button size="sm" />}>

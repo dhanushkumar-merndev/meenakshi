@@ -6,22 +6,23 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import type { ActionState } from "@/types/hospital";
 import { validateMedicineImportRows } from "./import-schema";
 import { rupeesToPaise } from "@/lib/domain/money";
+import { databaseIdSchema } from "@/lib/validation/database-id";
 
 const lineSchema = z
   .array(
     z.object({
-      prescription_item_id: z.uuid(),
-      batch_id: z.uuid(),
+      prescription_item_id: databaseIdSchema,
+      batch_id: databaseIdSchema,
       quantity: z.number().int().positive(),
     }),
   )
   .min(1)
   .max(50);
 const schema = z.object({
-  prescriptionId: z.uuid(),
+  prescriptionId: databaseIdSchema,
   lines: z.string(),
   paymentMode: z.enum(["cash", "upi", "card", "bank_transfer", "other"]),
-  idempotencyKey: z.uuid(),
+  idempotencyKey: databaseIdSchema,
 });
 export async function dispensePrescription(
   _: ActionState,
@@ -50,24 +51,35 @@ export async function dispensePrescription(
   if (error)
     return {
       ok: false,
-      message: error.message.includes("stock unavailable")
-        ? "Selected batch does not have enough unexpired stock."
-        : "Dispensing failed; no stock was changed.",
+      message: error.message.includes("expired or unavailable")
+        ? "This prescription has expired or is no longer available. No stock was changed."
+        : error.message.includes("stock unavailable")
+          ? "Selected batch does not have enough unexpired stock."
+          : "Dispensing failed; no stock was changed.",
     };
+  const { data: prescription } = await supabase
+    .from("prescriptions")
+    .select("status")
+    .eq("id", parsed.data.prescriptionId)
+    .single();
+  const prescriptionStatus = prescription?.status ?? "partially_dispensed";
   revalidatePath("/pharmacy");
   revalidatePath("/pharmacy/stock");
   revalidatePath("/dashboard");
   return {
     ok: true,
-    message: "Medicines dispensed and exact batch stock updated.",
-    data: { saleId: String(data) },
+    message:
+      prescriptionStatus === "dispensed"
+        ? "Prescription completed and exact batch stock updated."
+        : "Selected quantities dispensed; the remaining quantities are still pending.",
+    data: { saleId: String(data), prescriptionStatus },
   };
 }
 
 const importSchema = z.object({
   fileName: z.string().min(1).max(255),
   rows: z.string(),
-  idempotencyKey: z.uuid(),
+  idempotencyKey: databaseIdSchema,
 });
 export async function importMedicines(
   _: ActionState,
@@ -134,7 +146,7 @@ export async function saveMedicine(_: ActionState, formData: FormData): Promise<
 }
 
 const batchSchema = z.object({
-  batchId: z.string().uuid().optional().or(z.literal("")), medicineId: z.uuid(), batchNumber: z.string().trim().min(1).max(100), expiryDate: z.string().date(), quantityDelta: z.coerce.number().int(), purchasePrice: z.string(), sellingPrice: z.string(), lowStockThreshold: z.coerce.number().int().nonnegative(), active: z.string().optional(), reason: z.string().trim().min(2).max(200), idempotencyKey: z.uuid(),
+  batchId: databaseIdSchema.optional().or(z.literal("")), medicineId: databaseIdSchema, batchNumber: z.string().trim().min(1).max(100), expiryDate: z.string().date(), quantityDelta: z.coerce.number().int(), purchasePrice: z.string(), sellingPrice: z.string(), lowStockThreshold: z.coerce.number().int().nonnegative(), active: z.string().optional(), reason: z.string().trim().min(2).max(200), idempotencyKey: databaseIdSchema,
 });
 export async function saveMedicineBatch(_: ActionState, formData: FormData): Promise<ActionState> {
   await requirePermission("manageMedicine");

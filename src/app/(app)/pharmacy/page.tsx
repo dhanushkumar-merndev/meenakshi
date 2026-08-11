@@ -42,6 +42,7 @@ type Batch = {
 export default async function PharmacyPage() {
   await requireRoute("/pharmacy");
   const supabase = await createSupabaseServerClient();
+  await supabase.rpc("expire_stale_prescriptions");
   const [rxResult, batchResult] = await Promise.all([
     supabase
       .from("prescriptions")
@@ -66,7 +67,7 @@ export default async function PharmacyPage() {
     <div>
       <PageHeader
         title="Pending Prescriptions"
-        description="Stock changes only after pharmacy confirms actual dispensing"
+        description="Full dispensing completes the prescription; partial quantities remain pending; unused prescriptions expire after 24 hours"
       />
       <Card>
         <CardContent className="p-0">
@@ -78,8 +79,8 @@ export default async function PharmacyPage() {
                   <TableHead>Source</TableHead>
                   <TableHead>Doctor</TableHead>
                   <TableHead>Medicines</TableHead>
-                  <TableHead>Requested</TableHead>
-                  <TableHead>Time</TableHead>
+                  <TableHead>Pending Qty</TableHead>
+                  <TableHead>Prescribed / Expires</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead className="text-right">Action</TableHead>
                 </TableRow>
@@ -109,13 +110,25 @@ export default async function PharmacyPage() {
                           )}
                         </TableCell>
                         <TableCell>
-                          {formatHospitalDate(rx.created_at, true)}
+                          <span className="block whitespace-nowrap">
+                            {formatHospitalDate(rx.created_at, true)}
+                          </span>
+                          <span className="block whitespace-nowrap text-xs text-muted-foreground">
+                            Expires {formatHospitalDate(
+                              new Date(
+                                new Date(rx.created_at).getTime() +
+                                  24 * 60 * 60 * 1000,
+                              ).toISOString(),
+                              true,
+                            )}
+                          </span>
                         </TableCell>
                         <TableCell>
                           <StatusBadge status={rx.status} />
                         </TableCell>
                         <TableCell className="text-right">
                           <DispenseDialog
+                            key={`${rx.id}:${rx.status}:${rx.prescription_items.reduce((sum, item) => sum + item.dispensed_quantity, 0)}`}
                             prescriptionId={rx.id}
                             patientName={patient ?? "Patient"}
                             source={source}

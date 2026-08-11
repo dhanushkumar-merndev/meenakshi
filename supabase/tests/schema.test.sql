@@ -1,10 +1,12 @@
 begin;
-select plan(35);
+select plan(39);
 select has_table('public','patients','patients table exists');
 select has_table('public','visits','visits table exists');
 select has_table('public','medicine_batches','stock table exists');
+select has_table('public','notification_reads','persistent notification read state exists');
 select has_function('public','create_visit_with_token',array['uuid','uuid','visit_type','bigint','bigint','payment_mode','uuid','text','uuid'],'atomic visit RPC exists');
 select has_function('public','dispense_prescription',array['uuid','jsonb','payment_mode','uuid'],'atomic dispense RPC exists');
+select has_function('public','expire_stale_prescriptions',array[]::text[],'24-hour prescription expiry workflow exists');
 select has_function('public','record_visit_vitals',array['uuid','numeric','numeric','numeric','smallint','smallint','smallint','smallint','smallint','text'],'vitals workflow RPC exists');
 select has_function('public','save_visit_consultation',array['uuid','text','text','text','text','text','follow_up_type','date','integer','jsonb','jsonb','boolean'],'consultation workflow RPC exists');
 select has_function('public','create_ip_ticket',array['uuid','uuid','uuid','text','text','text','bigint','payment_mode','uuid'],'IP admission RPC exists');
@@ -32,8 +34,10 @@ select has_function('public','operational_data_signature',array[]::text[],'cost-
 select has_function('public','get_visit_financial_summaries',array['uuid[]'],'guarded visit finance RPC exists');
 select has_trigger('public','vitals','protect_closed_visit_vitals','closed visit vitals are immutable');
 select has_trigger('public','prescriptions','protect_prescription_status','prescription lifecycle is protected');
+select has_trigger('public','prescriptions','set_prescription_issued_at','pharmacy expiry starts when the doctor issues the prescription');
 select col_is_pk('public','patients','id','patient internal identity is UUID primary key');
 select col_has_check('public','medicine_batches','quantity','stock has a non-negative check');
 select isnt_empty($$select policyname from pg_policies where schemaname='public' and tablename='patients'$$,'patients have RLS policies');
+select isnt_empty($$select policyname from pg_policies where schemaname='public' and tablename='notification_reads'$$,'notification reads have RLS policies');
 select * from finish();
 rollback;

@@ -50,6 +50,9 @@ export function CreateVisitDialog({
   const [open, setOpen] = useState(false);
   const [doctorId, setDoctorId] = useState(doctors[0]?.id ?? "");
   const [visitType, setVisitType] = useState("op");
+  const [collected, setCollected] = useState(() =>
+    String((doctors[0]?.opFeePaise ?? 0) / 100),
+  );
   const [mode, setMode] = useState("cash");
   const [previousVisitId, setPreviousVisitId] = useState("");
   const [idempotencyKey] = useState(() => crypto.randomUUID());
@@ -62,6 +65,26 @@ export function CreateVisitDialog({
     ((visitType === "follow_up"
       ? doctor?.followUpFeePaise
       : doctor?.opFeePaise) ?? 0) / 100;
+
+  function updateVisitType(nextVisitType: string) {
+    setVisitType(nextVisitType);
+    const nextFee =
+      ((nextVisitType === "follow_up"
+        ? doctor?.followUpFeePaise
+        : doctor?.opFeePaise) ?? 0) / 100;
+    setCollected(String(nextFee));
+  }
+
+  function updateDoctor(nextDoctorId: string) {
+    const nextDoctor = doctors.find((item) => item.id === nextDoctorId);
+    setDoctorId(nextDoctorId);
+    const nextFee =
+      ((visitType === "follow_up"
+        ? nextDoctor?.followUpFeePaise
+        : nextDoctor?.opFeePaise) ?? 0) / 100;
+    setCollected(String(nextFee));
+  }
+
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger render={<Button />}>
@@ -121,12 +144,12 @@ export function CreateVisitDialog({
                 <Input value={patientName} readOnly />
               </div>
               <div className="space-y-2">
-                <Label>Visit type</Label>
+                <Label htmlFor="visit-type">Visit type</Label>
                 <Select
                   value={visitType}
-                  onValueChange={(v) => setVisitType(v as string)}
+                  onValueChange={(value) => updateVisitType(String(value))}
                 >
-                  <SelectTrigger className="w-full">
+                  <SelectTrigger id="visit-type" className="w-full">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -136,17 +159,23 @@ export function CreateVisitDialog({
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label>Doctor</Label>
+                <Label htmlFor="visit-doctor">Doctor</Label>
                 <Select
                   value={doctorId}
-                  onValueChange={(v) => setDoctorId(v as string)}
+                  onValueChange={(value) => updateDoctor(String(value))}
                 >
-                  <SelectTrigger className="w-full">
-                    <SelectValue placeholder="Select doctor" />
+                  <SelectTrigger id="visit-doctor" className="w-full">
+                    <SelectValue placeholder="Select doctor">
+                      {() => doctor?.displayName ?? "Select doctor"}
+                    </SelectValue>
                   </SelectTrigger>
                   <SelectContent>
                     {doctors.map((item) => (
-                      <SelectItem key={item.id} value={item.id}>
+                      <SelectItem
+                        key={item.id}
+                        value={item.id}
+                        label={item.displayName}
+                      >
                         {item.displayName}
                       </SelectItem>
                     ))}
@@ -154,8 +183,12 @@ export function CreateVisitDialog({
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label>Department</Label>
-                <Input value={doctor?.department ?? "—"} readOnly />
+                <Label htmlFor="visit-department">Department</Label>
+                <Input
+                  id="visit-department"
+                  value={doctor?.department ?? "—"}
+                  readOnly
+                />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="visit-fee">Consultation fee</Label>
@@ -167,7 +200,8 @@ export function CreateVisitDialog({
                   id="collected"
                   name="collected"
                   inputMode="decimal"
-                  defaultValue={fee}
+                  value={collected}
+                  onChange={(event) => setCollected(event.target.value)}
                 />
                 <p className="text-xs text-destructive">
                   {state.fieldErrors?.collected?.[0]}

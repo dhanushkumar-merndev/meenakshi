@@ -36,6 +36,7 @@ export function MedicineCombobox({
   const [query, setQuery] = useState(value.medicine_name);
   const [items, setItems] = useState<MedicineSuggestion[]>([]);
   const [loading, setLoading] = useState(false);
+  const [searchError, setSearchError] = useState(false);
   useEffect(() => {
     if (query.trim().length < 2) {
       return;
@@ -43,15 +44,21 @@ export function MedicineCombobox({
     const controller = new AbortController();
     const timer = setTimeout(async () => {
       setLoading(true);
+      setSearchError(false);
       try {
         const response = await fetch(
           `/api/search/medicines?q=${encodeURIComponent(query)}`,
           { signal: controller.signal },
         );
+        if (!response.ok) throw new Error("Medicine search failed");
         const body = await response.json();
         setItems(body.items ?? []);
+      } catch (error) {
+        if (error instanceof Error && error.name === "AbortError") return;
+        setItems([]);
+        setSearchError(true);
       } finally {
-        setLoading(false);
+        if (!controller.signal.aborted) setLoading(false);
       }
     }, 200);
     return () => {
@@ -95,7 +102,9 @@ export function MedicineCombobox({
               </div>
             ) : null}
             <CommandEmpty>
-              No medicine found. Typed text can still be prescribed.
+              {searchError
+                ? "Medicine search is temporarily unavailable. Typed text can still be prescribed."
+                : "No medicine found. Typed text can still be prescribed."}
             </CommandEmpty>
             <CommandGroup>
               {items.map((item) => (
