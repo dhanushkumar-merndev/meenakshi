@@ -1,0 +1,150 @@
+"use server";
+import { revalidatePath } from "next/cache";
+import { z } from "zod";
+import { requirePermission } from "@/lib/auth/dal";
+import { createSupabaseServerClient } from "@/lib/supabase/server";
+import type { ActionState } from "@/types/hospital";
+import { validateMedicineImportRows } from "./import-schema";
+import { rupeesToPaise } from "@/lib/domain/money";
+
+const lineSchema = z
+  .array(
+    z.object({
+      prescription_item_id: z.uuid(),
+      batch_id: z.uuid(),
+      quantity: z.number().int().positive(),
+    }),
+  )
+  .min(1)
+  .max(50);
+const schema = z.object({
+  prescriptionId: z.uuid(),
+  lines: z.string(),
+  paymentMode: z.enum(["cash", "upi", "card", "bank_transfer", "other"]),
+  idempotencyKey: z.uuid(),
+});
+export async function dispensePrescription(
+  _: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  await requirePermission("dispense");
+  const parsed = schema.safeParse(Object.fromEntries(formData));
+  if (!parsed.success)
+    return { ok: false, fieldErrors: parsed.error.flatten().fieldErrors };
+  let lines: z.infer<typeof lineSchema>;
+  try {
+    lines = lineSchema.parse(JSON.parse(parsed.data.lines));
+  } catch {
+    return {
+      ok: false,
+      message: "Select a valid batch and quantity for at least one item.",
+    };
+  }
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase.rpc("dispense_prescription", {
+    p_prescription_id: parsed.data.prescriptionId,
+    p_lines: lines,
+    p_payment_mode: parsed.data.paymentMode,
+    p_idempotency_key: parsed.data.idempotencyKey,
+  });
+  if (error)
+    return {
+      ok: false,
+      message: error.message.includes("stock unavailable")
+        ? "Selected batch does not have enough unexpired stock."
+        : "Dispensing failed; no stock was changed.",
+    };
+  revalidatePath("/pharmacy");
+  revalidatePath("/pharmacy/stock");
+  revalidatePath("/dashboard");
+  return {
+    ok: true,
+    message: "Medicines dispensed and exact batch stock updated.",
+    data: { saleId: String(data) },
+  };
+}
+
+const importSchema = z.object({
+  fileName: z.string().min(1).max(255),
+  rows: z.string(),
+  idempotencyKey: z.uuid(),
+});
+export async function importMedicines(
+  _: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  await requirePermission("manageMedicine");
+  const parsed = importSchema.safeParse(Object.fromEntries(formData));
+  if (!parsed.success)
+    return { ok: false, message: "Import payload is invalid." };
+  let source: unknown[];
+  try {
+    source = JSON.parse(parsed.data.rows);
+  } catch {
+    return { ok: false, message: "Import rows could not be read." };
+  }
+  const checked = validateMedicineImportRows(source);
+  if (checked.invalid.length || checked.valid.length === 0)
+    return {
+      ok: false,
+      message: "Resolve all validation errors before importing.",
+    };
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase.rpc("bulk_import_medicines", {
+    p_rows: checked.valid,
+    p_file_name: parsed.data.fileName,
+    p_idempotency_key: parsed.data.idempotencyKey,
+  });
+  if (error)
+    return {
+      ok: false,
+      message: "The transaction failed; no import rows were committed.",
+    };
+  revalidatePath("/pharmacy/stock");
+  revalidatePath("/pharmacy/medicines");
+  revalidatePath("/dashboard");
+  const result = data as Record<string, number>;
+  return {
+    ok: true,
+    message: `Imported ${result.success_count} rows: ${result.created_medicines} medicines, ${result.new_batches} new batches, ${result.updated_batches} updated batches.`,
+    data: { ...result },
+  };
+}
+
+const medicineSchema = z.object({
+  id: z.string().uuid().optional().or(z.literal("")),
+  brandName: z.string().trim().min(2).max(200),
+  genericName: z.string().trim().max(200).optional(),
+  strength: z.string().trim().max(100).optional(),
+  dosageForm: z.string().trim().min(2).max(100),
+  manufacturer: z.string().trim().max(200).optional(),
+  active: z.string().optional(),
+});
+export async function saveMedicine(_: ActionState, formData: FormData): Promise<ActionState> {
+  await requirePermission("manageMedicine");
+  const parsed = medicineSchema.safeParse(Object.fromEntries(formData));
+  if (!parsed.success) return { ok: false, fieldErrors: parsed.error.flatten().fieldErrors };
+  const supabase = await createSupabaseServerClient();
+  const values = { brand_name: parsed.data.brandName, generic_name: parsed.data.genericName || null, strength: parsed.data.strength || null, dosage_form: parsed.data.dosageForm, manufacturer: parsed.data.manufacturer || null, active: parsed.data.active === "on", source: "hospital" };
+  const query = parsed.data.id ? supabase.from("medicine_directory").update(values).eq("id", parsed.data.id) : supabase.from("medicine_directory").insert(values);
+  const { error } = await query;
+  if (error) return { ok: false, message: error.code === "23505" ? "This medicine already exists." : "Medicine could not be saved." };
+  revalidatePath("/pharmacy/medicines");
+  return { ok: true, message: "Medicine saved." };
+}
+
+const batchSchema = z.object({
+  batchId: z.string().uuid().optional().or(z.literal("")), medicineId: z.uuid(), batchNumber: z.string().trim().min(1).max(100), expiryDate: z.string().date(), quantityDelta: z.coerce.number().int(), purchasePrice: z.string(), sellingPrice: z.string(), lowStockThreshold: z.coerce.number().int().nonnegative(), active: z.string().optional(), reason: z.string().trim().min(2).max(200), idempotencyKey: z.uuid(),
+});
+export async function saveMedicineBatch(_: ActionState, formData: FormData): Promise<ActionState> {
+  await requirePermission("manageMedicine");
+  const parsed = batchSchema.safeParse(Object.fromEntries(formData));
+  if (!parsed.success) return { ok: false, fieldErrors: parsed.error.flatten().fieldErrors };
+  let purchase: number, selling: number;
+  try { purchase = rupeesToPaise(parsed.data.purchasePrice || "0"); selling = rupeesToPaise(parsed.data.sellingPrice); } catch (error) { return { ok: false, message: (error as Error).message }; }
+  const supabase = await createSupabaseServerClient();
+  const { error } = await supabase.rpc("save_medicine_batch", { p_batch_id: parsed.data.batchId || null, p_medicine_id: parsed.data.medicineId, p_batch_number: parsed.data.batchNumber, p_expiry_date: parsed.data.expiryDate, p_quantity_delta: parsed.data.quantityDelta, p_purchase_price_paise: purchase, p_selling_price_paise: selling, p_low_stock_threshold: parsed.data.lowStockThreshold, p_active: parsed.data.active === "on", p_reason: parsed.data.reason, p_idempotency_key: parsed.data.idempotencyKey });
+  if (error) return { ok: false, message: error.message.includes("negative") ? "This adjustment would make stock negative." : error.message.includes("duplicate") ? "This batch already exists." : "Batch and stock could not be saved." };
+  revalidatePath("/pharmacy/stock"); revalidatePath("/pharmacy/medicines"); revalidatePath("/dashboard");
+  return { ok: true, message: "Batch and stock saved." };
+}

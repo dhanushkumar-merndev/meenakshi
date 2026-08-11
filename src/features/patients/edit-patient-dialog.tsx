@@ -1,0 +1,17 @@
+"use client";
+
+import { useActionState, useState } from "react";
+import { LoaderCircle, Pencil, Save } from "lucide-react";
+import { updatePatient } from "./actions";
+import type { ActionState } from "@/types/hospital";
+import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
+
+export function EditPatientDialog({ patient }: { patient: { id: string; name: string; phone: string; dob: string | null; gender: string; bloodGroup: string | null; address: string | null; allergies: string | null; status: string } }) {
+  const [state, action, pending] = useActionState(updatePatient, { ok: false } as ActionState); const [gender, setGender] = useState(patient.gender); const [status, setStatus] = useState(patient.status);
+  return <Dialog><DialogTrigger render={<Button variant="outline" />}><Pencil /> Edit Patient</DialogTrigger><DialogContent className="max-h-[calc(100vh-2rem)] overflow-y-auto sm:max-w-xl"><form action={action} className="contents"><DialogHeader><DialogTitle>Edit patient</DialogTitle><DialogDescription>The visible Patient ID is the normalized phone number; historical relationships continue using the internal UUID.</DialogDescription></DialogHeader><input type="hidden" name="patientId" value={patient.id} /><input type="hidden" name="gender" value={gender} /><input type="hidden" name="status" value={status} />{state.message ? <p className="rounded-md bg-secondary p-3 text-sm">{state.message}</p> : null}<div className="grid gap-4 sm:grid-cols-2"><div className="space-y-2"><Label>Name</Label><Input name="name" defaultValue={patient.name} required /></div><div className="space-y-2"><Label>Phone Patient ID</Label><Input name="phone" inputMode="tel" defaultValue={patient.phone} required /></div><div className="space-y-2"><Label>Date of birth</Label><Input name="dob" type="date" defaultValue={patient.dob ?? ""} /></div><div className="space-y-2"><Label>Gender</Label><Select value={gender} onValueChange={(value) => setGender(value as string)}><SelectTrigger className="w-full"><SelectValue /></SelectTrigger><SelectContent>{["male", "female", "other", "unknown"].map((value) => <SelectItem value={value} key={value}>{value}</SelectItem>)}</SelectContent></Select></div><div className="space-y-2"><Label>Blood group</Label><Input name="bloodGroup" defaultValue={patient.bloodGroup ?? ""} /></div><div className="space-y-2"><Label>Status</Label><Select value={status} onValueChange={(value) => setStatus(value as string)}><SelectTrigger className="w-full"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="active">Active</SelectItem><SelectItem value="archived">Archived</SelectItem></SelectContent></Select></div><div className="space-y-2 sm:col-span-2"><Label>Address</Label><Textarea name="address" defaultValue={patient.address ?? ""} /></div><div className="space-y-2 sm:col-span-2"><Label>Allergies</Label><Textarea name="allergies" defaultValue={patient.allergies ?? ""} /></div></div><DialogFooter showCloseButton><Button disabled={pending} type="submit">{pending ? <LoaderCircle className="animate-spin" /> : <Save />} Save Patient</Button></DialogFooter></form></DialogContent></Dialog>;
+}

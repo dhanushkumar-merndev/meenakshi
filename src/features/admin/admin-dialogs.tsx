@@ -1,0 +1,245 @@
+"use client";
+import { useActionState, useState } from "react";
+import { LoaderCircle, Plus, UserCog } from "lucide-react";
+import { createDoctor, createStaffUser, updateDoctor, updateStaffUser } from "./actions";
+import type { ActionState } from "@/types/hospital";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+const initial: ActionState = { ok: false };
+const FieldError = ({ errors }: { errors?: string[] }) => (
+  <>
+    {errors?.map((e) => (
+      <p className="text-xs text-destructive" key={e}>
+        {e}
+      </p>
+    ))}
+  </>
+);
+export function AddUserDialog() {
+  const [state, action, pending] = useActionState(createStaffUser, initial);
+  const [role, setRole] = useState("reception");
+  return (
+    <Dialog>
+      <DialogTrigger render={<Button />}>
+        <Plus /> Add User
+      </DialogTrigger>
+      <DialogContent>
+        <form action={action} className="contents">
+          <DialogHeader>
+            <DialogTitle>Add staff user</DialogTitle>
+            <DialogDescription>
+              The temporary password is sent only to Supabase Auth and is never
+              stored in hospital tables.
+            </DialogDescription>
+          </DialogHeader>
+          <input type="hidden" name="role" value={role} />
+          {state.message ? (
+            <p className="rounded-md bg-secondary p-3 text-sm">
+              {state.message}
+            </p>
+          ) : null}
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="full-name">Name</Label>
+              <Input id="full-name" name="fullName" required />
+              <FieldError errors={state.fieldErrors?.fullName} />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="email">Email</Label>
+              <Input id="email" name="email" type="email" required />
+              <FieldError errors={state.fieldErrors?.email} />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="password">Temporary password</Label>
+              <Input id="password" name="password" type="password" required />
+              <FieldError errors={state.fieldErrors?.password} />
+            </div>
+            <div className="space-y-2">
+              <Label>Role</Label>
+              <Select value={role} onValueChange={(v) => setRole(v as string)}>
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {["admin", "reception", "op", "ip", "pharmacy"].map((v) => (
+                    <SelectItem key={v} value={v}>
+                      {v}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter showCloseButton>
+            <Button disabled={pending} type="submit">
+              {pending ? (
+                <LoaderCircle className="animate-spin" />
+              ) : (
+                <UserCog />
+              )}{" "}
+              Create User
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+export function AddDoctorDialog({
+  departments,
+}: {
+  departments: Array<{ id: string; name: string }>;
+}) {
+  const [state, action, pending] = useActionState(createDoctor, initial);
+  const [department, setDepartment] = useState(departments[0]?.id ?? "");
+  return (
+    <Dialog>
+      <DialogTrigger render={<Button />}>
+        <Plus /> Add Doctor
+      </DialogTrigger>
+      <DialogContent className="max-h-[calc(100vh-2rem)] overflow-y-auto sm:max-w-xl">
+        <form action={action} className="contents">
+          <DialogHeader>
+            <DialogTitle>Add doctor</DialogTitle>
+            <DialogDescription>
+              Creates and links the Auth account, staff profile, and doctor fees
+              as one workflow.
+            </DialogDescription>
+          </DialogHeader>
+          <input type="hidden" name="departmentId" value={department} />
+          {state.message ? (
+            <p className="rounded-md bg-secondary p-3 text-sm">
+              {state.message}
+            </p>
+          ) : null}
+          <div className="grid gap-4 sm:grid-cols-2">
+            {[
+              ["fullName", "Name", "text"],
+              ["email", "Email", "email"],
+              ["password", "Temporary password", "password"],
+              ["qualification", "Qualification", "text"],
+              ["specialization", "Specialization", "text"],
+              ["registrationNumber", "Registration number", "text"],
+              ["opFee", "OP fee", "text"],
+              ["followUpFee", "Follow-up fee", "text"],
+              ["ipFee", "IP visit fee", "text"],
+            ].map(([name, label, type]) => (
+              <div className="space-y-2" key={name}>
+                <Label htmlFor={`doctor-${name}`}>{label}</Label>
+                <Input
+                  id={`doctor-${name}`}
+                  name={name}
+                  type={type}
+                  required={[
+                    "fullName",
+                    "email",
+                    "password",
+                    "registrationNumber",
+                    "opFee",
+                    "followUpFee",
+                    "ipFee",
+                  ].includes(name)}
+                />
+                <FieldError errors={state.fieldErrors?.[name]} />
+              </div>
+            ))}
+            <div className="space-y-2">
+              <Label>Department</Label>
+              <Select
+                value={department}
+                onValueChange={(v) => setDepartment(v as string)}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {departments.map((d) => (
+                    <SelectItem key={d.id} value={d.id}>
+                      {d.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter showCloseButton>
+            <Button disabled={pending || !department} type="submit">
+              {pending ? <LoaderCircle className="animate-spin" /> : <Plus />}{" "}
+              Create Doctor
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+export function EditStaffDialog({ user }: { user: { id: string; fullName: string; role: string; status: string } }) {
+  const [state, action, pending] = useActionState(updateStaffUser, initial);
+  const [role, setRole] = useState(user.role);
+  const [status, setStatus] = useState(user.status);
+  return (
+    <Dialog>
+      <DialogTrigger render={<Button size="sm" variant="ghost" />}>Edit</DialogTrigger>
+      <DialogContent>
+        <form action={action} className="contents">
+          <DialogHeader><DialogTitle>Edit staff user</DialogTitle><DialogDescription>Deactivate staff instead of deleting historical accounts. A password is changed only when entered.</DialogDescription></DialogHeader>
+          <input type="hidden" name="userId" value={user.id} />
+          <input type="hidden" name="role" value={role} />
+          <input type="hidden" name="status" value={status} />
+          {state.message ? <p className="rounded-md bg-secondary p-3 text-sm">{state.message}</p> : null}
+          <div className="space-y-4">
+            <div className="space-y-2"><Label htmlFor={`staff-name-${user.id}`}>Name</Label><Input id={`staff-name-${user.id}`} name="fullName" defaultValue={user.fullName} required /></div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2"><Label>Role</Label><Select value={role} onValueChange={(value) => setRole(value as string)}><SelectTrigger className="w-full"><SelectValue /></SelectTrigger><SelectContent>{["admin", "reception", "op", "ip", "pharmacy"].map((value) => <SelectItem key={value} value={value}>{value}</SelectItem>)}</SelectContent></Select></div>
+              <div className="space-y-2"><Label>Status</Label><Select value={status} onValueChange={(value) => setStatus(value as string)}><SelectTrigger className="w-full"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="active">Active</SelectItem><SelectItem value="inactive">Inactive</SelectItem></SelectContent></Select></div>
+            </div>
+            <div className="space-y-2"><Label htmlFor={`staff-password-${user.id}`}>New password (optional)</Label><Input id={`staff-password-${user.id}`} name="password" type="password" minLength={10} /></div>
+          </div>
+          <DialogFooter showCloseButton><Button disabled={pending} type="submit">{pending ? <LoaderCircle className="animate-spin" /> : <UserCog />} Save Changes</Button></DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+export function EditDoctorDialog({ doctor, departments }: { doctor: { id: string; displayName: string; departmentId: string; specialization: string | null; qualification: string | null; registrationNumber: string; opFee: string; followUpFee: string; ipFee: string; active: boolean }; departments: Array<{ id: string; name: string }> }) {
+  const [state, action, pending] = useActionState(updateDoctor, initial);
+  const [department, setDepartment] = useState(doctor.departmentId);
+  return (
+    <Dialog>
+      <DialogTrigger render={<Button size="sm" variant="ghost" />}>Edit</DialogTrigger>
+      <DialogContent className="max-h-[calc(100vh-2rem)] overflow-y-auto sm:max-w-xl">
+        <form action={action} className="contents">
+          <DialogHeader><DialogTitle>Edit doctor</DialogTitle><DialogDescription>Update professional details, fees, department, and availability.</DialogDescription></DialogHeader>
+          <input type="hidden" name="doctorId" value={doctor.id} /><input type="hidden" name="departmentId" value={department} />
+          {state.message ? <p className="rounded-md bg-secondary p-3 text-sm">{state.message}</p> : null}
+          <div className="grid gap-4 sm:grid-cols-2">
+            {[["displayName", "Name", doctor.displayName], ["qualification", "Qualification", doctor.qualification ?? ""], ["specialization", "Specialization", doctor.specialization ?? ""], ["registrationNumber", "Registration number", doctor.registrationNumber], ["opFee", "OP fee", doctor.opFee], ["followUpFee", "Follow-up fee", doctor.followUpFee], ["ipFee", "IP visit fee", doctor.ipFee]].map(([name, label, value]) => <div className="space-y-2" key={name}><Label htmlFor={`${name}-${doctor.id}`}>{label}</Label><Input id={`${name}-${doctor.id}`} name={name} defaultValue={value} required={["displayName", "registrationNumber", "opFee", "followUpFee", "ipFee"].includes(name)} /></div>)}
+            <div className="space-y-2"><Label>Department</Label><Select value={department} onValueChange={(value) => setDepartment(value as string)}><SelectTrigger className="w-full"><SelectValue /></SelectTrigger><SelectContent>{departments.map((item) => <SelectItem key={item.id} value={item.id}>{item.name}</SelectItem>)}</SelectContent></Select></div>
+            <label className="flex items-center gap-2 self-end text-sm"><Checkbox name="active" defaultChecked={doctor.active} /> Active</label>
+          </div>
+          <DialogFooter showCloseButton><Button disabled={pending} type="submit">{pending ? <LoaderCircle className="animate-spin" /> : <UserCog />} Save Doctor</Button></DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}

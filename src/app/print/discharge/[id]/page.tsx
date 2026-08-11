@@ -1,0 +1,3 @@
+import { requireRoute } from "@/lib/auth/dal";
+import { PrintButton } from "@/components/shared/print-button";import { DischargeDocument } from "@/features/ip/discharge-document";import { getIpPrintData } from "@/features/ip/print-data";
+export default async function DischargePrintPage({params}:{params:Promise<{id:string}>}){await requireRoute("/ip");const{id}=await params;const ticket=await getIpPrintData(id);return <main className="mx-auto min-h-screen max-w-[210mm] bg-white p-4 text-black sm:p-8"><div data-print-hidden className="mb-4 flex justify-end"><PrintButton label="Print Discharge Summary"/></div><DischargeDocument ticket={ticket}/></main>}

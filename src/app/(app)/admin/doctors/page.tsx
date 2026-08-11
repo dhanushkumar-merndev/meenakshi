@@ -1,0 +1,104 @@
+import { requireRoute } from "@/lib/auth/dal";
+import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { formatInr } from "@/lib/domain/money";
+import { AddDoctorDialog, EditDoctorDialog } from "@/features/admin/admin-dialogs";
+import { PageHeader } from "@/components/shared/page-header";
+import { StatusBadge } from "@/components/shared/status-badge";
+import { Card, CardContent } from "@/components/ui/card";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+type Doctor = {
+  id: string;
+  display_name: string;
+  specialization: string | null;
+  qualification: string | null;
+  registration_number: string | null;
+  department_id: string | null;
+  op_fee_paise: number;
+  follow_up_fee_paise: number;
+  ip_visit_fee_paise: number;
+  active: boolean;
+  departments: { name: string } | null;
+};
+export default async function DoctorsAdminPage() {
+  await requireRoute("/admin/doctors");
+  const supabase = await createSupabaseServerClient();
+  const [doctorResult, departmentResult] = await Promise.all([
+    supabase
+      .from("doctors")
+      .select(
+        "id,display_name,department_id,specialization,qualification,registration_number,op_fee_paise,follow_up_fee_paise,ip_visit_fee_paise,active,departments(name)",
+      )
+      .order("display_name"),
+    supabase
+      .from("departments")
+      .select("id,name")
+      .eq("active", true)
+      .order("name"),
+  ]);
+  const rows = (doctorResult.data ?? []) as unknown as Doctor[];
+  return (
+    <div>
+      <PageHeader
+        title="Doctors"
+        description="Doctor accounts, departments, fees, and availability"
+        actions={<AddDoctorDialog departments={departmentResult.data ?? []} />}
+      />
+      <Card>
+        <CardContent className="p-0">
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Doctor</TableHead>
+                  <TableHead>Department</TableHead>
+                  <TableHead>Specialization</TableHead>
+                  <TableHead>OP Fee</TableHead>
+                  <TableHead>Follow-up Fee</TableHead>
+                  <TableHead>IP Visit Fee</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {rows.map((doctor) => (
+                  <TableRow key={doctor.id}>
+                    <TableCell className="font-medium">
+                      {doctor.display_name}
+                    </TableCell>
+                    <TableCell>{doctor.departments?.name ?? "—"}</TableCell>
+                    <TableCell>{doctor.specialization ?? "—"}</TableCell>
+                    <TableCell>{formatInr(doctor.op_fee_paise)}</TableCell>
+                    <TableCell>
+                      {formatInr(doctor.follow_up_fee_paise)}
+                    </TableCell>
+                    <TableCell>
+                      {formatInr(doctor.ip_visit_fee_paise)}
+                    </TableCell>
+                    <TableCell>
+                      <StatusBadge
+                        status={doctor.active ? "active" : "inactive"}
+                      />
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <EditDoctorDialog
+                        doctor={{ id: doctor.id, displayName: doctor.display_name, departmentId: doctor.department_id ?? departmentResult.data?.[0]?.id ?? "", specialization: doctor.specialization, qualification: doctor.qualification, registrationNumber: doctor.registration_number ?? "", opFee: (doctor.op_fee_paise / 100).toFixed(2), followUpFee: (doctor.follow_up_fee_paise / 100).toFixed(2), ipFee: (doctor.ip_visit_fee_paise / 100).toFixed(2), active: doctor.active }}
+                        departments={departmentResult.data ?? []}
+                      />
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
