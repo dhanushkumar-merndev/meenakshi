@@ -1,7 +1,10 @@
 import { requireRoute } from "@/lib/auth/dal";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { formatHospitalDate } from "@/lib/domain/date";
+import { containsSearchPattern, EMPTY_UUID } from "@/lib/domain/search";
+import { findMatchingPatientIds } from "@/lib/search/patients";
 import { PageHeader } from "@/components/shared/page-header";
+import { DebouncedSearchInput } from "@/components/shared/debounced-search-input";
 import { TablePager } from "@/components/shared/table-pager";
 import { UploadReportDialog } from "@/features/reports/upload-report-dialog";
 import { StatusBadge } from "@/components/shared/status-badge";
@@ -24,26 +27,30 @@ type Report = {
   patients: { name: string; phone_normalized: string } | null;
   report_categories: { name: string } | null;
 };
-export default async function ReportsPage({ searchParams }: { searchParams: Promise<{ page?: string }> }) {
+export default async function ReportsPage({ searchParams }: { searchParams: Promise<{ page?: string; q?: string }> }) {
   const profile = await requireRoute("/reports");
-  const page = Math.max(1, Number((await searchParams).page) || 1); const size = 50;
+  const params = await searchParams; const page = Math.max(1, Number(params.page) || 1); const size = 50; const q = params.q?.trim() ?? "";
   const supabase = await createSupabaseServerClient();
-  const [{ data, count }, { data: patients }, { data: categories }, { data: testOrders }] =
+  const patientIds = q ? await findMatchingPatientIds(supabase, q) : [];
+  let reportsQuery = supabase
+    .from("patient_reports")
+    .select(
+      "id,report_name,report_date,display_name,status,patients(name,phone_normalized),report_categories(name)",
+      { count: "exact" },
+    )
+    .order("created_at", { ascending: false })
+    .range((page - 1) * size, page * size - 1);
+  if (q) {
+    const pattern = containsSearchPattern(q);
+    reportsQuery = reportsQuery.or([
+      `report_name.ilike.${pattern}`,
+      `display_name.ilike.${pattern}`,
+      patientIds.length ? `patient_id.in.(${patientIds.join(",")})` : `patient_id.eq.${EMPTY_UUID}`,
+    ].join(","));
+  }
+  const [{ data, count }, { data: categories }, { data: testOrders }] =
     await Promise.all([
-      supabase
-        .from("patient_reports")
-        .select(
-          "id,report_name,report_date,display_name,status,patients(name,phone_normalized),report_categories(name)",
-          { count: "exact" },
-        )
-        .order("created_at", { ascending: false })
-        .range((page - 1) * size, page * size - 1),
-      supabase
-        .from("patients")
-        .select("id,name,phone_normalized")
-        .eq("status", "active")
-        .order("created_at", { ascending: false })
-        .limit(100),
+      reportsQuery,
       supabase
         .from("report_categories")
         .select("id,name")
@@ -60,16 +67,28 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
         actions={
           ["admin", "reception", "op", "ip"].includes(profile.role) ? (
             <UploadReportDialog
-              patients={(patients ?? []).map((p) => ({
-                id: p.id,
-                label: `${p.name} · ${p.phone_normalized}`,
-              }))}
               categories={categories ?? []}
-              testOrders={(testOrders ?? []).map((item) => ({ id: item.id, patientId: item.patient_id, visitId: item.visit_id, ipTicketId: item.ip_ticket_id, label: `${item.test_name} · ${(item.patients as unknown as { name: string; phone_normalized: string } | null)?.name ?? "Patient"}` }))}
+              testOrders={(testOrders ?? []).map((item) => {
+                const patient = item.patients as unknown as {
+                  name: string;
+                  phone_normalized: string;
+                } | null;
+                return {
+                  id: item.id,
+                  patientId: item.patient_id,
+                  patientLabel: patient
+                    ? `${patient.name} · ${patient.phone_normalized}`
+                    : "Patient",
+                  visitId: item.visit_id,
+                  ipTicketId: item.ip_ticket_id,
+                  label: `${item.test_name} · ${patient?.name ?? "Patient"}`,
+                };
+              })}
             />
           ) : undefined
         }
       />
+      <DebouncedSearchInput className="mb-4 max-w-md" initialValue={q} placeholder="Search patient, phone or report name" ariaLabel="Search patient reports" />
       <Card>
         <CardContent className="p-0">
           <div className="overflow-x-auto">
@@ -124,13 +143,13 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
                       colSpan={7}
                       className="h-32 text-center text-muted-foreground"
                     >
-                      No reports uploaded.
+                      {q ? "No reports match this search." : "No reports uploaded."}
                     </TableCell>
                   </TableRow>
                 )}
               </TableBody>
             </Table>
-          </div><TablePager page={page} pages={Math.max(1, Math.ceil((count ?? 0) / size))} total={count ?? 0} />
+          </div><TablePager page={page} pages={Math.max(1, Math.ceil((count ?? 0) / size))} total={count ?? 0} params={{ q }} />
         </CardContent>
       </Card>
     </div>

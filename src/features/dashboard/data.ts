@@ -12,11 +12,11 @@ export async function getDashboardData(profile: Profile) {
   }
   const summaryPromise = supabase.rpc("dashboard_summary");
   if (profile.role === "pharmacy") {
-    const [summaryResult, result] = await Promise.all([summaryPromise, supabase.from("prescriptions").select("id,status,created_at,visit_id,ip_ticket_id,doctors(display_name),visits(patients(name)),ip_tickets(patients(name)),prescription_items(id)").in("status", ["pending", "partially_dispensed"]).order("created_at").limit(8)]);
+    const [summaryResult, result] = await Promise.all([summaryPromise, supabase.from("prescriptions").select("id,prescription_number,status,created_at,visit_id,ip_ticket_id,doctors(display_name),visits(patients(name)),ip_tickets(patients(name)),prescription_items(id)").in("status", ["pending", "partially_dispensed"]).order("created_at").limit(8)]);
     return { summary: (summaryResult.data ?? {}) as DashboardSummary, role: profile.role, activity: { kind: "pharmacy" as const, rows: result.data ?? [] } };
   }
   if (profile.role === "ip") {
-    const [summaryResult, result] = await Promise.all([summaryPromise, supabase.from("ip_tickets").select("id,ticket_number,admission_at,room,bed,status,patients(name),doctors(display_name),ip_charges(amount_paise),ip_payments(amount_paise)").in("status", ["admitted", "discharge_pending"]).order("admission_at").limit(8)]);
+    const [summaryResult, result] = await Promise.all([summaryPromise, supabase.from("ip_tickets").select("id,ticket_number,admission_at,room,bed,status,is_emergency,patients(name),doctors(display_name),ip_charges(amount_paise),ip_payments(amount_paise)").in("status", ["admitted", "discharge_pending"]).order("admission_at").limit(8)]);
     return { summary: (summaryResult.data ?? {}) as DashboardSummary, role: profile.role, activity: { kind: "ip" as const, rows: result.data ?? [] } };
   }
   const [summaryResult, visitsResult] = await Promise.all([

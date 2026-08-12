@@ -1,5 +1,5 @@
 begin;
-select plan(39);
+select plan(44);
 select has_table('public','patients','patients table exists');
 select has_table('public','visits','visits table exists');
 select has_table('public','medicine_batches','stock table exists');
@@ -9,7 +9,9 @@ select has_function('public','dispense_prescription',array['uuid','jsonb','payme
 select has_function('public','expire_stale_prescriptions',array[]::text[],'24-hour prescription expiry workflow exists');
 select has_function('public','record_visit_vitals',array['uuid','numeric','numeric','numeric','smallint','smallint','smallint','smallint','smallint','text'],'vitals workflow RPC exists');
 select has_function('public','save_visit_consultation',array['uuid','text','text','text','text','text','follow_up_type','date','integer','jsonb','jsonb','boolean'],'consultation workflow RPC exists');
-select has_function('public','create_ip_ticket',array['uuid','uuid','uuid','text','text','text','bigint','payment_mode','uuid'],'IP admission RPC exists');
+select has_function('public','create_ip_ticket',array['uuid','uuid','uuid','text','text','text','bigint','payment_mode','boolean','uuid'],'emergency-capable IP admission RPC exists');
+select has_function('public','assign_ip_ticket_patient',array['uuid','uuid'],'controlled emergency patient assignment exists');
+select has_column('public','ip_tickets','is_emergency','IP tickets record emergency admission state');
 select has_trigger('public','consultations','protect_completed_consultation','completed consultations are immutable');
 select has_trigger('public','prescription_items','protect_prescription_content','completed prescription content is immutable');
 select has_trigger('public','visit_payments','prevent_visit_overpayment','visit overpayment is blocked');
@@ -28,6 +30,7 @@ select has_trigger('public','patient_reports','validate_report_relationship','re
 select has_function('public','report_admin_overview',array['date','date'],'server-side admin analytics exists');
 select has_function('public','search_medicine_availability',array['text','integer'],'doctor-safe medicine availability RPC exists');
 select has_function('public','list_pharmacy_batches',array['integer','integer'],'guarded pharmacy batch listing exists');
+select has_function('public','list_pharmacy_batches',array['text','integer','integer'],'searchable guarded pharmacy batch listing exists');
 select has_function('public','list_medicine_directory',array['text','integer','integer'],'guarded medicine directory listing exists');
 select has_function('public','list_available_dispense_batches',array['integer'],'guarded FEFO dispensing batch list exists');
 select has_function('public','operational_data_signature',array[]::text[],'cost-controlled live data signature exists');
@@ -35,6 +38,8 @@ select has_function('public','get_visit_financial_summaries',array['uuid[]'],'gu
 select has_trigger('public','vitals','protect_closed_visit_vitals','closed visit vitals are immutable');
 select has_trigger('public','prescriptions','protect_prescription_status','prescription lifecycle is protected');
 select has_trigger('public','prescriptions','set_prescription_issued_at','pharmacy expiry starts when the doctor issues the prescription');
+select has_column('public','prescriptions','prescription_number','prescriptions have a printable lookup number');
+select col_is_unique('public','prescriptions','prescription_number','prescription lookup numbers are unique');
 select col_is_pk('public','patients','id','patient internal identity is UUID primary key');
 select col_has_check('public','medicine_batches','quantity','stock has a non-negative check');
 select isnt_empty($$select policyname from pg_policies where schemaname='public' and tablename='patients'$$,'patients have RLS policies');

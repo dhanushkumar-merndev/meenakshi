@@ -1,7 +1,12 @@
 import { requireRoute } from "@/lib/auth/dal";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { formatHospitalDate } from "@/lib/domain/date";
+import {
+  formatPrescriptionNumber,
+  parsePrescriptionNumber,
+} from "@/lib/domain/prescription";
 import { DispenseDialog } from "@/features/pharmacy/dispense-dialog";
+import { DebouncedSearchInput } from "@/components/shared/debounced-search-input";
 import { PageHeader } from "@/components/shared/page-header";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { Card, CardContent } from "@/components/ui/card";
@@ -16,6 +21,7 @@ import {
 
 type Rx = {
   id: string;
+  prescription_number: number;
   status: string;
   created_at: string;
   visit_id: string | null;
@@ -39,21 +45,39 @@ type Batch = {
   quantity: number;
   selling_price_paise: number;
 };
-export default async function PharmacyPage() {
+export default async function PharmacyPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ q?: string }>;
+}) {
   await requireRoute("/pharmacy");
+  const q = (await searchParams).q?.trim() ?? "";
   const supabase = await createSupabaseServerClient();
   await supabase.rpc("expire_stale_prescriptions");
+  let prescriptionQuery = supabase
+    .from("prescriptions")
+    .select(
+      "id,prescription_number,status,created_at,visit_id,ip_ticket_id,doctors(display_name),visits(patients(name)),ip_tickets(patients(name)),prescription_items(id,medicine_id,medicine_name,requested_quantity,dispensed_quantity)",
+    )
+    .in("status", ["pending", "partially_dispensed"])
+    .order("created_at")
+    .limit(50);
+  if (q) {
+    prescriptionQuery = prescriptionQuery.eq(
+      "prescription_number",
+      parsePrescriptionNumber(q) ?? -1,
+    );
+  }
   const [rxResult, batchResult] = await Promise.all([
-    supabase
-      .from("prescriptions")
-      .select(
-        "id,status,created_at,visit_id,ip_ticket_id,doctors(display_name),visits(patients(name)),ip_tickets(patients(name)),prescription_items(id,medicine_id,medicine_name,requested_quantity,dispensed_quantity)",
-      )
-      .in("status", ["pending", "partially_dispensed"])
-      .order("created_at")
-      .limit(50),
+    prescriptionQuery,
     supabase.rpc("list_available_dispense_batches", { p_limit: 500 }),
   ]);
+  if (rxResult.error) {
+    throw new Error("Pending prescriptions could not be loaded.");
+  }
+  if (batchResult.error) {
+    throw new Error("Available medicine batches could not be loaded.");
+  }
   const prescriptions = (rxResult.data ?? []) as unknown as Rx[];
   const batches = ((batchResult.data ?? []) as unknown as Batch[]).map((b) => ({
     id: b.id,
@@ -69,12 +93,19 @@ export default async function PharmacyPage() {
         title="Pending Prescriptions"
         description="Full dispensing completes the prescription; partial quantities remain pending; unused prescriptions expire after 24 hours"
       />
+      <DebouncedSearchInput
+        className="mb-4 max-w-md"
+        initialValue={q}
+        placeholder="Search prescription number (for example RX-000123)"
+        ariaLabel="Search pending prescriptions by prescription number"
+      />
       <Card>
         <CardContent className="p-0">
           <div className="overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead>Prescription</TableHead>
                   <TableHead>Patient</TableHead>
                   <TableHead>Source</TableHead>
                   <TableHead>Doctor</TableHead>
@@ -94,6 +125,9 @@ export default async function PharmacyPage() {
                     const source = rx.ip_ticket_id ? "ip" : "op";
                     return (
                       <TableRow key={rx.id}>
+                        <TableCell className="font-mono text-xs font-medium">
+                          {formatPrescriptionNumber(rx.prescription_number)}
+                        </TableCell>
                         <TableCell className="font-medium">
                           {patient ?? "—"}
                         </TableCell>
@@ -130,6 +164,9 @@ export default async function PharmacyPage() {
                           <DispenseDialog
                             key={`${rx.id}:${rx.status}:${rx.prescription_items.reduce((sum, item) => sum + item.dispensed_quantity, 0)}`}
                             prescriptionId={rx.id}
+                            prescriptionNumber={formatPrescriptionNumber(
+                              rx.prescription_number,
+                            )}
                             patientName={patient ?? "Patient"}
                             source={source}
                             items={rx.prescription_items.map((item) => ({
@@ -148,10 +185,12 @@ export default async function PharmacyPage() {
                 ) : (
                   <TableRow>
                     <TableCell
-                      colSpan={8}
+                      colSpan={9}
                       className="h-32 text-center text-muted-foreground"
                     >
-                      No prescriptions waiting for dispensing.
+                      {q
+                        ? "No pending prescription matches that number."
+                        : "No prescriptions waiting for dispensing."}
                     </TableCell>
                   </TableRow>
                 )}

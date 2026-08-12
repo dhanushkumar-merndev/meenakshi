@@ -34,7 +34,7 @@ async function collectExport(month: string, includeDocuments: boolean) {
     admin.from("pharmacy_sales").select("id,prescription_id,patient_id,source,ip_ticket_id,total_paise,payment_mode,dispensed_by,created_at").gte("created_at", from).lt("created_at", to),
     admin.from("ip_charges").select("id,ip_ticket_id,category,item,quantity,rate_paise,amount_paise,source_type,source_id,added_by,created_at").gte("created_at", from).lt("created_at", to),
     admin.from("ip_payments").select("id,ip_ticket_id,amount_paise,mode,reference,notes,collected_by,created_at").gte("created_at", from).lt("created_at", to),
-    admin.from("ip_tickets").select("id,ticket_number,patient_id,doctor_id,source_visit_id,room,bed,admission_reason,status,admission_at,discharge_at,final_diagnosis,hospital_course,treatment_summary,discharge_medicines,discharge_advice,follow_up,created_by,created_at,updated_at").gte("admission_at", from).lt("admission_at", to),
+    admin.from("ip_tickets").select("id,ticket_number,patient_id,is_emergency,patient_linked_at,patient_linked_by,doctor_id,source_visit_id,room,bed,admission_reason,status,admission_at,discharge_at,final_diagnosis,hospital_course,treatment_summary,discharge_medicines,discharge_advice,follow_up,created_by,created_at,updated_at").gte("admission_at", from).lt("admission_at", to),
     admin.from("patient_reports").select("id,patient_id,visit_id,ip_ticket_id,test_order_id,category_id,report_name,report_date,display_name,original_filename,object_path,mime_type,size_bytes,notes,status,uploaded_by,created_at,updated_at").gte("created_at", from).lt("created_at", to),
     admin.from("audit_logs").select("id,actor_user_id,action,entity_type,entity_id,metadata,created_at").gte("created_at", from).lt("created_at", to),
     admin.from("medicine_batches").select("id,medicine_id,batch_number,expiry_date,quantity,purchase_price_paise,selling_price_paise,low_stock_threshold,active,created_at,updated_at"),
@@ -46,13 +46,13 @@ async function collectExport(month: string, includeDocuments: boolean) {
     inRows(admin, "visit_payments", "id,visit_id,amount_paise,mode,reference,notes,collected_by,created_at", "visit_id", visitIds),
     inRows(admin, "vitals", "id,visit_id,weight_kg,height_cm,temperature_c,bp_systolic,bp_diastolic,pulse,spo2,respiratory_rate,notes,recorded_by,recorded_at,updated_at", "visit_id", visitIds),
     inRows(admin, "consultations", "id,visit_id,doctor_id,symptoms,history,examination,assessment,advice,follow_up_type,follow_up_date,follow_up_days,status,completed_at,created_at,updated_at", "visit_id", visitIds),
-    inRows(admin, "prescriptions", "id,visit_id,ip_ticket_id,doctor_id,status,notes,created_at,updated_at", "visit_id", visitIds),
+    inRows(admin, "prescriptions", "id,prescription_number,visit_id,ip_ticket_id,doctor_id,status,notes,created_at,updated_at", "visit_id", visitIds),
     inRows(admin, "test_orders", "id,patient_id,visit_id,ip_ticket_id,doctor_id,test_name,status,notes,created_at,updated_at", "visit_id", visitIds),
   ]);
   const prescriptionItems = await inRows(admin, "prescription_items", "id,prescription_id,medicine_id,medicine_name,dose,frequency,duration,route,notes,requested_quantity,dispensed_quantity,created_at", "prescription_id", ids(prescriptions, "id"));
   const saleItems = await inRows(admin, "pharmacy_sale_items", "id,sale_id,prescription_item_id,batch_id,quantity,unit_price_paise,amount_paise", "sale_id", ids(sales, "id"));
   const ticketIds = [...new Set([...ids((admissionsR.data ?? []) as Row[], "id"), ...ids(ipCharges, "ip_ticket_id"), ...ids(ipPayments, "ip_ticket_id"), ...ids(sales, "ip_ticket_id")])];
-  const ipTickets = await inRows(admin, "ip_tickets", "id,ticket_number,patient_id,doctor_id,source_visit_id,room,bed,admission_reason,status,admission_at,discharge_at,final_diagnosis,hospital_course,treatment_summary,discharge_medicines,discharge_advice,follow_up,created_by,created_at,updated_at", "id", ticketIds);
+  const ipTickets = await inRows(admin, "ip_tickets", "id,ticket_number,patient_id,is_emergency,patient_linked_at,patient_linked_by,doctor_id,source_visit_id,room,bed,admission_reason,status,admission_at,discharge_at,final_diagnosis,hospital_course,treatment_summary,discharge_medicines,discharge_advice,follow_up,created_by,created_at,updated_at", "id", ticketIds);
   const progressNotes = await inRows(admin, "ip_progress_notes", "id,ip_ticket_id,doctor_id,note,chargeable,created_at", "ip_ticket_id", ticketIds);
   const patientIds = [...new Set([...ids(visits, "patient_id"), ...ids(sales, "patient_id"), ...ids(reports, "patient_id"), ...ids(ipTickets, "patient_id")])];
   const patients = await inRows(admin, "patients", "id,phone_normalized,name,dob,gender,address,blood_group,allergies,notes,status,created_at,updated_at", "id", patientIds);

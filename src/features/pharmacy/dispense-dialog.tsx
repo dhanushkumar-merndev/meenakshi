@@ -47,12 +47,14 @@ type Batch = {
 };
 export function DispenseDialog({
   prescriptionId,
+  prescriptionNumber,
   patientName,
   source,
   items,
   batches,
 }: {
   prescriptionId: string;
+  prescriptionNumber: string;
   patientName: string;
   source: string;
   items: Item[];
@@ -106,7 +108,7 @@ export function DispenseDialog({
       <DialogContent className="sm:max-w-3xl">
         <form action={action} className="contents">
           <DialogHeader>
-            <DialogTitle>Dispense prescription</DialogTitle>
+            <DialogTitle>Dispense {prescriptionNumber}</DialogTitle>
             <DialogDescription>
               {patientName} · {source.toUpperCase()} · FEFO batches are
               suggested. Only confirmed quantities reduce stock.

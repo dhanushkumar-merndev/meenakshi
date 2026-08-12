@@ -1,9 +1,10 @@
 "use client";
 import { useActionState, useState } from "react";
-import { BedDouble, IndianRupee, LoaderCircle, Plus } from "lucide-react";
-import { addIpCharge, addIpPayment, createAdmission } from "./actions";
+import { BedDouble, IndianRupee, LoaderCircle, Plus, UserRoundCheck } from "lucide-react";
+import { addIpCharge, addIpPayment, assignIpPatient, createAdmission } from "./actions";
 import type { ActionState } from "@/types/hospital";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -23,6 +24,11 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { useAutoCloseDialog } from "@/hooks/use-auto-close-dialog";
+import {
+  PatientCombobox,
+  type PatientOption,
+} from "@/components/shared/patient-combobox";
 const initial: ActionState = { ok: false };
 const modes = [
   ["cash", "Cash"],
@@ -32,19 +38,19 @@ const modes = [
   ["other", "Other"],
 ];
 export function AdmissionDialog({
-  patients,
   doctors,
 }: {
-  patients: Array<{ id: string; label: string }>;
   doctors: Array<{ id: string; label: string }>;
 }) {
   const [state, action, pending] = useActionState(createAdmission, initial);
-  const [patient, setPatient] = useState("");
+  const [patient, setPatient] = useState<PatientOption | null>(null);
+  const [emergency, setEmergency] = useState(false);
   const [doctor, setDoctor] = useState("");
   const [mode, setMode] = useState("cash");
   const [key] = useState(() => crypto.randomUUID());
+  const { open, setOpen } = useAutoCloseDialog(state, "Patient admitted.");
   return (
-    <Dialog>
+    <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger render={<Button />}>
         <Plus /> New Admission
       </DialogTrigger>
@@ -57,35 +63,55 @@ export function AdmissionDialog({
               atomically.
             </DialogDescription>
           </DialogHeader>
-          <input type="hidden" name="patientId" value={patient} />
+          <input type="hidden" name="patientId" value={patient?.id ?? ""} />
+          <input type="hidden" name="isEmergency" value={String(emergency)} />
           <input type="hidden" name="doctorId" value={doctor} />
           <input type="hidden" name="paymentMode" value={mode} />
           <input type="hidden" name="idempotencyKey" value={key} />
-          {state.message ? (
-            <p
-              className={`rounded-md p-3 text-sm ${state.ok ? "bg-secondary" : "bg-destructive/10 text-destructive"}`}
-            >
+          {state.message && !state.ok ? (
+            <p className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">
               {state.message}
             </p>
           ) : null}
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-2 sm:col-span-2">
-              <Label>Patient</Label>
-              <Select
-                value={patient}
-                onValueChange={(v) => setPatient(v as string)}
-              >
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Select patient" />
-                </SelectTrigger>
-                <SelectContent>
-                  {patients.map((p) => (
-                    <SelectItem key={p.id} value={p.id}>
-                      {p.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <label className="flex items-start gap-3 rounded-lg border p-3">
+                <Checkbox
+                  checked={emergency}
+                  onCheckedChange={(checked) => {
+                    const nextEmergency = checked === true;
+                    setEmergency(nextEmergency);
+                    if (nextEmergency) setPatient(null);
+                  }}
+                />
+                <span>
+                  <span className="block text-sm font-medium">
+                    Emergency admission — patient unknown
+                  </span>
+                  <span className="block text-xs text-muted-foreground">
+                    Create the IP ticket now and assign the patient later.
+                  </span>
+                </span>
+              </label>
+            </div>
+            <div className="space-y-2 sm:col-span-2">
+              <Label htmlFor="admission-patient">
+                Patient {emergency ? "(assign later)" : "*"}
+              </Label>
+              {emergency ? (
+                <div className="rounded-lg bg-muted p-3 text-sm text-muted-foreground">
+                  This ticket will be marked as an unidentified emergency patient.
+                </div>
+              ) : (
+                <PatientCombobox
+                  id="admission-patient"
+                  value={patient}
+                  onChange={setPatient}
+                />
+              )}
+              <p className="text-xs text-destructive">
+                {state.fieldErrors?.patientId?.[0]}
+              </p>
             </div>
             <div className="space-y-2 sm:col-span-2">
               <Label>Doctor</Label>
@@ -143,13 +169,13 @@ export function AdmissionDialog({
             </div>
           </div>
           <DialogFooter showCloseButton>
-            <Button disabled={pending || !patient || !doctor} type="submit">
+            <Button disabled={pending || (!emergency && !patient?.id) || !doctor} type="submit">
               {pending ? (
                 <LoaderCircle className="animate-spin" />
               ) : (
                 <BedDouble />
               )}{" "}
-              Admit
+              {emergency ? "Create Emergency Ticket" : "Admit"}
             </Button>
           </DialogFooter>
         </form>
@@ -161,8 +187,9 @@ export function ChargeDialog({ ticketId }: { ticketId: string }) {
   const [state, action, pending] = useActionState(addIpCharge, initial);
   const [category, setCategory] = useState("treatment");
   const [key] = useState(() => crypto.randomUUID());
+  const { open, setOpen } = useAutoCloseDialog(state, "IP charge added.");
   return (
-    <Dialog>
+    <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger render={<Button size="sm" variant="outline" />}>
         <Plus /> Add Charge
       </DialogTrigger>
@@ -177,7 +204,7 @@ export function ChargeDialog({ ticketId }: { ticketId: string }) {
           <input type="hidden" name="ticketId" value={ticketId} />
           <input type="hidden" name="category" value={category} />
           <input type="hidden" name="idempotencyKey" value={key} />
-          {state.message ? <p className="text-sm">{state.message}</p> : null}
+          {state.message && !state.ok ? <p className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">{state.message}</p> : null}
           <div className="space-y-4">
             <div className="space-y-2">
               <Label>Category</Label>
@@ -241,8 +268,9 @@ export function IpPaymentDialog({ ticketId }: { ticketId: string }) {
   const [state, action, pending] = useActionState(addIpPayment, initial);
   const [mode, setMode] = useState("cash");
   const [key] = useState(() => crypto.randomUUID());
+  const { open, setOpen } = useAutoCloseDialog(state, "IP payment recorded.");
   return (
-    <Dialog>
+    <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger render={<Button size="sm" />}>
         <IndianRupee /> Add Payment
       </DialogTrigger>
@@ -257,7 +285,7 @@ export function IpPaymentDialog({ ticketId }: { ticketId: string }) {
           <input type="hidden" name="ticketId" value={ticketId} />
           <input type="hidden" name="mode" value={mode} />
           <input type="hidden" name="idempotencyKey" value={key} />
-          {state.message ? <p className="text-sm">{state.message}</p> : null}
+          {state.message && !state.ok ? <p className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">{state.message}</p> : null}
           <div className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="amount">Amount</Label>
@@ -291,6 +319,62 @@ export function IpPaymentDialog({ ticketId }: { ticketId: string }) {
                 <IndianRupee />
               )}{" "}
               Record Payment
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+export function AssignPatientDialog({ ticketId }: { ticketId: string }) {
+  const [state, action, pending] = useActionState(assignIpPatient, initial);
+  const [patient, setPatient] = useState<PatientOption | null>(null);
+  const { open, setOpen } = useAutoCloseDialog(
+    state,
+    "Patient assigned to the IP ticket.",
+  );
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger render={<Button size="sm" />}>
+        <UserRoundCheck /> Assign Patient
+      </DialogTrigger>
+      <DialogContent>
+        <form action={action} className="contents">
+          <DialogHeader>
+            <DialogTitle>Assign emergency IP ticket</DialogTitle>
+            <DialogDescription>
+              Search the confirmed patient by phone or name. This creates an
+              audited permanent link to the emergency ticket.
+            </DialogDescription>
+          </DialogHeader>
+          <input type="hidden" name="ticketId" value={ticketId} />
+          <input type="hidden" name="patientId" value={patient?.id ?? ""} />
+          {state.message && !state.ok ? (
+            <p className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">
+              {state.message}
+            </p>
+          ) : null}
+          <div className="space-y-2">
+            <Label htmlFor={`assign-patient-${ticketId}`}>Patient</Label>
+            <PatientCombobox
+              id={`assign-patient-${ticketId}`}
+              value={patient}
+              onChange={setPatient}
+            />
+            <p className="text-xs text-destructive">
+              {state.fieldErrors?.patientId?.[0]}
+            </p>
+          </div>
+          <DialogFooter showCloseButton>
+            <Button disabled={pending || !patient?.id} type="submit">
+              {pending ? (
+                <LoaderCircle className="animate-spin" />
+              ) : (
+                <UserRoundCheck />
+              )}{" "}
+              Assign Patient
             </Button>
           </DialogFooter>
         </form>

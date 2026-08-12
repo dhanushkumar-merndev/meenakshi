@@ -16,6 +16,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
+import { useAutoCloseDialog } from "@/hooks/use-auto-close-dialog";
 import {
   Select,
   SelectContent,
@@ -36,8 +37,9 @@ const FieldError = ({ errors }: { errors?: string[] }) => (
 export function AddUserDialog() {
   const [state, action, pending] = useActionState(createStaffUser, initial);
   const [role, setRole] = useState("reception");
+  const { open, setOpen } = useAutoCloseDialog(state, "Staff user created.");
   return (
-    <Dialog>
+    <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger render={<Button />}>
         <Plus /> Add User
       </DialogTrigger>
@@ -51,8 +53,8 @@ export function AddUserDialog() {
             </DialogDescription>
           </DialogHeader>
           <input type="hidden" name="role" value={role} />
-          {state.message ? (
-            <p className="rounded-md bg-secondary p-3 text-sm">
+          {state.message && !state.ok ? (
+            <p className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">
               {state.message}
             </p>
           ) : null}
@@ -110,11 +112,12 @@ export function AddDoctorDialog({
 }) {
   const [state, action, pending] = useActionState(createDoctor, initial);
   const [department, setDepartment] = useState(departments[0]?.id ?? "");
+  const { open, setOpen } = useAutoCloseDialog(state, "Doctor created.");
   const departmentName =
     departments.find((item) => item.id === department)?.name ??
     "Select department";
   return (
-    <Dialog>
+    <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger render={<Button />}>
         <Plus /> Add Doctor
       </DialogTrigger>
@@ -128,8 +131,8 @@ export function AddDoctorDialog({
             </DialogDescription>
           </DialogHeader>
           <input type="hidden" name="departmentId" value={department} />
-          {state.message ? (
-            <p className="rounded-md bg-secondary p-3 text-sm">
+          {state.message && !state.ok ? (
+            <p className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">
               {state.message}
             </p>
           ) : null}
@@ -201,8 +204,9 @@ export function EditStaffDialog({ user }: { user: { id: string; fullName: string
   const [state, action, pending] = useActionState(updateStaffUser, initial);
   const [role, setRole] = useState(user.role);
   const [status, setStatus] = useState(user.status);
+  const { open, setOpen } = useAutoCloseDialog(state, "Staff account updated.");
   return (
-    <Dialog>
+    <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger render={<Button size="sm" variant="ghost" />}>Edit</DialogTrigger>
       <DialogContent>
         <form action={action} className="contents">
@@ -210,7 +214,7 @@ export function EditStaffDialog({ user }: { user: { id: string; fullName: string
           <input type="hidden" name="userId" value={user.id} />
           <input type="hidden" name="role" value={role} />
           <input type="hidden" name="status" value={status} />
-          {state.message ? <p className="rounded-md bg-secondary p-3 text-sm">{state.message}</p> : null}
+          {state.message && !state.ok ? <p className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">{state.message}</p> : null}
           <div className="space-y-4">
             <div className="space-y-2"><Label htmlFor={`staff-name-${user.id}`}>Name</Label><Input id={`staff-name-${user.id}`} name="fullName" defaultValue={user.fullName} required /></div>
             <div className="grid gap-4 sm:grid-cols-2">
@@ -229,17 +233,18 @@ export function EditStaffDialog({ user }: { user: { id: string; fullName: string
 export function EditDoctorDialog({ doctor, departments }: { doctor: { id: string; displayName: string; departmentId: string; specialization: string | null; qualification: string | null; registrationNumber: string; opFee: string; followUpFee: string; ipFee: string; active: boolean }; departments: Array<{ id: string; name: string }> }) {
   const [state, action, pending] = useActionState(updateDoctor, initial);
   const [department, setDepartment] = useState(doctor.departmentId);
+  const { open, setOpen } = useAutoCloseDialog(state, "Doctor updated.");
   const departmentName =
     departments.find((item) => item.id === department)?.name ??
     "Select department";
   return (
-    <Dialog>
+    <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger render={<Button size="sm" variant="ghost" />}>Edit</DialogTrigger>
       <DialogContent className="max-h-[calc(100vh-2rem)] overflow-y-auto sm:max-w-xl">
         <form action={action} className="contents">
           <DialogHeader><DialogTitle>Edit doctor</DialogTitle><DialogDescription>Update professional details, fees, department, and availability.</DialogDescription></DialogHeader>
           <input type="hidden" name="doctorId" value={doctor.id} /><input type="hidden" name="departmentId" value={department} />
-          {state.message ? <p className="rounded-md bg-secondary p-3 text-sm">{state.message}</p> : null}
+          {state.message && !state.ok ? <p className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">{state.message}</p> : null}
           <div className="grid gap-4 sm:grid-cols-2">
             {[["displayName", "Name", doctor.displayName], ["qualification", "Qualification", doctor.qualification ?? ""], ["specialization", "Specialization", doctor.specialization ?? ""], ["registrationNumber", "Registration number", doctor.registrationNumber], ["opFee", "OP fee", doctor.opFee], ["followUpFee", "Follow-up fee", doctor.followUpFee], ["ipFee", "IP visit fee", doctor.ipFee]].map(([name, label, value]) => <div className="space-y-2" key={name}><Label htmlFor={`${name}-${doctor.id}`}>{label}</Label><Input id={`${name}-${doctor.id}`} name={name} defaultValue={value} required={["displayName", "registrationNumber", "opFee", "followUpFee", "ipFee"].includes(name)} /></div>)}
             <div className="space-y-2"><Label htmlFor={`edit-doctor-department-${doctor.id}`}>Department</Label><Select value={department} onValueChange={(value) => setDepartment(String(value))}><SelectTrigger id={`edit-doctor-department-${doctor.id}`} className="w-full"><SelectValue placeholder="Select department">{() => departmentName}</SelectValue></SelectTrigger><SelectContent>{departments.map((item) => <SelectItem key={item.id} value={item.id} label={item.name}>{item.name}</SelectItem>)}</SelectContent></Select></div>

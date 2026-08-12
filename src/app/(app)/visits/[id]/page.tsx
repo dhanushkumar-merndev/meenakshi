@@ -6,6 +6,7 @@ import { hasPermission } from "@/lib/auth/permissions";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { calculateAge, formatHospitalDate } from "@/lib/domain/date";
 import { formatInr, paymentSummary } from "@/lib/domain/money";
+import { formatPrescriptionNumber } from "@/lib/domain/prescription";
 import { ConsultationEditor } from "@/features/clinical/consultation-editor";
 import { VitalsDialog } from "@/features/op/vitals-dialog";
 import { UploadReportDialog } from "@/features/reports/upload-report-dialog";
@@ -72,6 +73,7 @@ type VisitDetail = {
   } | null;
   prescriptions: {
     id: string;
+    prescription_number: number;
     status: string;
     prescription_items: Array<{
       medicine_id: string | null;
@@ -115,7 +117,7 @@ export default async function VisitPage({
   const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase
     .from("visits")
-    .select(`id,token_number,created_at,visit_date,visit_type,status,patient_id,doctor_id,patients(name,phone_normalized,dob,gender,allergies,blood_group),doctors(display_name,qualification,registration_number),departments(name),vitals(weight_kg,height_cm,temperature_c,bp_systolic,bp_diastolic,pulse,spo2,respiratory_rate,notes),consultations(symptoms,history,examination,assessment,advice,follow_up_type,follow_up_date,follow_up_days,status),prescriptions(id,status,prescription_items(medicine_id,medicine_name,dose,frequency,duration,route,notes,requested_quantity)),test_orders(id,test_name,notes,status)${finance ? ",visit_payments(amount_paise,mode,created_at)" : ""}`)
+    .select(`id,token_number,created_at,visit_date,visit_type,status,patient_id,doctor_id,patients(name,phone_normalized,dob,gender,allergies,blood_group),doctors(display_name,qualification,registration_number),departments(name),vitals(weight_kg,height_cm,temperature_c,bp_systolic,bp_diastolic,pulse,spo2,respiratory_rate,notes),consultations(symptoms,history,examination,assessment,advice,follow_up_type,follow_up_date,follow_up_days,status),prescriptions(id,prescription_number,status,prescription_items(medicine_id,medicine_name,dose,frequency,duration,route,notes,requested_quantity)),test_orders(id,test_name,notes,status)${finance ? ",visit_payments(amount_paise,mode,created_at)" : ""}`)
     .eq("id", id)
     .single();
   if (error || !data) notFound();
@@ -201,6 +203,11 @@ export default async function VisitPage({
           {patient.gender}
         </Badge>
         <Badge variant="outline">{visit.doctors?.display_name}</Badge>
+        {prescription ? (
+          <Badge variant="outline" className="font-mono">
+            {formatPrescriptionNumber(prescription.prescription_number)}
+          </Badge>
+        ) : null}
         {patient.allergies ? (
           <Badge variant="destructive">Allergies: {patient.allergies}</Badge>
         ) : null}
@@ -279,21 +286,19 @@ export default async function VisitPage({
           </div>
           {hasPermission(profile.role, "uploadReport") ? (
             <UploadReportDialog
-              patients={[
-                {
-                  id: visit.patient_id,
-                  label: `${patient.name} · ${patient.phone_normalized}`,
-                },
-              ]}
               categories={categoriesResult.data ?? []}
               testOrders={visit.test_orders.map((item) => ({
                 id: item.id,
                 patientId: visit.patient_id,
+                patientLabel: `${patient.name} · ${patient.phone_normalized}`,
                 visitId: visit.id,
                 ipTicketId: null,
                 label: item.test_name,
               }))}
-              initialPatientId={visit.patient_id}
+              initialPatient={{
+                id: visit.patient_id,
+                label: `${patient.name} · ${patient.phone_normalized}`,
+              }}
               initialVisitId={visit.id}
               lockPatient
             />

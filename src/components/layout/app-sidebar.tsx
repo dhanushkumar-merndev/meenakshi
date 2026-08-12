@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import * as Icons from "lucide-react";
 import { HeartPulse, LogOut } from "lucide-react";
 import { signOut } from "@/app/(auth)/login/actions";
-import { ROLE_NAVIGATION } from "./navigation";
+import { getActiveNavigationHref, ROLE_NAVIGATION } from "./navigation";
 import type { Profile } from "@/types/hospital";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -31,6 +31,7 @@ function NavIcon({ name }: { name: string }) {
 export function AppSidebar({ profile }: { profile: Profile }) {
   const pathname = usePathname();
   const items = ROLE_NAVIGATION[profile.role];
+  const activeHref = getActiveNavigationHref(items, pathname);
   const groups = profile.role === "admin" ? [
     { label: "Hospital", items: items.slice(0, 8) },
     { label: "Administration", items: items.slice(8, -1) },
@@ -62,10 +63,7 @@ export function AppSidebar({ profile }: { profile: Profile }) {
                   <SidebarMenuButton
                     className="group-data-[collapsible=icon]:mx-auto group-data-[collapsible=icon]:size-9!"
                     render={<Link href={item.href} />}
-                    isActive={
-                      pathname === item.href ||
-                      (item.href !== "/dashboard" && pathname.startsWith(`${item.href}/`))
-                    }
+                    isActive={activeHref === item.href}
                     tooltip={{ children: item.title, sideOffset: 10 }}
                   >
                     <NavIcon name={item.icon} />

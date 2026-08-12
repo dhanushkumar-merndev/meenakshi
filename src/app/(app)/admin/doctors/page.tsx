@@ -1,9 +1,11 @@
 import { requireRoute } from "@/lib/auth/dal";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { formatInr } from "@/lib/domain/money";
+import { containsSearchPattern } from "@/lib/domain/search";
 import { AddDoctorDialog, EditDoctorDialog } from "@/features/admin/admin-dialogs";
 import { PageHeader } from "@/components/shared/page-header";
 import { StatusBadge } from "@/components/shared/status-badge";
+import { DebouncedSearchInput } from "@/components/shared/debounced-search-input";
 import { Card, CardContent } from "@/components/ui/card";
 import {
   Table,
@@ -26,16 +28,22 @@ type Doctor = {
   active: boolean;
   departments: { name: string } | null;
 };
-export default async function DoctorsAdminPage() {
+export default async function DoctorsAdminPage({ searchParams }: { searchParams: Promise<{ q?: string }> }) {
   await requireRoute("/admin/doctors");
+  const q = (await searchParams).q?.trim() ?? "";
   const supabase = await createSupabaseServerClient();
+  let doctorsQuery = supabase
+    .from("doctors")
+    .select(
+      "id,display_name,department_id,specialization,qualification,registration_number,op_fee_paise,follow_up_fee_paise,ip_visit_fee_paise,active,departments(name)",
+    )
+    .order("display_name");
+  if (q) {
+    const pattern = containsSearchPattern(q);
+    doctorsQuery = doctorsQuery.or(`display_name.ilike.${pattern},specialization.ilike.${pattern},qualification.ilike.${pattern},registration_number.ilike.${pattern}`);
+  }
   const [doctorResult, departmentResult] = await Promise.all([
-    supabase
-      .from("doctors")
-      .select(
-        "id,display_name,department_id,specialization,qualification,registration_number,op_fee_paise,follow_up_fee_paise,ip_visit_fee_paise,active,departments(name)",
-      )
-      .order("display_name"),
+    doctorsQuery,
     supabase
       .from("departments")
       .select("id,name")
@@ -50,6 +58,7 @@ export default async function DoctorsAdminPage() {
         description="Doctor accounts, departments, fees, and availability"
         actions={<AddDoctorDialog departments={departmentResult.data ?? []} />}
       />
+      <DebouncedSearchInput className="mb-4 max-w-md" initialValue={q} placeholder="Search doctor, specialization or registration" ariaLabel="Search doctors" />
       <Card>
         <CardContent className="p-0">
           <div className="overflow-x-auto">
@@ -94,6 +103,7 @@ export default async function DoctorsAdminPage() {
                     </TableCell>
                   </TableRow>
                 ))}
+                {!rows.length ? <TableRow><TableCell colSpan={8} className="h-32 text-center text-muted-foreground">{q ? "No doctors match this search." : "No doctors found."}</TableCell></TableRow> : null}
               </TableBody>
             </Table>
           </div>

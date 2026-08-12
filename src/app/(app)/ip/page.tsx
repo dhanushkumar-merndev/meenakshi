@@ -3,10 +3,13 @@ import { requireRoute } from "@/lib/auth/dal";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { formatHospitalDate } from "@/lib/domain/date";
 import { formatInr } from "@/lib/domain/money";
+import { containsSearchPattern, EMPTY_UUID } from "@/lib/domain/search";
+import { findMatchingPatientIds } from "@/lib/search/patients";
 import { AdmissionDialog } from "@/features/ip/ip-dialogs";
 import { PageHeader } from "@/components/shared/page-header";
 import { TablePager } from "@/components/shared/table-pager";
 import { StatusBadge } from "@/components/shared/status-badge";
+import { DebouncedSearchInput } from "@/components/shared/debounced-search-input";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
@@ -24,35 +27,35 @@ type Ticket = {
   room: string | null;
   bed: string | null;
   status: string;
+  is_emergency: boolean;
   patients: { name: string } | null;
   doctors: { display_name: string } | null;
   ip_charges: Array<{ amount_paise: number }>;
   ip_payments: Array<{ amount_paise: number }>;
 };
-export default async function IpPage({ searchParams }: { searchParams: Promise<{ status?: string; page?: string }> }) {
+export default async function IpPage({ searchParams }: { searchParams: Promise<{ status?: string; page?: string; q?: string }> }) {
   const profile = await requireRoute("/ip");
-  const params = await searchParams; const selectedStatus = params.status ?? "active"; const page = Math.max(1, Number(params.page) || 1); const size = 50;
+  const params = await searchParams; const selectedStatus = params.status ?? "active"; const page = Math.max(1, Number(params.page) || 1); const size = 50; const q = params.q?.trim() ?? "";
   const supabase = await createSupabaseServerClient();
-  const [ticketsResult, patientsResult, doctorsResult] = await Promise.all([
+  const patientIds = q ? await findMatchingPatientIds(supabase, q) : [];
+  const [ticketsResult, doctorsResult] = await Promise.all([
     (() => {
       let query = supabase
       .from("ip_tickets")
       .select(
-        "id,ticket_number,admission_at,room,bed,status,patients(name),doctors(display_name),ip_charges(amount_paise),ip_payments(amount_paise)",
+        "id,ticket_number,admission_at,room,bed,status,is_emergency,patients(name),doctors(display_name),ip_charges(amount_paise),ip_payments(amount_paise)",
         { count: "exact" },
       )
       .order("admission_at", { ascending: false })
       .range((page - 1) * size, page * size - 1);
       if (selectedStatus === "active") query = query.in("status", ["admitted", "discharge_pending"]);
       else if (["admitted", "discharge_pending", "discharged", "cancelled"].includes(selectedStatus)) query = query.eq("status", selectedStatus as "admitted");
+      if (q) query = query.or([
+        `ticket_number.ilike.${containsSearchPattern(q)}`,
+        patientIds.length ? `patient_id.in.(${patientIds.join(",")})` : `patient_id.eq.${EMPTY_UUID}`,
+      ].join(","));
       return query;
     })(),
-    supabase
-      .from("patients")
-      .select("id,name,phone_normalized")
-      .eq("status", "active")
-      .order("created_at", { ascending: false })
-      .limit(100),
     supabase
       .from("doctors")
       .select("id,display_name")
@@ -69,10 +72,6 @@ export default async function IpPage({ searchParams }: { searchParams: Promise<{
         actions={
           profile.role === "admin" || profile.role === "ip" ? (
             <AdmissionDialog
-              patients={(patientsResult.data ?? []).map((p) => ({
-                id: p.id,
-                label: `${p.name} · ${p.phone_normalized}`,
-              }))}
               doctors={(doctorsResult.data ?? []).map((d) => ({
                 id: d.id,
                 label: d.display_name,
@@ -81,6 +80,7 @@ export default async function IpPage({ searchParams }: { searchParams: Promise<{
           ) : undefined
         }
       />
+      <DebouncedSearchInput className="mb-4 max-w-md" initialValue={q} placeholder="Search IP ticket, patient name or phone" ariaLabel="Search IP patients" />
       <Card>
         <CardContent className="p-0">
           <div className="overflow-x-auto">
@@ -113,7 +113,7 @@ export default async function IpPage({ searchParams }: { searchParams: Promise<{
                         <TableCell className="font-medium">
                           {ticket.ticket_number}
                         </TableCell>
-                        <TableCell>{ticket.patients?.name}</TableCell>
+                        <TableCell>{ticket.patients?.name ?? (ticket.is_emergency ? "Unidentified emergency" : "—")}</TableCell>
                         <TableCell>{ticket.doctors?.display_name}</TableCell>
                         <TableCell>
                           {ticket.room ?? "—"}/{ticket.bed ?? "—"}
@@ -145,13 +145,13 @@ export default async function IpPage({ searchParams }: { searchParams: Promise<{
                       colSpan={canFinance ? 10 : 7}
                       className="h-32 text-center text-muted-foreground"
                     >
-                      No patients currently admitted.
+                      {q ? "No IP tickets match this search." : "No patients currently admitted."}
                     </TableCell>
                   </TableRow>
                 )}
               </TableBody>
             </Table>
-          </div><TablePager page={page} pages={Math.max(1, Math.ceil((ticketsResult.count ?? 0) / size))} total={ticketsResult.count ?? 0} params={{ status: selectedStatus }} />
+          </div><TablePager page={page} pages={Math.max(1, Math.ceil((ticketsResult.count ?? 0) / size))} total={ticketsResult.count ?? 0} params={{ status: selectedStatus, q }} />
         </CardContent>
       </Card>
     </div>

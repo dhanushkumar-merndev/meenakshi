@@ -1,5 +1,4 @@
 import { SidebarTrigger } from "@/components/ui/sidebar";
-import { HeaderPatientSearch } from "./header-patient-search";
 import { NotificationMenu } from "./notification-menu";
 
 export function AppHeader() {
@@ -11,7 +10,6 @@ export function AppHeader() {
       <div className="flex shrink-0 items-center">
         <SidebarTrigger className="size-9" />
       </div>
-      <div className="hidden min-w-0 flex-1 sm:block"><HeaderPatientSearch /></div>
       <div className="ml-auto shrink-0">
         <NotificationMenu />
       </div>

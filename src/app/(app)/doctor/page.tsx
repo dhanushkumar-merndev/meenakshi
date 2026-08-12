@@ -2,6 +2,9 @@ import Link from "next/link";
 import { requireRoute } from "@/lib/auth/dal";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { calculateAge } from "@/lib/domain/date";
+import { EMPTY_UUID, searchDigits } from "@/lib/domain/search";
+import { findMatchingPatientIds } from "@/lib/search/patients";
+import { DebouncedSearchInput } from "@/components/shared/debounced-search-input";
 import { PageHeader } from "@/components/shared/page-header";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { Button } from "@/components/ui/button";
@@ -29,8 +32,13 @@ type DoctorQueue = {
     spo2: number | null;
   }>;
 };
-export default async function DoctorQueuePage() {
+export default async function DoctorQueuePage({
+  searchParams,
+}: {
+  searchParams: Promise<{ q?: string }>;
+}) {
   const profile = await requireRoute("/doctor");
+  const q = (await searchParams).q?.trim() ?? "";
   const supabase = await createSupabaseServerClient();
   const today = new Intl.DateTimeFormat("en-CA", {
     timeZone: "Asia/Kolkata",
@@ -44,6 +52,16 @@ export default async function DoctorQueuePage() {
     .in("status", ["ready", "in_consultation", "waiting", "vitals_pending"])
     .order("token_number");
   if (profile.doctorId) query = query.eq("doctor_id", profile.doctorId);
+  if (q) {
+    const patientIds = await findMatchingPatientIds(supabase, q);
+    const filters = patientIds.length
+      ? [`patient_id.in.(${patientIds.join(",")})`]
+      : [`patient_id.eq.${EMPTY_UUID}`];
+    if (/^#?\d{1,4}$/.test(q)) {
+      filters.push(`token_number.eq.${Number(searchDigits(q))}`);
+    }
+    query = query.or(filters.join(","));
+  }
   const { data } = await query;
   const rows = (data ?? []) as unknown as DoctorQueue[];
   return (
@@ -51,6 +69,12 @@ export default async function DoctorQueuePage() {
       <PageHeader
         title="My Queue"
         description="Patients assigned to you today"
+      />
+      <DebouncedSearchInput
+        className="mb-4 max-w-md"
+        initialValue={q}
+        placeholder="Search token, patient name or phone"
+        ariaLabel="Search my doctor queue"
       />
       <Card>
         <CardContent className="p-0">
@@ -115,7 +139,7 @@ export default async function DoctorQueuePage() {
                       colSpan={7}
                       className="h-32 text-center text-muted-foreground"
                     >
-                      Your queue is clear.
+                      {q ? "No queue entries match this search." : "Your queue is clear."}
                     </TableCell>
                   </TableRow>
                 )}

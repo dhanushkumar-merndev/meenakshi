@@ -3,6 +3,9 @@ import { requireRoute } from "@/lib/auth/dal";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { formatHospitalDate } from "@/lib/domain/date";
 import { formatInr } from "@/lib/domain/money";
+import { EMPTY_UUID, searchDigits } from "@/lib/domain/search";
+import { findMatchingPatientIds } from "@/lib/search/patients";
+import { DebouncedSearchInput } from "@/components/shared/debounced-search-input";
 import { PageHeader } from "@/components/shared/page-header";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { Button } from "@/components/ui/button";
@@ -26,19 +29,35 @@ type Visit = {
   doctors: { display_name: string } | null;
   visit_payments: Array<{ amount_paise: number }>;
 };
-export default async function ReceptionPage() {
+export default async function ReceptionPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ q?: string }>;
+}) {
   await requireRoute("/reception");
+  const q = (await searchParams).q?.trim() ?? "";
   const supabase = await createSupabaseServerClient();
   const today = new Intl.DateTimeFormat("en-CA", {
     timeZone: "Asia/Kolkata",
   }).format(new Date());
-  const { data } = await supabase
+  const patientIds = q ? await findMatchingPatientIds(supabase, q) : [];
+  let visitsQuery = supabase
     .from("visits")
     .select(
       "id,token_number,visit_type,status,created_at,patients(id,name,phone_normalized),doctors(display_name),visit_payments(amount_paise)",
     )
     .eq("visit_date", today)
     .order("created_at", { ascending: false });
+  if (q) {
+    const filters = patientIds.length
+      ? [`patient_id.in.(${patientIds.join(",")})`]
+      : [`patient_id.eq.${EMPTY_UUID}`];
+    if (/^#?\d{1,4}$/.test(q)) {
+      filters.push(`token_number.eq.${Number(searchDigits(q))}`);
+    }
+    visitsQuery = visitsQuery.or(filters.join(","));
+  }
+  const { data } = await visitsQuery;
   const source = (data ?? []) as unknown as Visit[];
   const { data: financialRows } = source.length ? await supabase.rpc("get_visit_financial_summaries", { p_visit_ids: source.map((visit) => visit.id) }) : { data: [] };
   const finance = new Map(((financialRows ?? []) as Array<{ visit_id: string; fee_paise: number }>).map((row) => [row.visit_id, row.fee_paise]));
@@ -53,6 +72,12 @@ export default async function ReceptionPage() {
             Find or Add Patient
           </Button>
         }
+      />
+      <DebouncedSearchInput
+        className="mb-4 max-w-md"
+        initialValue={q}
+        placeholder="Search token, patient name or phone"
+        ariaLabel="Search today's reception visits"
       />
       <Card>
         <CardContent className="p-0">
@@ -116,7 +141,7 @@ export default async function ReceptionPage() {
                       colSpan={9}
                       className="h-32 text-center text-muted-foreground"
                     >
-                      No visits created today.
+                      {q ? "No visits match this search." : "No visits created today."}
                     </TableCell>
                   </TableRow>
                 )}

@@ -2,6 +2,9 @@ import Link from "next/link";
 import { requireRoute } from "@/lib/auth/dal";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { calculateAge, minutesSince } from "@/lib/domain/date";
+import { EMPTY_UUID, searchDigits } from "@/lib/domain/search";
+import { findMatchingPatientIds } from "@/lib/search/patients";
+import { DebouncedSearchInput } from "@/components/shared/debounced-search-input";
 import { VitalsDialog } from "@/features/op/vitals-dialog";
 import { PageHeader } from "@/components/shared/page-header";
 import { StatusBadge } from "@/components/shared/status-badge";
@@ -35,13 +38,19 @@ type QueueRow = {
     notes: string | null;
   }>;
 };
-export default async function OpQueuePage() {
+export default async function OpQueuePage({
+  searchParams,
+}: {
+  searchParams: Promise<{ q?: string }>;
+}) {
   await requireRoute("/op");
+  const q = (await searchParams).q?.trim() ?? "";
   const supabase = await createSupabaseServerClient();
   const today = new Intl.DateTimeFormat("en-CA", {
     timeZone: "Asia/Kolkata",
   }).format(new Date());
-  const { data } = await supabase
+  const patientIds = q ? await findMatchingPatientIds(supabase, q) : [];
+  let queueQuery = supabase
     .from("visits")
     .select(
       "id,token_number,created_at,status,patients(name,dob,gender),doctors(display_name),vitals(weight_kg,height_cm,temperature_c,bp_systolic,bp_diastolic,pulse,spo2,respiratory_rate,notes)",
@@ -49,12 +58,28 @@ export default async function OpQueuePage() {
     .eq("visit_date", today)
     .neq("status", "cancelled")
     .order("token_number");
+  if (q) {
+    const filters = patientIds.length
+      ? [`patient_id.in.(${patientIds.join(",")})`]
+      : [`patient_id.eq.${EMPTY_UUID}`];
+    if (/^#?\d{1,4}$/.test(q)) {
+      filters.push(`token_number.eq.${Number(searchDigits(q))}`);
+    }
+    queueQuery = queueQuery.or(filters.join(","));
+  }
+  const { data } = await queueQuery;
   const rows = (data ?? []) as unknown as QueueRow[];
   return (
     <div>
       <PageHeader
         title="Today's OP Queue"
         description="Record vitals and move patients to the doctor queue"
+      />
+      <DebouncedSearchInput
+        className="mb-4 max-w-md"
+        initialValue={q}
+        placeholder="Search token, patient name or phone"
+        ariaLabel="Search today's OP queue"
       />
       <Card>
         <CardContent className="p-0">
@@ -141,7 +166,9 @@ export default async function OpQueuePage() {
                       colSpan={8}
                       className="h-32 text-center text-muted-foreground"
                     >
-                      No patients in today&apos;s queue.
+                      {q
+                        ? "No queue entries match this search."
+                        : "No patients in today's queue."}
                     </TableCell>
                   </TableRow>
                 )}

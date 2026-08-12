@@ -3,6 +3,8 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { PageHeader } from "@/components/shared/page-header";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { ClinicalTermDialog } from "@/features/admin/master-dialogs";
+import { DebouncedSearchInput } from "@/components/shared/debounced-search-input";
+import { containsSearchPattern } from "@/lib/domain/search";
 import { Card, CardContent } from "@/components/ui/card";
 import {
   Table,
@@ -12,15 +14,19 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-export default async function ClinicalDirectoryPage() {
+export default async function ClinicalDirectoryPage({ searchParams }: { searchParams: Promise<{ q?: string }> }) {
   await requireRoute("/admin/clinical-directory");
+  const q = (await searchParams).q?.trim() ?? "";
   const supabase = await createSupabaseServerClient();
-  const { data } = await supabase
+  let query = supabase
     .from("clinical_terms")
     .select("id,term_type,display_text,search_aliases,active,source")
     .order("term_type")
     .order("display_text")
     .range(0, 99);
+  if (q) { const pattern = containsSearchPattern(q); query = query.or(`display_text.ilike.${pattern},term_type.ilike.${pattern},source.ilike.${pattern}`); }
+  const { data } = await query;
+  const rows = data ?? [];
   return (
     <div>
       <PageHeader
@@ -28,6 +34,7 @@ export default async function ClinicalDirectoryPage() {
         description="Local offline-ready terminology for doctor autocomplete"
         actions={<ClinicalTermDialog />}
       />
+      <DebouncedSearchInput className="mb-4 max-w-md" initialValue={q} placeholder="Search clinical term, type or source" ariaLabel="Search clinical directory" />
       <Card>
         <CardContent className="p-0">
           <Table>
@@ -42,7 +49,7 @@ export default async function ClinicalDirectoryPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {(data ?? []).map((term) => (
+              {rows.map((term) => (
                 <TableRow key={term.id}>
                   <TableCell className="capitalize">{term.term_type}</TableCell>
                   <TableCell className="font-medium">
@@ -58,6 +65,7 @@ export default async function ClinicalDirectoryPage() {
                   </TableCell>
                 </TableRow>
               ))}
+              {!rows.length ? <TableRow><TableCell colSpan={6} className="h-32 text-center text-muted-foreground">{q ? "No clinical terms match this search." : "No clinical terms found."}</TableCell></TableRow> : null}
             </TableBody>
           </Table>
         </CardContent>

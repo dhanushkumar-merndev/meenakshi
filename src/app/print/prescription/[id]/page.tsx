@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { calculateAge, formatHospitalDate } from "@/lib/domain/date";
+import { formatPrescriptionNumber } from "@/lib/domain/prescription";
 import { PrintButton } from "@/components/shared/print-button";
 
 type Rx = {
@@ -37,6 +38,7 @@ type Rx = {
     created_at: string;
   }>;
   prescriptions: Array<{
+    prescription_number: number;
     prescription_items: Array<{
       medicine_name: string;
       dose: string | null;
@@ -57,7 +59,7 @@ export default async function PrescriptionPrintPage({
   const { data, error } = await supabase
     .from("visits")
     .select(
-      "created_at,patients(name,phone_normalized,dob,gender),doctors(display_name,qualification,registration_number,specialization),departments(name),vitals(weight_kg,temperature_c,bp_systolic,bp_diastolic),consultations(symptoms,history,examination,assessment,advice),test_orders(test_name,notes,created_at),prescriptions(prescription_items(medicine_name,dose,frequency,duration,route,notes))",
+      "created_at,patients(name,phone_normalized,dob,gender),doctors(display_name,qualification,registration_number,specialization),departments(name),vitals(weight_kg,temperature_c,bp_systolic,bp_diastolic),consultations(symptoms,history,examination,assessment,advice),test_orders(test_name,notes,created_at),prescriptions(prescription_number,prescription_items(medicine_name,dose,frequency,duration,route,notes))",
     )
     .eq("id", id)
     .eq("status", "completed")
@@ -70,6 +72,7 @@ export default async function PrescriptionPrintPage({
   const v = rx.vitals?.[0];
   const c = rx.consultations?.[0];
   const medicines = rx.prescriptions?.[0]?.prescription_items ?? [];
+  const prescriptionNumber = rx.prescriptions?.[0]?.prescription_number;
   return (
     <main className="mx-auto min-h-screen max-w-[210mm] bg-white p-4 text-[11px] text-black sm:p-8">
       <div data-print-hidden className="mb-4 flex justify-end">
@@ -105,6 +108,12 @@ export default async function PrescriptionPrintPage({
           <p>
             <b>Date:</b> {formatHospitalDate(rx.created_at)}
           </p>
+          {prescriptionNumber ? (
+            <p>
+              <b>Prescription No:</b>{" "}
+              {formatPrescriptionNumber(prescriptionNumber)}
+            </p>
+          ) : null}
           <p>
             <b>Weight:</b> {v?.weight_kg ? `${v.weight_kg} kg` : "—"}
           </p>

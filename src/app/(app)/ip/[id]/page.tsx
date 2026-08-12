@@ -5,11 +5,12 @@ import { requireRoute } from "@/lib/auth/dal";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { formatHospitalDate } from "@/lib/domain/date";
 import { formatInr } from "@/lib/domain/money";
-import { ChargeDialog, IpPaymentDialog } from "@/features/ip/ip-dialogs";
+import { AssignPatientDialog, ChargeDialog, IpPaymentDialog } from "@/features/ip/ip-dialogs";
 import { CompleteDischargeDialog, DischargeSummaryDialog, ProgressNoteDialog } from "@/features/ip/clinical-dialogs";
 import { PageHeader } from "@/components/shared/page-header";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
@@ -22,6 +23,8 @@ import {
 } from "@/components/ui/table";
 type Ticket = {
   id: string;
+  patient_id: string | null;
+  is_emergency: boolean;
   ticket_number: string;
   admission_at: string;
   discharge_at: string | null;
@@ -71,7 +74,7 @@ export default async function IpTicketPage({
   const { data, error } = await supabase
     .from("ip_tickets")
     .select(
-      "id,ticket_number,admission_at,discharge_at,room,bed,admission_reason,status,final_diagnosis,hospital_course,treatment_summary,discharge_medicines,discharge_advice,follow_up,patients(name,phone_normalized),doctors(display_name),ip_charges(id,created_at,category,item,quantity,rate_paise,amount_paise),ip_payments(id,created_at,amount_paise,mode,reference),ip_progress_notes(id,created_at,note,doctors(display_name))",
+      "id,ticket_number,patient_id,is_emergency,admission_at,discharge_at,room,bed,admission_reason,status,final_diagnosis,hospital_course,treatment_summary,discharge_medicines,discharge_advice,follow_up,patients(name,phone_normalized),doctors(display_name),ip_charges(id,created_at,category,item,quantity,rate_paise,amount_paise),ip_payments(id,created_at,amount_paise,mode,reference),ip_progress_notes(id,created_at,note,doctors(display_name))",
     )
     .eq("id", id)
     .single();
@@ -86,10 +89,11 @@ export default async function IpTicketPage({
   return (
     <div>
       <PageHeader
-        title={`${ticket.ticket_number} · ${ticket.patients?.name}`}
-        description={`Patient ID ${ticket.patients?.phone_normalized} · admitted ${formatHospitalDate(ticket.admission_at, true)}`}
+        title={`${ticket.ticket_number} · ${ticket.patients?.name ?? "Unidentified Emergency Patient"}`}
+        description={`Patient ID ${ticket.patients?.phone_normalized ?? "Pending assignment"} · admitted ${formatHospitalDate(ticket.admission_at, true)}`}
         actions={
           <>
+            {canManage && !ticket.patient_id && ticket.status !== "discharged" ? <AssignPatientDialog ticketId={ticket.id} /> : null}
             {canFinance ? <Button size="sm" variant="outline" render={<Link href={`/print/ip-ticket/${ticket.id}`} />}><Printer /> Running Bill</Button> : null}
             {ticket.status === "discharged" ? <>{canFinance ? <Button size="sm" variant="outline" render={<Link href={`/print/ip-bill/${ticket.id}`} />}><Printer /> Final Bill</Button> : null}<Button size="sm" render={<Link href={`/print/discharge/${ticket.id}`} />}><Printer /> Discharge Summary</Button></> : null}
             {canDoctor && ticket.status === "admitted" ? <ProgressNoteDialog ticketId={ticket.id} /> : null}
@@ -98,10 +102,19 @@ export default async function IpTicketPage({
               <ChargeDialog ticketId={ticket.id} />
               <IpPaymentDialog ticketId={ticket.id} />
             </> : null}
-            {canManage && ticket.status === "discharge_pending" ? <CompleteDischargeDialog ticketId={ticket.id} balancePaise={balance} /> : null}
+            {canManage && ticket.status === "discharge_pending" && ticket.patient_id ? <CompleteDischargeDialog ticketId={ticket.id} balancePaise={balance} /> : null}
           </>
         }
       />
+      {!ticket.patient_id ? (
+        <Alert className="mb-4">
+          <AlertTitle>Emergency patient assignment pending</AlertTitle>
+          <AlertDescription>
+            Clinical and billing activity remains on this ticket. Assign the
+            confirmed patient before discharge.
+          </AlertDescription>
+        </Alert>
+      ) : null}
       <div className="mb-4 flex flex-wrap gap-2">
         <StatusBadge status={ticket.status} />
         <span className="text-sm text-muted-foreground">

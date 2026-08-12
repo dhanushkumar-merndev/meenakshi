@@ -16,6 +16,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { useAutoCloseDialog } from "@/hooks/use-auto-close-dialog";
 
 const initial: ActionState = { ok: false };
 export function VitalsDialog({
@@ -28,6 +29,7 @@ export function VitalsDialog({
   initialVitals?: Record<string, number | string | null>;
 }) {
   const [state, action, pending] = useActionState(saveVitals, initial);
+  const { open, setOpen } = useAutoCloseDialog(state, "Vitals saved and patient marked ready.");
   const fields = [
     ["weight", "Weight (kg)", "0.1"],
     ["height", "Height (cm)", "0.1"],
@@ -39,7 +41,7 @@ export function VitalsDialog({
     ["respiratoryRate", "Respiratory rate", "1"],
   ] as const;
   return (
-    <Dialog>
+    <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger render={<Button size="sm" />}>
         <Activity /> Record Vitals
       </DialogTrigger>
@@ -52,10 +54,8 @@ export function VitalsDialog({
             </DialogDescription>
           </DialogHeader>
           <input type="hidden" name="visitId" value={visitId} />
-          {state.message ? (
-            <p
-              className={`rounded-md p-3 text-sm ${state.ok ? "bg-secondary" : "bg-destructive/10 text-destructive"}`}
-            >
+          {state.message && !state.ok ? (
+            <p className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">
               {state.message}
             </p>
           ) : null}

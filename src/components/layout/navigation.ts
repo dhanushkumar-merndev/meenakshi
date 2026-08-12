@@ -2,6 +2,19 @@ import type { AppRole } from "@/types/hospital";
 
 export type NavigationItem = { title: string; href: string; icon: string };
 
+export function getActiveNavigationHref(
+  items: NavigationItem[],
+  pathname: string,
+) {
+  return items
+    .filter(
+      (item) =>
+        pathname === item.href ||
+        (item.href !== "/dashboard" && pathname.startsWith(`${item.href}/`)),
+    )
+    .sort((a, b) => b.href.length - a.href.length)[0]?.href;
+}
+
 const shared = {
   dashboard: { title: "Dashboard", href: "/dashboard", icon: "layout-dashboard" },
   patients: { title: "Patients", href: "/patients", icon: "users" },

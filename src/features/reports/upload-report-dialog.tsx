@@ -7,6 +7,10 @@ import { uploadReport } from "./actions";
 import { compressPatientDocument } from "./compress-document";
 import type { ActionState } from "@/types/hospital";
 import { DatePickerField } from "@/components/shared/date-picker-field";
+import {
+  PatientCombobox,
+  type PatientOption,
+} from "@/components/shared/patient-combobox";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -36,17 +40,15 @@ const today = () => {
   return `${year}-${month}-${day}`;
 };
 export function UploadReportDialog({
-  patients,
   categories,
   testOrders = [],
-  initialPatientId = "",
+  initialPatient = null,
   initialVisitId = "",
   lockPatient = false,
 }: {
-  patients: Array<{ id: string; label: string }>;
   categories: Array<{ id: string; name: string }>;
-  testOrders?: Array<{ id: string; patientId: string; visitId: string | null; ipTicketId: string | null; label: string }>;
-  initialPatientId?: string;
+  testOrders?: Array<{ id: string; patientId: string; patientLabel: string; visitId: string | null; ipTicketId: string | null; label: string }>;
+  initialPatient?: PatientOption | null;
   initialVisitId?: string;
   lockPatient?: boolean;
 }) {
@@ -65,13 +67,11 @@ export function UploadReportDialog({
     },
     initial,
   );
-  const [patient, setPatient] = useState(initialPatientId);
+  const [patient, setPatient] = useState<PatientOption | null>(initialPatient);
   const [category, setCategory] = useState(categories[0]?.id ?? "");
   const [testOrder, setTestOrder] = useState("");
   const [reportDate, setReportDate] = useState(today);
   const linkedTest = testOrders.find((item) => item.id === testOrder);
-  const patientLabel =
-    patients.find((item) => item.id === patient)?.label ?? "Select patient";
   const categoryName =
     categories.find((item) => item.id === category)?.name ??
     "Select category";
@@ -102,7 +102,7 @@ export function UploadReportDialog({
               authenticated links.
             </DialogDescription>
           </DialogHeader>
-          <input type="hidden" name="patientId" value={patient} />
+          <input type="hidden" name="patientId" value={patient?.id ?? ""} />
           <input type="hidden" name="categoryId" value={category} />
           <input type="hidden" name="testOrderId" value={testOrder} />
           <input type="hidden" name="visitId" value={linkedTest?.visitId ?? initialVisitId} />
@@ -113,27 +113,17 @@ export function UploadReportDialog({
             </p>
           ) : null}
           <div className="space-y-4">
-            {testOrders.length ? <div className="space-y-2"><Label htmlFor="report-test-order">Related ordered test (optional)</Label><Select value={testOrder || "none"} onValueChange={(value) => { const id = value === "none" ? "" : String(value); setTestOrder(id); const selected = testOrders.find((item) => item.id === id); if (selected) setPatient(selected.patientId); }}><SelectTrigger id="report-test-order" className="w-full"><SelectValue placeholder="Not linked to an order">{() => testOrderLabel}</SelectValue></SelectTrigger><SelectContent><SelectItem value="none" label="Not linked to an order">Not linked to an order</SelectItem>{testOrders.map((item) => <SelectItem key={item.id} value={item.id} label={item.label}>{item.label}</SelectItem>)}</SelectContent></Select><p className="text-xs text-destructive">{state.fieldErrors?.testOrderId?.[0]}</p></div> : null}
+            {testOrders.length ? <div className="space-y-2"><Label htmlFor="report-test-order">Related ordered test (optional)</Label><Select value={testOrder || "none"} onValueChange={(value) => { const id = value === "none" ? "" : String(value); setTestOrder(id); const selected = testOrders.find((item) => item.id === id); if (selected) setPatient({ id: selected.patientId, label: selected.patientLabel }); }}><SelectTrigger id="report-test-order" className="w-full"><SelectValue placeholder="Not linked to an order">{() => testOrderLabel}</SelectValue></SelectTrigger><SelectContent><SelectItem value="none" label="Not linked to an order">Not linked to an order</SelectItem>{testOrders.map((item) => <SelectItem key={item.id} value={item.id} label={item.label}>{item.label}</SelectItem>)}</SelectContent></Select><p className="text-xs text-destructive">{state.fieldErrors?.testOrderId?.[0]}</p></div> : null}
             <div className="space-y-2">
               <Label htmlFor="report-patient">Patient</Label>
               {lockPatient ? (
-                <Input id="report-patient" value={patientLabel} readOnly />
+                <Input id="report-patient" value={patient?.label ?? "Patient"} readOnly />
               ) : (
-                <Select
+                <PatientCombobox
+                  id="report-patient"
                   value={patient}
-                  onValueChange={(value) => setPatient(String(value))}
-                >
-                  <SelectTrigger id="report-patient" className="w-full">
-                    <SelectValue placeholder="Select patient">{() => patientLabel}</SelectValue>
-                  </SelectTrigger>
-                  <SelectContent>
-                    {patients.map((p) => (
-                      <SelectItem key={p.id} value={p.id} label={p.label}>
-                        {p.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                  onChange={setPatient}
+                />
               )}
               <p className="text-xs text-destructive">{state.fieldErrors?.patientId?.[0]}</p>
             </div>
@@ -196,7 +186,7 @@ export function UploadReportDialog({
             </div>
           </div>
           <DialogFooter showCloseButton>
-            <Button disabled={pending || !patient || !category} type="submit">
+            <Button disabled={pending || !patient?.id || !category} type="submit">
               {pending ? <LoaderCircle className="animate-spin" /> : <FileUp />}{" "}
               Upload Privately
             </Button>

@@ -1,14 +1,13 @@
 import Link from "next/link";
-import { Search } from "lucide-react";
 import { requireRoute } from "@/lib/auth/dal";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { calculateAge, formatHospitalDate } from "@/lib/domain/date";
 import { PageHeader } from "@/components/shared/page-header";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { NewPatientDialog } from "@/features/patients/new-patient-dialog";
+import { DebouncedSearchInput } from "@/components/shared/debounced-search-input";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
 import {
   Table,
   TableBody,
@@ -79,15 +78,12 @@ export default async function PatientsPage({
       <Card>
         <CardContent className="p-0">
           <div className="border-b p-3">
-            <form className="relative max-w-md">
-              <Search className="absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                className="pl-8"
-                defaultValue={q}
-                name="q"
-                placeholder="Phone or patient name"
-              />
-            </form>
+            <DebouncedSearchInput
+              className="max-w-md"
+              initialValue={q}
+              placeholder="Phone or patient name"
+              ariaLabel="Search patients by phone or name"
+            />
           </div>
           <div className="overflow-x-auto">
             <Table>
