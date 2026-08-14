@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import * as Icons from "lucide-react";
-import { HeartPulse, LogOut } from "lucide-react";
+import { LogOut } from "lucide-react";
+import { HospitalLogo } from "@/components/shared/hospital-logo";
 import { signOut } from "@/app/(auth)/login/actions";
 import { getActiveNavigationHref, ROLE_NAVIGATION } from "./navigation";
 import type { Profile } from "@/types/hospital";
@@ -44,8 +45,8 @@ export function AppSidebar({ profile }: { profile: Profile }) {
           className="flex min-h-10 items-center gap-3 overflow-hidden group-data-[collapsible=icon]:justify-center"
           href="/dashboard"
         >
-          <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
-            <HeartPulse className="size-5" />
+          <span className="flex size-13 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-white group-data-[collapsible=icon]:size-9">
+            <HospitalLogo size={52} className="size-full p-0.5" />
           </span>
           <span className="min-w-0 group-data-[collapsible=icon]:hidden">
             <span className="block truncate font-semibold">Meenakshi Hospital</span>

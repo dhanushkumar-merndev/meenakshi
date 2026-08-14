@@ -18,6 +18,7 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: { default: "Meenakshi Hospital", template: "%s | Meenakshi Hospital" },
   description: "Secure hospital operations for Meenakshi Hospital",
+  icons: { icon: "/logo.webp", shortcut: "/logo.webp", apple: "/logo.webp" },
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

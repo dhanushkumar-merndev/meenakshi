@@ -1,4 +1,4 @@
-import { HeartPulse } from "lucide-react";
+import { HospitalLogo } from "@/components/shared/hospital-logo";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { LoginForm } from "./login-form";
 
@@ -9,7 +9,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
     <main className="flex min-h-screen items-center justify-center p-4">
       <Card className="w-full max-w-sm shadow-sm">
         <CardHeader className="text-center">
-          <div className="mx-auto mb-2 flex size-12 items-center justify-center rounded-xl bg-primary text-primary-foreground"><HeartPulse /></div>
+          <div className="mx-auto mb-2 flex size-24 items-center justify-center overflow-hidden rounded-2xl border bg-white"><HospitalLogo size={88} className="size-full p-1" /></div>
           <CardTitle className="text-xl">Meenakshi Hospital</CardTitle>
           <CardDescription>Sign in with your staff account</CardDescription>
         </CardHeader>

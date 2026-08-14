@@ -11,7 +11,7 @@ import type { ActionState } from "@/types/hospital";
 const visitSchema = z.object({
   patientId: databaseIdSchema, doctorId: databaseIdSchema, visitType: z.enum(["op", "follow_up"]),
   fee: z.string(), collected: z.string().default("0"), paymentMode: z.enum(["cash", "upi", "card", "bank_transfer", "other"]),
-  previousVisitId: z.string().optional(), notes: z.string().max(500).optional(), idempotencyKey: databaseIdSchema,
+  previousVisitId: z.string().optional(), notes: z.string().max(500).optional(), idempotencyKey: databaseIdSchema, consultants: z.string().optional(),
 });
 
 export async function createVisit(_: ActionState, formData: FormData): Promise<ActionState> {
@@ -24,6 +24,21 @@ export async function createVisit(_: ActionState, formData: FormData): Promise<A
   if (collected > fee) return { ok: false, fieldErrors: { collected: ["Collected amount cannot exceed the visit fee."] } };
   if (parsed.data.visitType === "follow_up" && !parsed.data.previousVisitId) return { ok: false, fieldErrors: { previousVisitId: ["Select the related previous visit."] } };
   const supabase = await createSupabaseServerClient();
+  let consultants: Array<{ doctor_id: string; collected_paise: number }> = [];
+  if (parsed.data.consultants) {
+    try {
+      const raw = JSON.parse(parsed.data.consultants) as Array<{ doctorId?: string; collected?: string }>;
+      consultants = raw.map((item) => ({ doctor_id: databaseIdSchema.parse(item.doctorId), collected_paise: rupeesToPaise(item.collected || "0") }));
+      if (!consultants.length || new Set(consultants.map((item) => item.doctor_id)).size !== consultants.length) return { ok: false, message: "Select each consultant only once." };
+    } catch { return { ok: false, message: "Consultant details are invalid." }; }
+  }
+  if (consultants.length > 1) {
+    const { data, error } = await supabase.rpc("create_multi_consultant_visit", { p_patient_id: parsed.data.patientId, p_visit_type: parsed.data.visitType, p_payment_mode: parsed.data.paymentMode, p_previous_visit_id: parsed.data.previousVisitId || null, p_notes: parsed.data.notes || null, p_idempotency_key: parsed.data.idempotencyKey, p_consultants: consultants });
+    const result = Array.isArray(data) ? data[0] : data;
+    if (error || !result) return { ok: false, message: error?.message.includes("duplicate") ? "Select each consultant only once." : "Multi-doctor visit could not be created." };
+    revalidatePath(`/patients/${parsed.data.patientId}`); revalidatePath("/reception"); revalidatePath("/op"); revalidatePath("/dashboard");
+    return { ok: true, message: "Visit created for all consultants with one token.", data: { visitId: result.visit_id, token: result.token_number } };
+  }
   const { data, error } = await supabase.rpc("create_visit_with_token", {
     p_patient_id: parsed.data.patientId, p_doctor_id: parsed.data.doctorId, p_visit_type: parsed.data.visitType,
     p_fee_paise: fee, p_collected_paise: collected, p_payment_mode: parsed.data.paymentMode,
@@ -42,6 +57,29 @@ export async function reassignVisitConsultant(_:ActionState,formData:FormData):P
   const supabase=await createSupabaseServerClient();const{error}=await supabase.rpc("reassign_visit_consultant",{p_visit_id:parsed.data.visitId,p_doctor_id:parsed.data.doctorId,p_reason:parsed.data.reason});
   if(error){const message=error.message.includes("different consultant")?"Select a different consultant.":error.message.includes("clinical work")||error.message.includes("no longer")?"Consultant cannot be changed because clinical work has started or the visit is closed.":error.message.includes("unavailable")?"The selected consultant is unavailable.":"Consultant could not be changed.";return{ok:false,message};}
   revalidatePath("/reception");revalidatePath(`/visits/${parsed.data.visitId}`);revalidatePath("/dashboard");return{ok:true,message:"Consultant changed. The daily token number is unchanged."};
+}
+
+const addConsultantSchema = reassignSchema.extend({ idempotencyKey: databaseIdSchema });
+export async function addConsultantToToken(_: ActionState, formData: FormData): Promise<ActionState> {
+  await requirePermission("createVisit");
+  const parsed = addConsultantSchema.safeParse(Object.fromEntries(formData));
+  if (!parsed.success) return { ok: false, fieldErrors: parsed.error.flatten().fieldErrors };
+  const supabase = await createSupabaseServerClient();
+  const { error } = await supabase.rpc("add_consultant_to_token", {
+    p_source_visit_id: parsed.data.visitId,
+    p_doctor_id: parsed.data.doctorId,
+    p_reason: parsed.data.reason,
+    p_idempotency_key: parsed.data.idempotencyKey,
+  });
+  if (error) {
+    const message = error.message.includes("already assigned") ? "This doctor is already assigned to this token."
+      : error.message.includes("no longer") ? "Another consultant cannot be added after clinical work starts or the visit closes."
+      : error.message.includes("unavailable") ? "The selected consultant is unavailable."
+      : "Consultant could not be added.";
+    return { ok: false, message };
+  }
+  revalidatePath("/reception"); revalidatePath("/op"); revalidatePath("/dashboard");
+  return { ok: true, message: "Consultant added with the same token number." };
 }
 
 const paymentSchema = z.object({ visitId: databaseIdSchema, patientId: databaseIdSchema, amount: z.string(), mode: z.enum(["cash", "upi", "card", "bank_transfer", "other"]), reference: z.string().max(100).optional(), idempotencyKey: databaseIdSchema });

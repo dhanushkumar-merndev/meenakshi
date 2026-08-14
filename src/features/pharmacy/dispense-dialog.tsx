@@ -160,11 +160,11 @@ export function DispenseDialog({
                           }
                         >
                           <SelectTrigger className="w-full">
-                            <SelectValue placeholder="Unavailable" />
+                            <SelectValue placeholder="Unavailable">{() => { const selected = options.find((batch) => batch.id === lines[index]?.batchId); return selected ? `${selected.batchNumber} · ${selected.expiry} · ${selected.quantity}` : "Unavailable"; }}</SelectValue>
                           </SelectTrigger>
                           <SelectContent>
                             {options.map((batch) => (
-                              <SelectItem key={batch.id} value={batch.id}>
+                              <SelectItem key={batch.id} value={batch.id} label={`${batch.batchNumber} · ${batch.expiry} · ${batch.quantity}`}>
                                 {batch.batchNumber} · {batch.expiry} ·{" "}
                                 {batch.quantity}
                               </SelectItem>

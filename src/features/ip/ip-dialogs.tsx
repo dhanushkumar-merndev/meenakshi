@@ -133,11 +133,11 @@ export function AdmissionDialog({
                 onValueChange={(v) => setDoctor(v as string)}
               >
                 <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Select doctor" />
+                  <SelectValue placeholder="Select doctor">{() => doctors.find((item) => item.id === doctor)?.label ?? "Select doctor"}</SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   {doctors.map((d) => (
-                    <SelectItem key={d.id} value={d.id}>
+                    <SelectItem key={d.id} value={d.id} label={d.label}>
                       {d.label}
                     </SelectItem>
                   ))}
@@ -146,7 +146,7 @@ export function AdmissionDialog({
             </div>
             <div className="space-y-2 sm:col-span-2">
               <Label>Available room / bed</Label>
-              <Select value={roomBedId} onValueChange={(v)=>setRoomBedId(String(v))}><SelectTrigger className="w-full"><SelectValue placeholder="Select available room / bed" /></SelectTrigger><SelectContent>{rooms.map(room=><SelectItem key={room.id} value={room.id}>{room.label}</SelectItem>)}</SelectContent></Select>
+              <Select value={roomBedId} onValueChange={(v)=>setRoomBedId(String(v))}><SelectTrigger className="w-full"><SelectValue placeholder="Select available room / bed">{() => rooms.find((room) => room.id === roomBedId)?.label ?? "Select available room / bed"}</SelectValue></SelectTrigger><SelectContent>{rooms.map(room=><SelectItem key={room.id} value={room.id} label={room.label}>{room.label}</SelectItem>)}</SelectContent></Select>
               <p className="text-xs text-muted-foreground">Only active, currently free beds are shown.</p>
             </div>
             <div className="space-y-2 sm:col-span-2">
@@ -240,7 +240,7 @@ export function ChargeDialog({ ticketId, presets }: { ticketId: string; presets:
                   <SelectValue placeholder="Select configured charge" />
                 </SelectTrigger>
                 <SelectContent>
-                  {presets.map((preset) => <SelectItem key={preset.id} value={preset.id}>{preset.name} · ₹{preset.rate}</SelectItem>)}
+                  {presets.map((preset) => <SelectItem key={preset.id} value={preset.id} label={`${preset.name} · ₹${preset.rate}`}>{preset.name} · ₹{preset.rate}</SelectItem>)}
                   <SelectItem value="custom">Custom charge</SelectItem>
                 </SelectContent>
               </Select>

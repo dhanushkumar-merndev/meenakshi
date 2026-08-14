@@ -246,11 +246,11 @@ export function CreateVisitDialog({
                     }
                   >
                     <SelectTrigger id="previous-visit" className="w-full">
-                      <SelectValue placeholder="Select previous visit" />
+                      <SelectValue placeholder="Select previous visit">{() => previousVisits.find((item) => item.id === previousVisitId)?.label ?? "Select previous visit"}</SelectValue>
                     </SelectTrigger>
                     <SelectContent>
                       {previousVisits.map((item) => (
-                        <SelectItem key={item.id} value={item.id}>
+                        <SelectItem key={item.id} value={item.id} label={item.label}>
                           {item.label}
                         </SelectItem>
                       ))}

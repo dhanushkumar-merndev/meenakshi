@@ -3,6 +3,7 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { calculateAge, formatHospitalDate } from "@/lib/domain/date";
 import { formatPrescriptionNumber } from "@/lib/domain/prescription";
 import { PrintButton } from "@/components/shared/print-button";
+import { HospitalLogo } from "@/components/shared/hospital-logo";
 
 type Rx = {
   created_at: string;
@@ -86,11 +87,14 @@ export default async function PrescriptionPrintPage({
             <p>{doctor.specialization ?? rx.departments?.name}</p>
             <p>Registration: {doctor.registration_number ?? "—"}</p>
           </div>
-          <div className="text-right">
-            <h2 className="text-xl font-bold text-primary">
-              Meenakshi Hospital
-            </h2>
-            <p>Professional medical care</p>
+          <div className="flex items-center gap-3 text-right">
+            <div>
+              <h2 className="text-xl font-bold text-primary">
+                Meenakshi Hospital
+              </h2>
+              <p>Professional medical care</p>
+            </div>
+            <HospitalLogo size={56} />
           </div>
         </header>
         <div className="my-4 h-1 bg-primary" />

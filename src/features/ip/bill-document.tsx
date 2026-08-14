@@ -1,5 +1,6 @@
 import { formatHospitalDate } from "@/lib/domain/date";
 import { formatInr } from "@/lib/domain/money";
+import { HospitalLogo } from "@/components/shared/hospital-logo";
 import type { IpPrintData } from "./print-data";
 
 export function IpBillDocument({
@@ -21,9 +22,12 @@ export function IpBillDocument({
   return (
     <article className="min-h-[270mm] border border-black/20 p-7">
       <header className="flex items-start justify-between border-b-2 border-primary pb-4">
-        <div>
-          <h1 className="text-xl font-bold text-primary">Meenakshi Hospital</h1>
-          <p>Hospital Management & Patient Care</p>
+        <div className="flex items-center gap-3">
+          <HospitalLogo size={52} />
+          <div>
+            <h1 className="text-xl font-bold text-primary">Meenakshi Hospital</h1>
+            <p>Hospital Management &amp; Patient Care</p>
+          </div>
         </div>
         <div className="text-right">
           <h2 className="text-lg font-bold">

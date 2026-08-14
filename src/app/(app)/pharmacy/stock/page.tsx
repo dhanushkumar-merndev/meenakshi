@@ -32,24 +32,68 @@ type Batch = {
     strength: string | null;
   } | null;
 };
-export default async function StockPage({ searchParams }: { searchParams: Promise<{ page?: string; q?: string }> }) {
-  await requireRoute("/pharmacy");
-  const params = await searchParams; const page = Math.max(1, Number(params.page) || 1); const size = 50; const q = params.q?.trim() ?? "";
+export default async function StockPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ page?: string; q?: string }>;
+}) {
+  const profile = await requireRoute("/pharmacy");
+  const params = await searchParams;
+  const page = Math.max(1, Number(params.page) || 1);
+  const size = 50;
+  const q = params.q?.trim() ?? "";
   const supabase = await createSupabaseServerClient();
   const [{ data }, { data: medicines }] = await Promise.all([
-    supabase.rpc("list_pharmacy_batches", { p_query: q, p_limit: size, p_offset: (page - 1) * size }),
-    supabase.from("medicine_directory").select("id,brand_name,strength").eq("active", true).order("brand_name").limit(500),
+    supabase.rpc("list_pharmacy_batches", {
+      p_query: q,
+      p_limit: size,
+      p_offset: (page - 1) * size,
+    }),
+    supabase
+      .from("medicine_directory")
+      .select("id,brand_name,strength")
+      .eq("active", true)
+      .order("brand_name")
+      .limit(500),
   ]);
-  const source = (data ?? []) as unknown as Array<Omit<Batch, "medicine_directory"> & { brand_name: string; generic_name: string | null; strength: string | null; total_count: number }>;
-  const rows = source.map((row) => ({ ...row, medicine_directory: { brand_name: row.brand_name, generic_name: row.generic_name, strength: row.strength } })); const total = Number(source[0]?.total_count ?? 0);
+  const source = (data ?? []) as unknown as Array<
+    Omit<Batch, "medicine_directory"> & {
+      brand_name: string;
+      generic_name: string | null;
+      strength: string | null;
+      total_count: number;
+    }
+  >;
+  const rows = source.map((row) => ({
+    ...row,
+    medicine_directory: {
+      brand_name: row.brand_name,
+      generic_name: row.generic_name,
+      strength: row.strength,
+    },
+  }));
+  const total = Number(source[0]?.total_count ?? 0);
   return (
     <div>
       <PageHeader
         title="Stock & Batches"
         description="Add physical stock, adjust batch quantities, and monitor expiry and low-stock alerts"
-        actions={<BatchDialog medicines={(medicines ?? []).map((medicine) => ({ id: medicine.id, name: `${medicine.brand_name}${medicine.strength ? ` ${medicine.strength}` : ""}` }))} />}
+        actions={
+          <BatchDialog
+            canDelete={profile.role === "admin"}
+            medicines={(medicines ?? []).map((medicine) => ({
+              id: medicine.id,
+              name: `${medicine.brand_name}${medicine.strength ? ` ${medicine.strength}` : ""}`,
+            }))}
+          />
+        }
       />
-      <DebouncedSearchInput className="mb-4 max-w-md" initialValue={q} placeholder="Search medicine, generic or batch" ariaLabel="Search medicine stock" />
+      <DebouncedSearchInput
+        className="mb-4 max-w-md"
+        initialValue={q}
+        placeholder="Search medicine, generic or batch"
+        ariaLabel="Search medicine stock"
+      />
       <Card>
         <CardContent className="p-0">
           <div className="overflow-x-auto">
@@ -90,7 +134,33 @@ export default async function StockPage({ searchParams }: { searchParams: Promis
                           )}
                         />
                       </TableCell>
-                      <TableCell className="text-right"><BatchDialog medicines={[{ id: batch.medicine_id, name: batch.medicine_directory?.brand_name ?? "Medicine" }]} item={{ id: batch.id, medicineId: batch.medicine_id, batchNumber: batch.batch_number, expiryDate: batch.expiry_date, purchasePrice: ((batch.purchase_price_paise ?? 0) / 100).toFixed(2), sellingPrice: (batch.selling_price_paise / 100).toFixed(2), lowStockThreshold: batch.low_stock_threshold, active: batch.active }} /></TableCell>
+                      <TableCell className="text-right">
+                        <BatchDialog
+                          canDelete={profile.role === "admin"}
+                          medicines={[
+                            {
+                              id: batch.medicine_id,
+                              name:
+                                batch.medicine_directory?.brand_name ??
+                                "Medicine",
+                            },
+                          ]}
+                          item={{
+                            id: batch.id,
+                            medicineId: batch.medicine_id,
+                            batchNumber: batch.batch_number,
+                            expiryDate: batch.expiry_date,
+                            purchasePrice: (
+                              (batch.purchase_price_paise ?? 0) / 100
+                            ).toFixed(2),
+                            sellingPrice: (
+                              batch.selling_price_paise / 100
+                            ).toFixed(2),
+                            lowStockThreshold: batch.low_stock_threshold,
+                            active: batch.active,
+                          }}
+                        />
+                      </TableCell>
                     </TableRow>
                   ))
                 ) : (
@@ -99,13 +169,21 @@ export default async function StockPage({ searchParams }: { searchParams: Promis
                       colSpan={8}
                       className="h-32 text-center text-muted-foreground"
                     >
-                      {q ? "No stock batches match this search." : "No stock batches yet. Use Add Batch to enter opening stock."}
+                      {q
+                        ? "No stock batches match this search."
+                        : "No stock batches yet. Use Add Batch to enter opening stock."}
                     </TableCell>
                   </TableRow>
                 )}
               </TableBody>
             </Table>
-          </div><TablePager page={page} pages={Math.max(1, Math.ceil(total / size))} total={total} params={{ q }} />
+          </div>
+          <TablePager
+            page={page}
+            pages={Math.max(1, Math.ceil(total / size))}
+            total={total}
+            params={{ q }}
+          />
         </CardContent>
       </Card>
     </div>

@@ -67,6 +67,50 @@ export async function saveClinicalTerm(_: ActionState, formData: FormData): Prom
   return { ok: true, message: "Clinical term saved." };
 }
 
+const deletableMasterSchema = z.object({
+  entity: z.enum(["department", "charge", "report_category", "clinical_term", "room_bed", "medicine", "medicine_batch"]),
+  id: z.string().uuid(),
+});
+
+const deletePaths = {
+  department: "/admin/departments",
+  charge: "/admin/charges",
+  report_category: "/admin/report-categories",
+  clinical_term: "/admin/clinical-directory",
+  room_bed: "/admin/rooms",
+  medicine: "/pharmacy/medicines",
+  medicine_batch: "/pharmacy/stock",
+} as const;
+
+export async function deleteMasterRecord(_: ActionState, formData: FormData): Promise<ActionState> {
+  const parsed = deletableMasterSchema.safeParse(Object.fromEntries(formData));
+  if (!parsed.success) return { ok: false, message: "Invalid delete request." };
+  const { actor, admin } = await adminActor();
+  const { entity, id } = parsed.data;
+  let error: { code?: string } | null = null;
+
+  if (entity === "department") ({ error } = await admin.from("departments").delete().eq("id", id));
+  if (entity === "charge") ({ error } = await admin.from("charges").delete().eq("id", id));
+  if (entity === "report_category") ({ error } = await admin.from("report_categories").delete().eq("id", id));
+  if (entity === "clinical_term") ({ error } = await admin.from("clinical_terms").delete().eq("id", id));
+  if (entity === "room_bed") ({ error } = await admin.from("room_beds").delete().eq("id", id));
+  if (entity === "medicine") ({ error } = await admin.from("medicine_directory").delete().eq("id", id));
+  if (entity === "medicine_batch") ({ error } = await admin.from("medicine_batches").delete().eq("id", id));
+
+  if (error) {
+    return {
+      ok: false,
+      message: error.code === "23503"
+        ? "This item is already used by hospital history. Deactivate it instead of deleting it."
+        : "This item could not be deleted.",
+    };
+  }
+  await admin.from("audit_logs").insert({ actor_user_id: actor.id, action: "MASTER_RECORD_DELETED", entity_type: entity, entity_id: id });
+  revalidatePath(deletePaths[entity]);
+  if (entity === "medicine" || entity === "medicine_batch") revalidatePath("/dashboard");
+  return { ok: true, message: "Item permanently deleted." };
+}
+
 export async function saveHospitalSettings(_: ActionState, formData: FormData): Promise<ActionState> {
   const parsed = z.object({ hospitalName: z.string().trim().min(2).max(150), address: z.string().trim().max(1000).optional(), phone: z.string().trim().max(30).optional(), email: z.string().trim().email().optional().or(z.literal("")), prescriptionFooter: z.string().trim().max(1000).optional(), tokenFooter: z.string().trim().max(500).optional(), digitalText: z.string().trim().max(1000).optional() }).safeParse(Object.fromEntries(formData));
   if (!parsed.success) return { ok: false, fieldErrors: parsed.error.flatten().fieldErrors };
