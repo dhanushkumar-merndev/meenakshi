@@ -211,7 +211,7 @@ alter table public.prescriptions add constraint prescriptions_ip_ticket_id_fkey 
 alter table public.test_orders add constraint test_orders_ip_ticket_id_fkey foreign key (ip_ticket_id) references public.ip_tickets(id) on delete restrict;
 alter table public.patient_reports add constraint patient_reports_ip_ticket_id_fkey foreign key (ip_ticket_id) references public.ip_tickets(id) on delete restrict;
 
-create sequence public.ip_ticket_sequence;
+create sequence if not exists public.ip_ticket_sequence;
 create table public.ip_progress_notes (
   id uuid primary key default gen_random_uuid(), ip_ticket_id uuid not null references public.ip_tickets(id) on delete restrict,
   doctor_id uuid not null references public.doctors(id) on delete restrict, note text not null,
@@ -361,7 +361,10 @@ create policy charges_read on public.charges for select to authenticated using(t
 create policy imports_role on public.bulk_import_jobs for all to authenticated using(public.current_app_role() in ('admin','pharmacy')) with check(public.current_app_role() in ('admin','pharmacy')); create policy import_errors_role on public.bulk_import_errors for all to authenticated using(public.current_app_role() in ('admin','pharmacy')) with check(public.current_app_role() in ('admin','pharmacy'));
 create policy exports_admin on public.export_jobs for all to authenticated using(public.current_app_role()='admin') with check(public.current_app_role()='admin'); create policy audit_admin on public.audit_logs for select to authenticated using(public.current_app_role()='admin');
 
-insert into storage.buckets(id,name,public,file_size_limit,allowed_mime_types) values('patient-documents','patient-documents',false,10485760,array['application/pdf','image/jpeg','image/png','image/webp']),('hospital-exports','hospital-exports',false,536870912,array['application/zip']);
+insert into storage.buckets(id,name,public,file_size_limit,allowed_mime_types) values('patient-documents','patient-documents',false,10485760,array['application/pdf','image/jpeg','image/png','image/webp']),('hospital-exports','hospital-exports',false,536870912,array['application/zip']) on conflict(id) do update set public=excluded.public,file_size_limit=excluded.file_size_limit,allowed_mime_types=excluded.allowed_mime_types;
+drop policy if exists patient_documents_read on storage.objects;
+drop policy if exists patient_documents_upload on storage.objects;
+drop policy if exists exports_storage_admin on storage.objects;
 create policy patient_documents_read on storage.objects for select to authenticated using(bucket_id='patient-documents' and public.current_app_role() in ('admin','reception','op','doctor','ip'));
 create policy patient_documents_upload on storage.objects for insert to authenticated with check(bucket_id='patient-documents' and public.current_app_role() in ('admin','reception','op','ip'));
 create policy exports_storage_admin on storage.objects for all to authenticated using(bucket_id='hospital-exports' and public.current_app_role()='admin') with check(bucket_id='hospital-exports' and public.current_app_role()='admin');

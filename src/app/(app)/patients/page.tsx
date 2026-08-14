@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { requireRoute } from "@/lib/auth/dal";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import { calculateAge, formatHospitalDate } from "@/lib/domain/date";
+import { calculateAge, formatHospitalDate, isHospitalToday } from "@/lib/domain/date";
 import { PageHeader } from "@/components/shared/page-header";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { NewPatientDialog } from "@/features/patients/new-patient-dialog";
@@ -103,7 +103,7 @@ export default async function PatientsPage({
                   patients.map((patient) => {
                     const age = patient.dob ? calculateAge(patient.dob) : null;
                     return (
-                      <TableRow key={patient.id}>
+                      <TableRow key={patient.id} historical={!isHospitalToday(patient.created_at)}>
                         <TableCell className="font-medium">
                           {patient.name}
                         </TableCell>

@@ -10,6 +10,7 @@ import { formatPrescriptionNumber } from "@/lib/domain/prescription";
 import { ConsultationEditor } from "@/features/clinical/consultation-editor";
 import { VitalsDialog } from "@/features/op/vitals-dialog";
 import { UploadReportDialog } from "@/features/reports/upload-report-dialog";
+import { AdmissionDialog } from "@/features/ip/ip-dialogs";
 import { PageHeader } from "@/components/shared/page-header";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -173,6 +174,10 @@ export default async function VisitPage({
         notes: vitals.notes,
       }
     : undefined;
+  const canConvertToIp=(profile.role==="doctor"||profile.role==="admin")&&(profile.role==="admin"||profile.doctorId===visit.doctor_id);
+  const [{data:availableRooms},{data:existingAdmission}]=canConvertToIp?await Promise.all([supabase.from("room_beds").select("id,room_number,bed_number,floor").eq("active",true).order("floor").order("room_number"),supabase.from("ip_tickets").select("id").eq("source_visit_id",visit.id).in("status",["admitted","discharge_pending"]).maybeSingle()]):[{data:[]},{data:null}];
+  const occupiedResult=canConvertToIp?await supabase.from("ip_tickets").select("room_bed_id").in("status",["admitted","discharge_pending"]).not("room_bed_id","is",null):{data:[]};
+  const occupiedBeds=new Set((occupiedResult.data??[]).map(row=>row.room_bed_id));
   return (
     <div>
       <PageHeader
@@ -193,6 +198,7 @@ export default async function VisitPage({
                 <Printer /> Prescription
               </Button>
             ) : null}
+            {canConvertToIp&&!existingAdmission?<AdmissionDialog triggerLabel="Convert to IP" doctors={[{id:visit.doctor_id,label:visit.doctors?.display_name??"Doctor"}]} rooms={(availableRooms??[]).filter(room=>!occupiedBeds.has(room.id)).map(room=>({id:room.id,label:`Floor ${room.floor} · Room ${room.room_number} · Bed ${room.bed_number}`}))} initialPatient={{id:visit.patient_id,label:`${patient.name} · ${patient.phone_normalized}`}} initialDoctorId={visit.doctor_id} sourceVisitId={visit.id}/>:null}
           </>
         }
       />

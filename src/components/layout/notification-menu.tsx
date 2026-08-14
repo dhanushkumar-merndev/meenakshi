@@ -94,10 +94,10 @@ export function NotificationMenu() {
           </span>
         ) : null}
       </PopoverTrigger>
-      <PopoverContent align="end" className="w-[min(24rem,calc(100vw-1rem))] p-0">
-        <PopoverHeader className="p-3">
-          <div className="flex items-start justify-between gap-3">
-            <div>
+      <PopoverContent align="end" sideOffset={8} className="w-[min(23rem,calc(100vw-1.5rem))] gap-0 overflow-hidden p-0">
+        <PopoverHeader className="p-4">
+          <div className="flex items-start justify-between gap-4">
+            <div className="min-w-0">
               <PopoverTitle>Notifications</PopoverTitle>
               <PopoverDescription>
                 Live operational alerts for your role
@@ -108,6 +108,7 @@ export function NotificationMenu() {
                 type="button"
                 size="sm"
                 variant="ghost"
+                className="shrink-0 whitespace-nowrap"
                 onClick={() => markRead(unreadIds)}
               >
                 <CheckCheck /> Mark read
@@ -130,7 +131,7 @@ export function NotificationMenu() {
               ))}
             </div>
           ) : data?.items.length ? (
-            <div className="p-1.5">
+            <div className="space-y-2 p-3">
               {data.items.map((item) => {
                 const Icon = item.tone === "critical" ? CircleAlert : Clock3;
                 return (
@@ -138,8 +139,8 @@ export function NotificationMenu() {
                     href={item.href}
                     key={item.id}
                     className={cn(
-                      "flex gap-3 rounded-md p-2.5 transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                      !item.read && "bg-accent/50",
+                      "flex gap-3 rounded-lg border border-transparent p-3 transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                      !item.read && "border-primary/10 bg-accent/50",
                     )}
                     onClick={() => {
                       if (!item.read) markRead([item.id]);

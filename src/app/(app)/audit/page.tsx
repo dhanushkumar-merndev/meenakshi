@@ -1,6 +1,6 @@
 import { requireRoute } from "@/lib/auth/dal";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import { formatHospitalDate } from "@/lib/domain/date";
+import { formatHospitalDate, isHospitalToday } from "@/lib/domain/date";
 import { containsSearchPattern } from "@/lib/domain/search";
 import { PageHeader } from "@/components/shared/page-header";
 import { DebouncedSearchInput } from "@/components/shared/debounced-search-input";
@@ -55,7 +55,7 @@ export default async function AuditPage({ searchParams }: { searchParams: Promis
             </TableHeader>
             <TableBody>
               {rows.map((log) => (
-                <TableRow key={log.id}>
+                <TableRow key={log.id} historical={!isHospitalToday(log.created_at)}>
                   <TableCell>
                     {formatHospitalDate(log.created_at, true)}
                   </TableCell>

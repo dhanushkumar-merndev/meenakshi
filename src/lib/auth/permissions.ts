@@ -10,6 +10,8 @@ export const PERMISSIONS = {
   writeConsultation: ["admin", "doctor"],
   dispense: ["admin", "pharmacy"],
   manageIp: ["admin", "ip"],
+  admitIp: ["admin", "ip", "doctor"],
+  configureRooms: ["admin"],
   viewFullFinance: ["admin"],
   viewVisitFinance: ["admin", "reception"],
   uploadReport: ["admin", "reception", "op", "ip"],

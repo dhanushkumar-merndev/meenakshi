@@ -8,6 +8,9 @@ import { findMatchingPatientIds } from "@/lib/search/patients";
 import { DebouncedSearchInput } from "@/components/shared/debounced-search-input";
 import { PageHeader } from "@/components/shared/page-header";
 import { StatusBadge } from "@/components/shared/status-badge";
+import { ReceptionPatientDialog } from "@/features/reception/reception-patient-dialog";
+import { ReassignConsultantDialog } from "@/features/visits/reassign-consultant-dialog";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
@@ -25,8 +28,8 @@ type Visit = {
   fee_paise: number;
   status: string;
   created_at: string;
-  patients: { id: string; name: string; phone_normalized: string } | null;
-  doctors: { display_name: string } | null;
+  patients: { id: string; name: string; phone_normalized: string; dob: string | null; gender: string } | null;
+  doctors: { id: string; display_name: string } | null;
   visit_payments: Array<{ amount_paise: number }>;
 };
 export default async function ReceptionPage({
@@ -37,6 +40,8 @@ export default async function ReceptionPage({
   await requireRoute("/reception");
   const q = (await searchParams).q?.trim() ?? "";
   const supabase = await createSupabaseServerClient();
+  const { data: doctorRows } = await supabase.from("doctors").select("id,display_name,op_fee_paise,follow_up_fee_paise,departments(name)").eq("active", true).order("display_name");
+  const doctors = ((doctorRows ?? []) as unknown as Array<{ id: string; display_name: string; op_fee_paise: number; follow_up_fee_paise: number; departments: { name: string } | null }>).map((doctor) => ({ id: doctor.id, displayName: doctor.display_name, department: doctor.departments?.name ?? "—", opFeePaise: doctor.op_fee_paise, followUpFeePaise: doctor.follow_up_fee_paise }));
   const today = new Intl.DateTimeFormat("en-CA", {
     timeZone: "Asia/Kolkata",
   }).format(new Date());
@@ -44,10 +49,10 @@ export default async function ReceptionPage({
   let visitsQuery = supabase
     .from("visits")
     .select(
-      "id,token_number,visit_type,status,created_at,patients(id,name,phone_normalized),doctors(display_name),visit_payments(amount_paise)",
+      "id,token_number,visit_type,status,created_at,patients(id,name,phone_normalized,dob,gender),doctors(id,display_name),visit_payments(amount_paise)",
     )
     .eq("visit_date", today)
-    .order("created_at", { ascending: false });
+    .order("created_at", { ascending: true });
   if (q) {
     const filters = patientIds.length
       ? [`patient_id.in.(${patientIds.join(",")})`]
@@ -68,9 +73,7 @@ export default async function ReceptionPage({
         title="Today's Visits"
         description="Reception queue, offline collections, and token access"
         actions={
-          <Button render={<Link href="/patients" />}>
-            Find or Add Patient
-          </Button>
+          <ReceptionPatientDialog doctors={doctors} />
         }
       />
       <DebouncedSearchInput
@@ -108,7 +111,7 @@ export default async function ReceptionPage({
                         <TableCell className="font-semibold">
                           #{visit.token_number}
                         </TableCell>
-                        <TableCell>{visit.patients?.name}</TableCell>
+                        <TableCell><span className="font-medium">{visit.patients?.name}</span>{visit.patients && (!visit.patients.dob || visit.patients.gender === "unknown") ? <Badge className="ml-2" variant="outline">Details pending</Badge> : null}</TableCell>
                         <TableCell>
                           {visit.patients?.phone_normalized}
                         </TableCell>
@@ -124,13 +127,7 @@ export default async function ReceptionPage({
                           <StatusBadge status={visit.status} />
                         </TableCell>
                         <TableCell className="text-right">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            render={<Link href={`/visits/${visit.id}`} />}
-                          >
-                            Open
-                          </Button>
+                          <div className="flex justify-end gap-2">{visit.patients && (!visit.patients.dob || visit.patients.gender === "unknown") ? <Button size="sm" variant="ghost" render={<Link href={`/patients/${visit.patients.id}`} />}>Complete details</Button> : null}{visit.doctors&&["waiting","vitals_pending","ready"].includes(visit.status)?<ReassignConsultantDialog visitId={visit.id} token={visit.token_number} currentDoctorId={visit.doctors.id} currentDoctorName={visit.doctors.display_name} doctors={doctors.map(doctor=>({id:doctor.id,label:doctor.displayName}))}/>:null}<Button size="sm" variant="outline" render={<Link href={`/visits/${visit.id}`} />}>Open</Button></div>
                         </TableCell>
                       </TableRow>
                     );

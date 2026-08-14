@@ -4,7 +4,7 @@ import { FileText } from "lucide-react";
 import { requireRoute } from "@/lib/auth/dal";
 import { hasPermission } from "@/lib/auth/permissions";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import { calculateAge, formatHospitalDate } from "@/lib/domain/date";
+import { calculateAge, formatHospitalDate, isHospitalToday } from "@/lib/domain/date";
 import { formatInr, paymentSummary } from "@/lib/domain/money";
 import { CreateVisitDialog } from "@/features/visits/create-visit-dialog";
 import { EditPatientDialog } from "@/features/patients/edit-patient-dialog";
@@ -196,7 +196,7 @@ export default async function PatientProfilePage({
                             [],
                         );
                         return (
-                          <TableRow key={visit.id}>
+                          <TableRow key={visit.id} historical={!isHospitalToday(visit.visit_date)}>
                             <TableCell className="whitespace-nowrap">
                               {formatHospitalDate(visit.visit_date)}
                             </TableCell>
@@ -271,7 +271,7 @@ export default async function PatientProfilePage({
                 <TableBody>
                   {((ipResult.data ?? []) as unknown as IpRow[]).map(
                     (ticket) => (
-                      <TableRow key={ticket.id}>
+                      <TableRow key={ticket.id} historical={!isHospitalToday(ticket.admission_at)}>
                         <TableCell>{ticket.ticket_number}</TableCell>
                         <TableCell>
                           {formatHospitalDate(ticket.admission_at)}
@@ -315,7 +315,7 @@ export default async function PatientProfilePage({
                 <TableBody>
                   {((reportsResult.data ?? []) as unknown as ReportRow[]).map(
                     (report) => (
-                      <TableRow key={report.id}>
+                      <TableRow key={report.id} historical={!isHospitalToday(report.report_date)}>
                         <TableCell>
                           {formatHospitalDate(report.report_date)}
                         </TableCell>

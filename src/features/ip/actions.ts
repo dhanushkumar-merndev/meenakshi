@@ -11,6 +11,7 @@ const admission = z.object({
   isEmergency: z.enum(["true", "false"]),
   doctorId: databaseIdSchema,
   sourceVisitId: z.string().optional(),
+  roomBedId: databaseIdSchema.optional().or(z.literal("")),
   room: z.string().max(50).optional(),
   bed: z.string().max(50).optional(),
   reason: z.string().min(2).max(1000),
@@ -30,7 +31,7 @@ export async function createAdmission(
   _: ActionState,
   formData: FormData,
 ): Promise<ActionState> {
-  await requirePermission("manageIp");
+  await requirePermission("admitIp");
   const parsed = admission.safeParse(Object.fromEntries(formData));
   if (!parsed.success)
     return { ok: false, fieldErrors: parsed.error.flatten().fieldErrors };
@@ -52,11 +53,22 @@ export async function createAdmission(
     p_payment_mode: parsed.data.paymentMode,
     p_is_emergency: parsed.data.isEmergency === "true",
     p_idempotency_key: parsed.data.idempotencyKey,
+    p_room_bed_id: parsed.data.roomBedId || null,
   });
   const result = Array.isArray(data) ? data[0] : data;
-  if (error || !result)
-    return { ok: false, message: "Admission could not be created." };
+  if (error || !result) {
+    console.error("IP admission RPC failed", { code: error?.code, message: error?.message, details: error?.details });
+    const message = error?.message.toLowerCase() ?? "";
+    if (message.includes("occupied") || message.includes("unavailable"))
+      return { ok: false, message: "That room/bed is no longer available. Select another." };
+    if (error?.code === "PGRST202" || error?.code === "PGRST203")
+      return { ok: false, message: "The admission database function is being updated. Refresh and retry." };
+    if (message.includes("already admitted") || error?.code === "23505")
+      return { ok: false, message: "This patient or room already has an active admission." };
+    return { ok: false, message: `Admission could not be created${error?.code ? ` (${error.code})` : ""}.` };
+  }
   revalidatePath("/ip");
+  revalidatePath("/ip/rooms");
   return {
     ok: true,
     message: parsed.data.patientId
@@ -99,6 +111,7 @@ export async function assignIpPatient(
 }
 const charge = z.object({
   ticketId: databaseIdSchema,
+  chargePresetId: z.string().optional(),
   category: z.enum([
     "doctor",
     "ward",
@@ -122,19 +135,32 @@ export async function addIpCharge(
   const parsed = charge.safeParse(Object.fromEntries(formData));
   if (!parsed.success)
     return { ok: false, fieldErrors: parsed.error.flatten().fieldErrors };
-  let rate: number;
-  try {
-    rate = rupeesToPaise(parsed.data.rate);
-  } catch (error) {
-    return { ok: false, message: (error as Error).message };
-  }
   const supabase = await createSupabaseServerClient();
+  let category = parsed.data.category;
+  let item = parsed.data.item;
+  let rate: number;
+  if (parsed.data.chargePresetId && parsed.data.chargePresetId !== "custom") {
+    const presetId = databaseIdSchema.safeParse(parsed.data.chargePresetId);
+    if (!presetId.success) return { ok: false, message: "Select a valid configured charge." };
+    const { data: preset, error: presetError } = await supabase.from("charges").select("category,charge_name,amount_paise").eq("id", presetId.data).eq("active", true).single();
+    const presetCategory = z.enum(["doctor","ward","room","bed","treatment","test","pharmacy","other"]).safeParse(preset?.category);
+    if (presetError || !preset || !presetCategory.success) return { ok: false, message: "That configured charge is no longer available." };
+    category = presetCategory.data;
+    item = preset.charge_name;
+    rate = preset.amount_paise;
+  } else {
+    try {
+      rate = rupeesToPaise(parsed.data.rate);
+    } catch (error) {
+      return { ok: false, message: (error as Error).message };
+    }
+  }
   const { error } = await supabase
     .from("ip_charges")
     .insert({
       ip_ticket_id: parsed.data.ticketId,
-      category: parsed.data.category,
-      item: parsed.data.item,
+      category,
+      item,
       quantity: parsed.data.quantity,
       rate_paise: rate,
       idempotency_key: parsed.data.idempotencyKey,

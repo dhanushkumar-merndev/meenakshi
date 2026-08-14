@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { requireRoute } from "@/lib/auth/dal";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import { formatHospitalDate } from "@/lib/domain/date";
+import { formatHospitalDate, ipDaysSince, isHospitalToday } from "@/lib/domain/date";
 import { formatInr } from "@/lib/domain/money";
 import { containsSearchPattern, EMPTY_UUID } from "@/lib/domain/search";
 import { findMatchingPatientIds } from "@/lib/search/patients";
@@ -26,6 +26,7 @@ type Ticket = {
   admission_at: string;
   room: string | null;
   bed: string | null;
+  room_bed_id: string | null;
   status: string;
   is_emergency: boolean;
   patients: { name: string } | null;
@@ -38,15 +39,15 @@ export default async function IpPage({ searchParams }: { searchParams: Promise<{
   const params = await searchParams; const selectedStatus = params.status ?? "active"; const page = Math.max(1, Number(params.page) || 1); const size = 50; const q = params.q?.trim() ?? "";
   const supabase = await createSupabaseServerClient();
   const patientIds = q ? await findMatchingPatientIds(supabase, q) : [];
-  const [ticketsResult, doctorsResult] = await Promise.all([
+  const [ticketsResult, doctorsResult, roomsResult] = await Promise.all([
     (() => {
       let query = supabase
       .from("ip_tickets")
       .select(
-        "id,ticket_number,admission_at,room,bed,status,is_emergency,patients(name),doctors(display_name),ip_charges(amount_paise),ip_payments(amount_paise)",
+        "id,ticket_number,admission_at,room,bed,room_bed_id,status,is_emergency,patients(name),doctors(display_name),ip_charges(amount_paise),ip_payments(amount_paise)",
         { count: "exact" },
       )
-      .order("admission_at", { ascending: false })
+      .order("admission_at", { ascending: selectedStatus === "active" })
       .range((page - 1) * size, page * size - 1);
       if (selectedStatus === "active") query = query.in("status", ["admitted", "discharge_pending"]);
       else if (["admitted", "discharge_pending", "discharged", "cancelled"].includes(selectedStatus)) query = query.eq("status", selectedStatus as "admitted");
@@ -61,8 +62,10 @@ export default async function IpPage({ searchParams }: { searchParams: Promise<{
       .select("id,display_name")
       .eq("active", true)
       .order("display_name"),
+    supabase.from("room_beds").select("id,room_number,bed_number,floor").eq("active",true).order("floor").order("room_number"),
   ]);
   const tickets = (ticketsResult.data ?? []) as unknown as Ticket[];
+  const occupied = new Set(tickets.filter((ticket)=>["admitted","discharge_pending"].includes(ticket.status)).map((ticket)=>ticket.room_bed_id));
   const canFinance = profile.role === "admin" || profile.role === "ip";
   return (
     <div>
@@ -76,6 +79,7 @@ export default async function IpPage({ searchParams }: { searchParams: Promise<{
                 id: d.id,
                 label: d.display_name,
               }))}
+              rooms={(roomsResult.data ?? []).filter((room)=>!occupied.has(room.id)).map((room)=>({id:room.id,label:`Floor ${room.floor} · Room ${room.room_number} · Bed ${room.bed_number}`}))}
             />
           ) : undefined
         }
@@ -88,9 +92,12 @@ export default async function IpPage({ searchParams }: { searchParams: Promise<{
               <TableHeader>
                 <TableRow>
                   <TableHead>IP Ticket</TableHead>
-                  <TableHead>Patient</TableHead>
+                  <TableHead>Room number</TableHead>
+                  <TableHead>Floor</TableHead>
+                  <TableHead>Availability</TableHead>
+                  <TableHead>Patient details</TableHead>
+                  <TableHead>IP days</TableHead>
                   <TableHead>Doctor</TableHead>
-                  <TableHead>Room/Bed</TableHead>
                   <TableHead>Admitted</TableHead>
                   {canFinance ? <><TableHead>Total</TableHead><TableHead>Paid</TableHead><TableHead>Balance</TableHead></> : null}
                   <TableHead>Status</TableHead>
@@ -109,11 +116,14 @@ export default async function IpPage({ searchParams }: { searchParams: Promise<{
                       0,
                     );
                     return (
-                      <TableRow key={ticket.id}>
+                      <TableRow key={ticket.id} historical={!isHospitalToday(ticket.admission_at)}>
                         <TableCell className="font-medium">
                           {ticket.ticket_number}
                         </TableCell>
                         <TableCell>{ticket.patients?.name ?? (ticket.is_emergency ? "Unidentified emergency" : "—")}</TableCell>
+                        <TableCell>{(roomsResult.data ?? []).find((room) => room.id === ticket.room_bed_id)?.floor ?? "—"}</TableCell>
+                        <TableCell><StatusBadge status="occupied" /></TableCell>
+                        <TableCell>{ipDaysSince(ticket.admission_at)}</TableCell>
                         <TableCell>{ticket.doctors?.display_name}</TableCell>
                         <TableCell>
                           {ticket.room ?? "—"}/{ticket.bed ?? "—"}
@@ -142,7 +152,7 @@ export default async function IpPage({ searchParams }: { searchParams: Promise<{
                 ) : (
                   <TableRow>
                     <TableCell
-                      colSpan={canFinance ? 10 : 7}
+                      colSpan={canFinance ? 14 : 11}
                       className="h-32 text-center text-muted-foreground"
                     >
                       {q ? "No IP tickets match this search." : "No patients currently admitted."}

@@ -85,6 +85,8 @@ export default async function IpTicketPage({
   const canManage = profile.role === "admin" || profile.role === "ip";
   const canFinance = canManage;
   const canDoctor = profile.role === "admin" || profile.role === "doctor";
+  const { data: chargeRows } = canManage ? await supabase.from("charges").select("id,category,charge_name,amount_paise").eq("active", true).in("category", ["doctor","ward","room","bed","treatment","test","other"]).order("category").order("charge_name") : { data: [] };
+  const chargePresets = (chargeRows ?? []).map((charge) => ({ id: charge.id, category: charge.category, name: charge.charge_name, rate: (charge.amount_paise / 100).toFixed(2) }));
   const balance = Math.max(0, total - paid);
   return (
     <div>
@@ -99,7 +101,7 @@ export default async function IpTicketPage({
             {canDoctor && ticket.status === "admitted" ? <ProgressNoteDialog ticketId={ticket.id} /> : null}
             {canDoctor && ["admitted","discharge_pending"].includes(ticket.status) ? <DischargeSummaryDialog ticketId={ticket.id} initialValues={{finalDiagnosis:ticket.final_diagnosis,hospitalCourse:ticket.hospital_course,treatmentSummary:ticket.treatment_summary,dischargeMedicines:ticket.discharge_medicines,dischargeAdvice:ticket.discharge_advice,followUp:ticket.follow_up}} /> : null}
             {canManage && ticket.status !== "discharged" ? <>
-              <ChargeDialog ticketId={ticket.id} />
+              <ChargeDialog ticketId={ticket.id} presets={chargePresets} />
               <IpPaymentDialog ticketId={ticket.id} />
             </> : null}
             {canManage && ticket.status === "discharge_pending" && ticket.patient_id ? <CompleteDischargeDialog ticketId={ticket.id} balancePaise={balance} /> : null}

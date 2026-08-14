@@ -31,8 +31,17 @@ export async function createVisit(_: ActionState, formData: FormData): Promise<A
   });
   const result = Array.isArray(data) ? data[0] : data;
   if (error || !result) return { ok: false, message: "Visit could not be created. Please retry with the same form." };
-  revalidatePath(`/patients/${parsed.data.patientId}`); revalidatePath("/dashboard");
+  revalidatePath(`/patients/${parsed.data.patientId}`); revalidatePath("/reception"); revalidatePath("/dashboard");
   return { ok: true, message: "Visit created.", data: { visitId: result.visit_id, token: result.token_number } };
+}
+
+const reassignSchema=z.object({visitId:databaseIdSchema,doctorId:databaseIdSchema,reason:z.string().trim().min(3,"Enter a short reason.").max(500)});
+export async function reassignVisitConsultant(_:ActionState,formData:FormData):Promise<ActionState>{
+  await requirePermission("createVisit");const parsed=reassignSchema.safeParse(Object.fromEntries(formData));
+  if(!parsed.success)return{ok:false,fieldErrors:parsed.error.flatten().fieldErrors};
+  const supabase=await createSupabaseServerClient();const{error}=await supabase.rpc("reassign_visit_consultant",{p_visit_id:parsed.data.visitId,p_doctor_id:parsed.data.doctorId,p_reason:parsed.data.reason});
+  if(error){const message=error.message.includes("different consultant")?"Select a different consultant.":error.message.includes("clinical work")||error.message.includes("no longer")?"Consultant cannot be changed because clinical work has started or the visit is closed.":error.message.includes("unavailable")?"The selected consultant is unavailable.":"Consultant could not be changed.";return{ok:false,message};}
+  revalidatePath("/reception");revalidatePath(`/visits/${parsed.data.visitId}`);revalidatePath("/dashboard");return{ok:true,message:"Consultant changed. The daily token number is unchanged."};
 }
 
 const paymentSchema = z.object({ visitId: databaseIdSchema, patientId: databaseIdSchema, amount: z.string(), mode: z.enum(["cash", "upi", "card", "bank_transfer", "other"]), reference: z.string().max(100).optional(), idempotencyKey: databaseIdSchema });

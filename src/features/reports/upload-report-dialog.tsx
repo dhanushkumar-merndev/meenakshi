@@ -45,12 +45,14 @@ export function UploadReportDialog({
   initialPatient = null,
   initialVisitId = "",
   lockPatient = false,
+  initialTestOrderId = "",
 }: {
   categories: Array<{ id: string; name: string }>;
   testOrders?: Array<{ id: string; patientId: string; patientLabel: string; visitId: string | null; ipTicketId: string | null; label: string }>;
   initialPatient?: PatientOption | null;
   initialVisitId?: string;
   lockPatient?: boolean;
+  initialTestOrderId?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [state, action, pending] = useActionState(
@@ -69,7 +71,7 @@ export function UploadReportDialog({
   );
   const [patient, setPatient] = useState<PatientOption | null>(initialPatient);
   const [category, setCategory] = useState(categories[0]?.id ?? "");
-  const [testOrder, setTestOrder] = useState("");
+  const [testOrder, setTestOrder] = useState(initialTestOrderId);
   const [reportDate, setReportDate] = useState(today);
   const linkedTest = testOrders.find((item) => item.id === testOrder);
   const categoryName =

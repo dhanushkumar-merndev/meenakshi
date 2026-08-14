@@ -41,7 +41,7 @@ export async function createPatient(_: ActionState, formData: FormData): Promise
 
   if (error?.code === "23505") return { ok: false, message: "A patient with this phone number already exists." };
   if (error || !data) return { ok: false, message: "Patient could not be created. Please try again." };
-  revalidatePath("/patients");
+  revalidatePath("/patients"); revalidatePath("/reception");
   return { ok: true, message: "Patient created.", data: { patientId: data.id } };
 }
 

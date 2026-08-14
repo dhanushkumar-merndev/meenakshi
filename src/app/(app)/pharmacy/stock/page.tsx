@@ -36,14 +36,18 @@ export default async function StockPage({ searchParams }: { searchParams: Promis
   await requireRoute("/pharmacy");
   const params = await searchParams; const page = Math.max(1, Number(params.page) || 1); const size = 50; const q = params.q?.trim() ?? "";
   const supabase = await createSupabaseServerClient();
-  const { data } = await supabase.rpc("list_pharmacy_batches", { p_query: q, p_limit: size, p_offset: (page - 1) * size });
+  const [{ data }, { data: medicines }] = await Promise.all([
+    supabase.rpc("list_pharmacy_batches", { p_query: q, p_limit: size, p_offset: (page - 1) * size }),
+    supabase.from("medicine_directory").select("id,brand_name,strength").eq("active", true).order("brand_name").limit(500),
+  ]);
   const source = (data ?? []) as unknown as Array<Omit<Batch, "medicine_directory"> & { brand_name: string; generic_name: string | null; strength: string | null; total_count: number }>;
   const rows = source.map((row) => ({ ...row, medicine_directory: { brand_name: row.brand_name, generic_name: row.generic_name, strength: row.strength } })); const total = Number(source[0]?.total_count ?? 0);
   return (
     <div>
       <PageHeader
-        title="Medicine Stock"
-        description="Batch-level quantities, FEFO expiry order, and stock alerts"
+        title="Stock & Batches"
+        description="Add physical stock, adjust batch quantities, and monitor expiry and low-stock alerts"
+        actions={<BatchDialog medicines={(medicines ?? []).map((medicine) => ({ id: medicine.id, name: `${medicine.brand_name}${medicine.strength ? ` ${medicine.strength}` : ""}` }))} />}
       />
       <DebouncedSearchInput className="mb-4 max-w-md" initialValue={q} placeholder="Search medicine, generic or batch" ariaLabel="Search medicine stock" />
       <Card>
@@ -95,7 +99,7 @@ export default async function StockPage({ searchParams }: { searchParams: Promis
                       colSpan={8}
                       className="h-32 text-center text-muted-foreground"
                     >
-                      {q ? "No stock batches match this search." : "No stock batches. Add or import medicines first."}
+                      {q ? "No stock batches match this search." : "No stock batches yet. Use Add Batch to enter opening stock."}
                     </TableCell>
                   </TableRow>
                 )}

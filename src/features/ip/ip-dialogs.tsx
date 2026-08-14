@@ -39,20 +39,31 @@ const modes = [
 ];
 export function AdmissionDialog({
   doctors,
+  rooms = [],
+  initialPatient = null,
+  initialDoctorId = "",
+  sourceVisitId = "",
+  triggerLabel = "New Admission",
 }: {
   doctors: Array<{ id: string; label: string }>;
+  rooms?: Array<{ id: string; label: string }>;
+  initialPatient?: PatientOption | null;
+  initialDoctorId?: string;
+  sourceVisitId?: string;
+  triggerLabel?: string;
 }) {
   const [state, action, pending] = useActionState(createAdmission, initial);
-  const [patient, setPatient] = useState<PatientOption | null>(null);
+  const [patient, setPatient] = useState<PatientOption | null>(initialPatient);
   const [emergency, setEmergency] = useState(false);
-  const [doctor, setDoctor] = useState("");
+  const [doctor, setDoctor] = useState(initialDoctorId);
+  const [roomBedId, setRoomBedId] = useState("");
   const [mode, setMode] = useState("cash");
   const [key] = useState(() => crypto.randomUUID());
   const { open, setOpen } = useAutoCloseDialog(state, "Patient admitted.");
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger render={<Button />}>
-        <Plus /> New Admission
+        <Plus /> {triggerLabel}
       </DialogTrigger>
       <DialogContent className="sm:max-w-lg">
         <form action={action} className="contents">
@@ -66,6 +77,8 @@ export function AdmissionDialog({
           <input type="hidden" name="patientId" value={patient?.id ?? ""} />
           <input type="hidden" name="isEmergency" value={String(emergency)} />
           <input type="hidden" name="doctorId" value={doctor} />
+          <input type="hidden" name="sourceVisitId" value={sourceVisitId} />
+          <input type="hidden" name="roomBedId" value={roomBedId} />
           <input type="hidden" name="paymentMode" value={mode} />
           <input type="hidden" name="idempotencyKey" value={key} />
           {state.message && !state.ok ? (
@@ -131,13 +144,10 @@ export function AdmissionDialog({
                 </SelectContent>
               </Select>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="room">Room</Label>
-              <Input id="room" name="room" />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="bed">Bed</Label>
-              <Input id="bed" name="bed" />
+            <div className="space-y-2 sm:col-span-2">
+              <Label>Available room / bed</Label>
+              <Select value={roomBedId} onValueChange={(v)=>setRoomBedId(String(v))}><SelectTrigger className="w-full"><SelectValue placeholder="Select available room / bed" /></SelectTrigger><SelectContent>{rooms.map(room=><SelectItem key={room.id} value={room.id}>{room.label}</SelectItem>)}</SelectContent></Select>
+              <p className="text-xs text-muted-foreground">Only active, currently free beds are shown.</p>
             </div>
             <div className="space-y-2 sm:col-span-2">
               <Label htmlFor="reason">Admission reason *</Label>
@@ -183,9 +193,13 @@ export function AdmissionDialog({
     </Dialog>
   );
 }
-export function ChargeDialog({ ticketId }: { ticketId: string }) {
+export function ChargeDialog({ ticketId, presets }: { ticketId: string; presets: Array<{ id: string; category: string; name: string; rate: string }> }) {
   const [state, action, pending] = useActionState(addIpCharge, initial);
-  const [category, setCategory] = useState("treatment");
+  const [presetId, setPresetId] = useState(presets[0]?.id ?? "custom");
+  const initialPreset = presets[0];
+  const [category, setCategory] = useState(initialPreset?.category ?? "treatment");
+  const [item, setItem] = useState(initialPreset?.name ?? "");
+  const [rate, setRate] = useState(initialPreset?.rate ?? "");
   const [key] = useState(() => crypto.randomUUID());
   const { open, setOpen } = useAutoCloseDialog(state, "IP charge added.");
   return (
@@ -202,39 +216,39 @@ export function ChargeDialog({ ticketId }: { ticketId: string }) {
             </DialogDescription>
           </DialogHeader>
           <input type="hidden" name="ticketId" value={ticketId} />
+          <input type="hidden" name="chargePresetId" value={presetId} />
           <input type="hidden" name="category" value={category} />
           <input type="hidden" name="idempotencyKey" value={key} />
           {state.message && !state.ok ? <p className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">{state.message}</p> : null}
           <div className="space-y-4">
             <div className="space-y-2">
-              <Label>Category</Label>
+              <Label>Charge preset</Label>
               <Select
-                value={category}
-                onValueChange={(v) => setCategory(v as string)}
+                value={presetId}
+                onValueChange={(value) => {
+                  const id = String(value);
+                  setPresetId(id);
+                  const preset = presets.find((entry) => entry.id === id);
+                  if (preset) {
+                    setCategory(preset.category);
+                    setItem(preset.name);
+                    setRate(preset.rate);
+                  }
+                }}
               >
                 <SelectTrigger className="w-full">
-                  <SelectValue />
+                  <SelectValue placeholder="Select configured charge" />
                 </SelectTrigger>
                 <SelectContent>
-                  {[
-                    "doctor",
-                    "ward",
-                    "room",
-                    "bed",
-                    "treatment",
-                    "test",
-                    "other",
-                  ].map((v) => (
-                    <SelectItem key={v} value={v}>
-                      {v}
-                    </SelectItem>
-                  ))}
+                  {presets.map((preset) => <SelectItem key={preset.id} value={preset.id}>{preset.name} · ₹{preset.rate}</SelectItem>)}
+                  <SelectItem value="custom">Custom charge</SelectItem>
                 </SelectContent>
               </Select>
             </div>
+            {presetId === "custom" ? <div className="space-y-2"><Label>Category</Label><Select value={category} onValueChange={(v) => setCategory(String(v))}><SelectTrigger className="w-full"><SelectValue /></SelectTrigger><SelectContent>{["doctor","ward","room","bed","treatment","test","other"].map((value) => <SelectItem key={value} value={value}>{value}</SelectItem>)}</SelectContent></Select></div> : null}
             <div className="space-y-2">
               <Label htmlFor="item">Item</Label>
-              <Input id="item" name="item" required />
+              <Input id="item" name="item" value={item} onChange={(event) => setItem(event.target.value)} readOnly={presetId !== "custom"} required />
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-2">
@@ -249,7 +263,7 @@ export function ChargeDialog({ ticketId }: { ticketId: string }) {
               </div>
               <div className="space-y-2">
                 <Label htmlFor="rate">Rate</Label>
-                <Input id="rate" name="rate" inputMode="decimal" required />
+                <Input id="rate" name="rate" inputMode="decimal" value={rate} onChange={(event) => setRate(event.target.value)} readOnly={presetId !== "custom"} required />
               </div>
             </div>
           </div>

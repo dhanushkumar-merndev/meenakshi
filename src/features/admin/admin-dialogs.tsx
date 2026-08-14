@@ -230,7 +230,7 @@ export function EditStaffDialog({ user }: { user: { id: string; fullName: string
   );
 }
 
-export function EditDoctorDialog({ doctor, departments }: { doctor: { id: string; displayName: string; departmentId: string; specialization: string | null; qualification: string | null; registrationNumber: string; opFee: string; followUpFee: string; ipFee: string; active: boolean }; departments: Array<{ id: string; name: string }> }) {
+export function EditDoctorDialog({ doctor, departments, triggerLabel = "Edit" }: { doctor: { id: string; displayName: string; departmentId: string; specialization: string | null; qualification: string | null; registrationNumber: string; opFee: string; followUpFee: string; ipFee: string; active: boolean }; departments: Array<{ id: string; name: string }>; triggerLabel?: string }) {
   const [state, action, pending] = useActionState(updateDoctor, initial);
   const [department, setDepartment] = useState(doctor.departmentId);
   const { open, setOpen } = useAutoCloseDialog(state, "Doctor updated.");
@@ -239,7 +239,7 @@ export function EditDoctorDialog({ doctor, departments }: { doctor: { id: string
     "Select department";
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger render={<Button size="sm" variant="ghost" />}>Edit</DialogTrigger>
+      <DialogTrigger render={<Button size="sm" variant="ghost" />}>{triggerLabel}</DialogTrigger>
       <DialogContent className="max-h-[calc(100vh-2rem)] overflow-y-auto sm:max-w-xl">
         <form action={action} className="contents">
           <DialogHeader><DialogTitle>Edit doctor</DialogTitle><DialogDescription>Update professional details, fees, department, and availability.</DialogDescription></DialogHeader>

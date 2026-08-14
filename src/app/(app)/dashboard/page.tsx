@@ -33,11 +33,11 @@ export default async function DashboardPage() {
   return (
     <div>
       <PageHeader title={`Good day, ${profile.fullName.split(" ")[0]}`} description={`${profile.role[0].toUpperCase() + profile.role.slice(1)} dashboard · live hospital operations`} />
-      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
+      <section className="grid grid-cols-2 gap-2.5 md:grid-cols-3 md:gap-3 2xl:grid-cols-6">
         {metrics.map(([key, label, Icon]) => {
           const value = summary[key] ?? 0;
           const formatted = key.endsWith("_paise") ? formatInr(value) : new Intl.NumberFormat("en-IN").format(value);
-          return <Card key={key}><CardContent className="flex items-center justify-between p-4"><div><p className="text-xs font-medium text-muted-foreground">{label}</p><p className="mt-1 text-2xl font-semibold tabular-nums">{formatted}</p></div><span className="flex size-9 items-center justify-center rounded-lg bg-secondary text-secondary-foreground"><Icon className="size-4" /></span></CardContent></Card>;
+          return <Card key={key}><CardContent className="flex min-h-24 items-center justify-between gap-2 p-3 md:min-h-28 md:p-4"><div className="min-w-0"><p className="text-[11px] leading-4 font-medium text-muted-foreground md:text-xs">{label}</p><p className="mt-1 truncate text-xl font-semibold tabular-nums md:text-2xl">{formatted}</p></div><span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-secondary text-secondary-foreground md:size-9"><Icon className="size-4" /></span></CardContent></Card>;
         })}
       </section>
       <DashboardActivity activity={activity} />

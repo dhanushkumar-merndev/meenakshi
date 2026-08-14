@@ -30,3 +30,12 @@ export function minutesSince(value: string, now = new Date()) {
     Math.round((now.getTime() - new Date(value).getTime()) / 60000),
   );
 }
+
+export function ipDaysSince(value: string, now = new Date()) {
+  return Math.max(1, Math.ceil((now.getTime() - new Date(value).getTime()) / 86400000));
+}
+
+export function isHospitalToday(value: Date | string, now = new Date()) {
+  const formatter = new Intl.DateTimeFormat("en-CA", { timeZone: process.env.APP_TIMEZONE ?? "Asia/Kolkata" });
+  return formatter.format(new Date(value)) === formatter.format(now);
+}

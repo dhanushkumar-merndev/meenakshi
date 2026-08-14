@@ -35,10 +35,17 @@ export async function updateSession(request: NextRequest) {
   }
 
   if (isLogin && data?.claims) {
-    const dashboardUrl = request.nextUrl.clone();
-    dashboardUrl.pathname = "/dashboard";
-    dashboardUrl.search = "";
-    return NextResponse.redirect(dashboardUrl);
+    // Claims can remain valid in the browser briefly after an Auth user is
+    // deleted (for example after a database reset). Verify the user before
+    // redirecting or /login and /dashboard will redirect to each other.
+    const { data: userData } = await supabase.auth.getUser();
+    if (userData.user) {
+      const dashboardUrl = request.nextUrl.clone();
+      dashboardUrl.pathname = "/dashboard";
+      dashboardUrl.search = "";
+      return NextResponse.redirect(dashboardUrl);
+    }
+    await supabase.auth.signOut({ scope: "local" });
   }
 
   return response;
