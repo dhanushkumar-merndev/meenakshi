@@ -23,6 +23,8 @@ const schema = z.object({
   lines: z.string(),
   paymentMode: z.enum(["cash", "upi", "card", "bank_transfer", "other"]),
   idempotencyKey: databaseIdSchema,
+  /** Consultation fee taken at the counter; the doctor set the amount. */
+  consultationCollected: z.string().optional(),
 });
 export async function dispensePrescription(
   _: ActionState,
@@ -41,12 +43,20 @@ export async function dispensePrescription(
       message: "Select a valid batch and quantity for at least one item.",
     };
   }
+  const rawFee = parsed.data.consultationCollected?.trim() ?? "";
+  const collectedPaise = rawFee === "" ? 0 : rupeesToPaise(rawFee);
+  if (Number.isNaN(collectedPaise) || collectedPaise < 0)
+    return {
+      ok: false,
+      message: "Enter a valid consultation fee amount.",
+    };
   const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase.rpc("dispense_prescription", {
     p_prescription_id: parsed.data.prescriptionId,
     p_lines: lines,
     p_payment_mode: parsed.data.paymentMode,
     p_idempotency_key: parsed.data.idempotencyKey,
+    p_consultation_collected_paise: collectedPaise,
   });
   if (error)
     return {
@@ -55,7 +65,9 @@ export async function dispensePrescription(
         ? "This prescription has expired or is no longer available. No stock was changed."
         : error.message.includes("stock unavailable")
           ? "Selected batch does not have enough unexpired stock."
-          : "Dispensing failed; no stock was changed.",
+          : error.message.includes("exceeds outstanding balance")
+            ? "That is more than the outstanding consultation fee. Nothing was dispensed or collected."
+            : "Dispensing failed; no stock was changed.",
     };
   const { data: prescription } = await supabase
     .from("prescriptions")

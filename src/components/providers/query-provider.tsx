@@ -9,9 +9,14 @@ export function QueryProvider({ children }: { children: React.ReactNode }) {
       new QueryClient({
         defaultOptions: {
           queries: {
-            staleTime: 20_000,
+            // Realtime pushes invalidations the moment data changes, so cached
+            // data does not need a short staleness window. At 20s, every tab
+            // switch refetched and every refocus hit the server again; 5
+            // minutes keeps the UI just as fresh while cutting idle traffic.
+            staleTime: 5 * 60_000,
             gcTime: 10 * 60_000,
-            refetchOnWindowFocus: true,
+            // Staff alt-tab constantly between the queue and a patient record.
+            refetchOnWindowFocus: false,
             retry: 1,
           },
         },

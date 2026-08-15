@@ -6,6 +6,7 @@ import { EMPTY_UUID, searchDigits } from "@/lib/domain/search";
 import { findMatchingPatientIds } from "@/lib/search/patients";
 import { DebouncedSearchInput } from "@/components/shared/debounced-search-input";
 import { PageHeader } from "@/components/shared/page-header";
+import { FilterTabs } from "@/components/shared/filter-tabs";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -35,22 +36,33 @@ type DoctorQueue = {
 export default async function DoctorQueuePage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string }>;
+  searchParams: Promise<{ q?: string; status?: string }>;
 }) {
   const profile = await requireRoute("/doctor");
-  const q = (await searchParams).q?.trim() ?? "";
+  const params = await searchParams;
+  const q = params.q?.trim() ?? "";
+  const selectedStatus = params.status ?? "waiting";
   const supabase = await createSupabaseServerClient();
   const today = new Intl.DateTimeFormat("en-CA", {
     timeZone: "Asia/Kolkata",
   }).format(new Date());
+  const WAITING_STATUSES = [
+    "ready",
+    "in_consultation",
+    "waiting",
+    "vitals_pending",
+  ];
   let query = supabase
     .from("visits")
     .select(
       "id,token_number,created_at,visit_type,status,patients(name,dob,gender),vitals(bp_systolic,bp_diastolic,temperature_c,spo2)",
     )
     .eq("visit_date", today)
-    .in("status", ["ready", "in_consultation", "waiting", "vitals_pending"])
     .order("token_number");
+  if (selectedStatus === "waiting") query = query.in("status", WAITING_STATUSES);
+  else if (selectedStatus === "completed")
+    query = query.eq("status", "completed");
+  else query = query.in("status", [...WAITING_STATUSES, "completed"]);
   if (profile.doctorId) query = query.eq("doctor_id", profile.doctorId);
   if (q) {
     const patientIds = await findMatchingPatientIds(supabase, q);
@@ -67,8 +79,18 @@ export default async function DoctorQueuePage({
   return (
     <div>
       <PageHeader
-        title="My Queue"
+        title="Today OP"
         description="Patients assigned to you today"
+      />
+      <FilterTabs
+        ariaLabel="Filter today's OP patients by status"
+        active={selectedStatus}
+        params={{ q }}
+        tabs={[
+          { label: "Waiting", value: "waiting" },
+          { label: "Completed", value: "completed" },
+          { label: "All", value: "all" },
+        ]}
       />
       <DebouncedSearchInput
         className="mb-4 max-w-md"

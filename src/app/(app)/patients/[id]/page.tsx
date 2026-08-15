@@ -73,7 +73,7 @@ export default async function PatientProfilePage({
       supabase
         .from("patients")
         .select(
-          "id,name,phone_normalized,dob,gender,blood_group,allergies,address,status,created_at",
+          "id,name,uhid,phone_normalized,dob,gender,blood_group,allergies,address,reference_detail,status,created_at",
         )
         .eq("id", id)
         .single(),
@@ -125,7 +125,7 @@ export default async function PatientProfilePage({
     <div>
       <PageHeader
         title={patient.name}
-        description={`Patient ID: ${patient.phone_normalized}`}
+        description={`UHID: ${patient.uhid} · Phone: ${patient.phone_normalized}`}
         actions={
           <>
             {hasPermission(profile.role, "createPatient") ? <EditPatientDialog patient={{ id: patient.id, name: patient.name, phone: patient.phone_normalized, dob: patient.dob, gender: patient.gender, bloodGroup: patient.blood_group, address: patient.address, allergies: patient.allergies, status: patient.status }} /> : null}

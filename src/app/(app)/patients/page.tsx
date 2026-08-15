@@ -34,15 +34,18 @@ export default async function PatientsPage({
   let query = supabase
     .from("patients")
     .select(
-      "id,name,phone_normalized,dob,gender,status,created_at",
+      "id,name,uhid,phone_normalized,dob,gender,status,created_at",
       { count: "exact" },
     )
     .order("created_at", { ascending: false })
     .range((page - 1) * pageSize, page * pageSize - 1);
+  // UHID is the visible Patient ID, so it is searchable alongside phone and name.
   if (q)
-    query = /^\d+$/.test(q.replace(/\D/g, ""))
-      ? query.ilike("phone_normalized", `${q.replace(/\D/g, "")}%`)
-      : query.ilike("name_normalized", `${q.toLowerCase()}%`);
+    query = /^mh-?\d/i.test(q)
+      ? query.ilike("uhid", `${q.replace(/\s+/g, "")}%`)
+      : /^\d+$/.test(q.replace(/\D/g, ""))
+        ? query.or(`phone_normalized.like.${q.replace(/\D/g, "")}%,uhid.ilike.%${q.replace(/\D/g, "")}%`)
+        : query.ilike("name_normalized", `${q.toLowerCase()}%`);
   const { data, count = 0, error } = await query;
   if (error) throw error;
   const patients = data ?? [];
@@ -66,7 +69,7 @@ export default async function PatientsPage({
     <div>
       <PageHeader
         title="Patients"
-        description="Search by phone Patient ID or name"
+        description="Search by UHID, phone or name"
         actions={
           profile.role === "admin" ||
           profile.role === "reception" ||
@@ -81,8 +84,8 @@ export default async function PatientsPage({
             <DebouncedSearchInput
               className="max-w-md"
               initialValue={q}
-              placeholder="Phone or patient name"
-              ariaLabel="Search patients by phone or name"
+              placeholder="UHID, phone or patient name"
+              ariaLabel="Search patients by UHID, phone or name"
             />
           </div>
           <div className="overflow-x-auto">
@@ -90,7 +93,8 @@ export default async function PatientsPage({
               <TableHeader>
                 <TableRow>
                   <TableHead>Patient</TableHead>
-                  <TableHead>Phone ID</TableHead>
+                  <TableHead>UHID</TableHead>
+                  <TableHead>Phone</TableHead>
                   <TableHead>Age/Gender</TableHead>
                   <TableHead>Visits</TableHead>
                   <TableHead>Registered</TableHead>
@@ -106,6 +110,9 @@ export default async function PatientsPage({
                       <TableRow key={patient.id} historical={!isHospitalToday(patient.created_at)}>
                         <TableCell className="font-medium">
                           {patient.name}
+                        </TableCell>
+                        <TableCell className="font-mono text-xs font-medium">
+                          {patient.uhid}
                         </TableCell>
                         <TableCell className="font-mono text-xs">
                           {patient.phone_normalized}
@@ -135,7 +142,7 @@ export default async function PatientsPage({
                 ) : (
                   <TableRow>
                     <TableCell
-                      colSpan={7}
+                      colSpan={8}
                       className="h-32 text-center text-muted-foreground"
                     >
                       {q

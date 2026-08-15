@@ -44,7 +44,10 @@ export function NotificationMenu() {
       if (!response.ok) throw new Error("Notifications unavailable");
       return (await response.json()) as NotificationResponse;
     },
-    refetchInterval: 60_000,
+    // OperationalLiveSync invalidates this key over realtime whenever a watched
+    // table changes, so a 60s poll was duplicating work it had already done.
+    // Kept as a slow fallback for a dropped websocket.
+    refetchInterval: 600_000,
     refetchIntervalInBackground: false,
   });
 

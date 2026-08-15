@@ -1,6 +1,27 @@
 import type { AppRole } from "@/types/hospital";
 
-export type NavigationItem = { title: string; href: string; icon: string };
+export type NavigationItem = {
+  title: string;
+  href: string;
+  icon: string;
+  /** Sidebar section. Defaults to the role's primary workspace group. */
+  group?: string;
+};
+
+/** Groups nav items by their `group`, preserving declaration order. */
+export function groupNavigation(
+  items: NavigationItem[],
+  defaultGroup: string,
+): Array<{ label: string; items: NavigationItem[] }> {
+  const groups: Array<{ label: string; items: NavigationItem[] }> = [];
+  for (const item of items) {
+    const label = item.group ?? defaultGroup;
+    const existing = groups.find((group) => group.label === label);
+    if (existing) existing.items.push(item);
+    else groups.push({ label, items: [item] });
+  }
+  return groups;
+}
 
 export function getActiveNavigationHref(
   items: NavigationItem[],
@@ -29,52 +50,44 @@ export const ROLE_NAVIGATION: Record<AppRole, NavigationItem[]> = {
     { title: "IP", href: "/ip", icon: "bed" },
     { title: "Pharmacy", href: "/pharmacy", icon: "pill" },
     { title: "Reports", href: "/admin/analytics", icon: "chart-column" },
-    { title: "Users", href: "/admin/users", icon: "user-cog" },
-    { title: "Doctor Master", href: "/admin/doctors", icon: "briefcase-medical" },
-    { title: "Departments", href: "/admin/departments", icon: "building-2" },
-    { title: "Charges", href: "/admin/charges", icon: "badge-indian-rupee" },
-    { title: "Rooms", href: "/admin/rooms", icon: "bed-double" },
-    { title: "Clinical Directory", href: "/admin/clinical-directory", icon: "book-open" },
-    { title: "Medicine Master", href: "/pharmacy/medicines", icon: "notebook-tabs" },
-    { title: "Report Categories", href: "/admin/report-categories", icon: "folder-cog" },
-    { title: "Patient Reports", href: "/reports", icon: "files" },
-    { title: "Monthly Export", href: "/admin/exports", icon: "archive-restore" },
-    { title: "Settings", href: "/admin/settings", icon: "settings" },
-    { title: "Audit Logs", href: "/audit", icon: "shield-check" },
+    { title: "Users", href: "/admin/users", icon: "user-cog", group: "Administration" },
+    { title: "Doctor Master", href: "/admin/doctors", icon: "briefcase-medical", group: "Administration" },
+    { title: "Masters", href: "/admin/masters", icon: "library", group: "Administration" },
+    { title: "Clinical Directory", href: "/admin/clinical-directory", icon: "book-open", group: "Administration" },
+    { title: "Monthly Export", href: "/admin/exports", icon: "archive-restore", group: "Administration" },
+    { title: "Settings", href: "/admin/settings", icon: "settings", group: "Administration" },
+    { title: "Audit Logs", href: "/audit", icon: "shield-check", group: "Security" },
   ],
   reception: [
     shared.dashboard, shared.patients,
     { title: "Today's Visits", href: "/reception", icon: "calendar-days" },
     { title: "Follow-ups", href: "/reception/follow-ups", icon: "calendar-check" },
     { title: "Reports Ready", href: "/reports", icon: "file-check" },
-    { title: "Payments", href: "/reception/payments", icon: "indian-rupee" },
+    { title: "Fees & Payments", href: "/reception/payments", icon: "indian-rupee" },
   ],
   op: [
     shared.dashboard,
-    { title: "Today's Queue", href: "/op", icon: "list-ordered" },
-    { title: "Vitals", href: "/op/vitals", icon: "activity" },
+    { title: "Today OP", href: "/op", icon: "list-ordered" },
+    { title: "Patient Assist", href: "/op/assist", icon: "route" },
     { title: "Reports", href: "/reports", icon: "files" },
   ],
   doctor: [
     shared.dashboard,
-    { title: "My Queue", href: "/doctor", icon: "list-ordered" },
+    { title: "Today OP", href: "/doctor", icon: "list-ordered" },
     { title: "My Follow-ups", href: "/doctor/follow-ups", icon: "calendar-check" },
     { title: "My IP Patients", href: "/ip", icon: "bed" },
     { title: "Patient Search", href: "/patients", icon: "search" },
   ],
   ip: [
     shared.dashboard,
-    { title: "Admissions", href: "/ip", icon: "log-in" },
-    { title: "Current Patients", href: "/ip/current", icon: "bed-double" },
-    { title: "Room View", href: "/ip/rooms", icon: "building-2" },
-    { title: "IP Tickets", href: "/ip/tickets", icon: "receipt-text" },
-    { title: "Discharges", href: "/ip/discharges", icon: "log-out" },
+    { title: "IP Patients", href: "/ip", icon: "bed" },
   ],
   pharmacy: [
     shared.dashboard,
     { title: "Pending Prescriptions", href: "/pharmacy", icon: "clipboard-list" },
     { title: "Medicine Master", href: "/pharmacy/medicines", icon: "pill" },
     { title: "Stock & Batches", href: "/pharmacy/stock", icon: "package" },
+    { title: "Inventory", href: "/pharmacy/inventory", icon: "boxes" },
     { title: "Bulk Import", href: "/pharmacy/import", icon: "file-up" },
     { title: "Sales", href: "/pharmacy/sales", icon: "receipt" },
   ],

@@ -18,5 +18,5 @@ export async function saveRoomBed(_:ActionState,formData:FormData):Promise<Actio
     if(result.error.code==="42P01"||result.error.code==="PGRST205")return{ok:false,message:"Rooms database setup is unavailable. Apply the latest Supabase migration."};
     return{ok:false,message:`Room/bed could not be saved (database code ${result.error.code||"unknown"}).`};
   }
-  revalidatePath("/admin/rooms");revalidatePath("/ip/rooms");revalidatePath("/ip");return{ok:true,message:"Room/bed saved."};
+  revalidatePath("/admin/masters");revalidatePath("/ip");return{ok:true,message:"Room/bed saved."};
 }

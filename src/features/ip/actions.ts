@@ -68,7 +68,7 @@ export async function createAdmission(
     return { ok: false, message: `Admission could not be created${error?.code ? ` (${error.code})` : ""}.` };
   }
   revalidatePath("/ip");
-  revalidatePath("/ip/rooms");
+  
   return {
     ok: true,
     message: parsed.data.patientId

@@ -3,11 +3,13 @@ import { useActionState, useState } from "react";
 import { FileCheck2, LoaderCircle, Plus, Save, Trash2 } from "lucide-react";
 import { saveConsultation } from "./actions";
 import { MedicineCombobox } from "./medicine-combobox";
+import { DiagnosisPicker } from "./diagnosis-picker";
 import type { ActionState } from "@/types/hospital";
 import { DatePickerField } from "@/components/shared/date-picker-field";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -26,6 +28,13 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  DURATION_PRESETS,
+  FREQUENCY_PRESETS,
+  NOTES_PRESETS,
+  PresetSelect,
+  ROUTE_PRESETS,
+} from "./preset-select";
 
 type MedicineLine = {
   key: string;
@@ -48,13 +57,16 @@ type InitialConsultation = {
   follow_up_type?: string;
   follow_up_date?: string | null;
   follow_up_days?: number | null;
+  admission_recommended?: boolean | null;
+  admission_ward_type?: string | null;
+  admission_reason?: string | null;
 };
 const initialState: ActionState = { ok: false };
 const newMedicine = (): MedicineLine => ({
   key: crypto.randomUUID(),
   medicine_name: "",
   dose: "",
-  frequency: "1-0-1",
+  frequency: "BD (1-0-1)",
   duration: "3 days",
   route: "Oral",
   notes: "After food",
@@ -66,11 +78,14 @@ export function ConsultationEditor({
   initial,
   initialMedicines = [],
   initialTests = [],
+  defaultFee,
 }: {
   visitId: string;
   initial?: InitialConsultation;
   initialMedicines?: Omit<MedicineLine, "key">[];
   initialTests?: Omit<TestLine, "key">[];
+  /** Doctor's configured fee in rupees, pre-filled but always editable. */
+  defaultFee?: string;
 }) {
   const [state, action, pending] = useActionState(
     saveConsultation,
@@ -81,6 +96,12 @@ export function ConsultationEditor({
   );
   const [tests, setTests] = useState<TestLine[]>(
     initialTests.map((line) => ({ ...line, key: crypto.randomUUID() })),
+  );
+  const [admissionRecommended, setAdmissionRecommended] = useState(
+    initial?.admission_recommended ?? false,
+  );
+  const [wardType, setWardType] = useState(
+    initial?.admission_ward_type ?? "general",
   );
   const [followUp, setFollowUp] = useState(initial?.follow_up_type ?? "none");
   const [followUpDate, setFollowUpDate] = useState(
@@ -167,19 +188,23 @@ export function ConsultationEditor({
               rows={3}
             />
           </div>
-          <div className="space-y-2">
-            <Label htmlFor="assessment">Assessment / Diagnosis *</Label>
-            <Textarea
-              id="assessment"
-              name="assessment"
-              defaultValue={initial?.assessment ?? ""}
-              rows={3}
-              required
-            />
-            <p className="text-xs text-destructive">
-              {state.fieldErrors?.assessment?.[0]}
-            </p>
-          </div>
+        </CardContent>
+      </Card>
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">
+            Assessment / Diagnosis <span className="text-destructive">*</span>
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-2">
+          <DiagnosisPicker name="assessment" initialValue={initial?.assessment ?? ""} />
+          <p className="text-xs text-muted-foreground">
+            Search by name or ICD-10 code. Anything without a coded match can
+            still be added exactly as typed.
+          </p>
+          <p className="text-xs text-destructive">
+            {state.fieldErrors?.assessment?.[0]}
+          </p>
         </CardContent>
       </Card>
       <Card>
@@ -229,39 +254,39 @@ export function ConsultationEditor({
                         />
                       </TableCell>
                       <TableCell>
-                        <Input
+                        <PresetSelect
+                          ariaLabel="Frequency"
+                          presets={FREQUENCY_PRESETS}
                           value={row.frequency}
-                          onChange={(e) =>
-                            updateMedicine(row.key, {
-                              frequency: e.target.value,
-                            })
+                          onChange={(frequency) =>
+                            updateMedicine(row.key, { frequency })
                           }
                         />
                       </TableCell>
                       <TableCell>
-                        <Input
+                        <PresetSelect
+                          ariaLabel="Duration"
+                          presets={DURATION_PRESETS}
                           value={row.duration}
-                          onChange={(e) =>
-                            updateMedicine(row.key, {
-                              duration: e.target.value,
-                            })
+                          onChange={(duration) =>
+                            updateMedicine(row.key, { duration })
                           }
                         />
                       </TableCell>
                       <TableCell>
-                        <Input
+                        <PresetSelect
+                          ariaLabel="Route"
+                          presets={ROUTE_PRESETS}
                           value={row.route}
-                          onChange={(e) =>
-                            updateMedicine(row.key, { route: e.target.value })
-                          }
+                          onChange={(route) => updateMedicine(row.key, { route })}
                         />
                       </TableCell>
                       <TableCell>
-                        <Input
+                        <PresetSelect
+                          ariaLabel="Notes"
+                          presets={NOTES_PRESETS}
                           value={row.notes}
-                          onChange={(e) =>
-                            updateMedicine(row.key, { notes: e.target.value })
-                          }
+                          onChange={(notes) => updateMedicine(row.key, { notes })}
                         />
                       </TableCell>
                       <TableCell>
@@ -431,6 +456,94 @@ export function ConsultationEditor({
               />
             </div>
           ) : null}
+        </CardContent>
+      </Card>
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">IP Admission</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <input
+            type="hidden"
+            name="admissionRecommended"
+            value={admissionRecommended ? "on" : ""}
+          />
+          <label className="flex items-center gap-2 text-sm">
+            <Checkbox
+              checked={admissionRecommended}
+              onCheckedChange={(checked) =>
+                setAdmissionRecommended(checked === true)
+              }
+            />
+            Recommend this patient for IP admission
+          </label>
+          {admissionRecommended ? (
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="ward-type">
+                  Ward type <span className="text-destructive">*</span>
+                </Label>
+                <input type="hidden" name="admissionWardType" value={wardType} />
+                <Select
+                  value={wardType}
+                  onValueChange={(value) => setWardType(String(value))}
+                >
+                  <SelectTrigger id="ward-type" className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="general">General Ward</SelectItem>
+                    <SelectItem value="private">Private Room</SelectItem>
+                    <SelectItem value="icu">ICU</SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  IP staff assign the actual room and bed.
+                </p>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="admission-reason">Reason for admission</Label>
+                <Textarea
+                  id="admission-reason"
+                  name="admissionReason"
+                  defaultValue={initial?.admission_reason ?? ""}
+                  rows={3}
+                />
+              </div>
+            </div>
+          ) : null}
+        </CardContent>
+      </Card>
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Consultation Fee</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="max-w-xs space-y-2">
+            <Label htmlFor="consultation-fee">
+              Fee (₹) <span className="text-destructive">*</span>
+            </Label>
+            <Input
+              id="consultation-fee"
+              name="fee"
+              inputMode="decimal"
+              placeholder="500"
+              defaultValue={defaultFee ?? ""}
+              aria-describedby="consultation-fee-help"
+            />
+            <p
+              id="consultation-fee-help"
+              className="text-xs text-muted-foreground"
+            >
+              Required to complete. Collected at the pharmacy counter, not here.
+              Enter 0 for a free follow-up.
+            </p>
+            {state.fieldErrors?.fee ? (
+              <p className="text-xs text-destructive">
+                {state.fieldErrors.fee[0]}
+              </p>
+            ) : null}
+          </div>
         </CardContent>
       </Card>
       <div className="sticky bottom-0 flex justify-end gap-2 border-t bg-background/95 py-3 backdrop-blur">

@@ -22,7 +22,7 @@ export async function saveDepartment(_: ActionState, formData: FormData): Promis
   const { error } = await query;
   if (error) return { ok: false, message: error.code === "23505" ? "This department already exists." : "Department could not be saved." };
   await admin.from("audit_logs").insert({ actor_user_id: actor.id, action: "DEPARTMENT_SAVED", entity_type: "department", entity_id: parsed.data.id || null });
-  revalidatePath("/admin/departments");
+  revalidatePath("/admin/masters");
   return { ok: true, message: "Department saved." };
 }
 
@@ -37,7 +37,7 @@ export async function saveCharge(_: ActionState, formData: FormData): Promise<Ac
   const { error } = await query;
   if (error) return { ok: false, message: error.code === "23505" ? "This charge already exists." : "Charge could not be saved." };
   await admin.from("audit_logs").insert({ actor_user_id: actor.id, action: "CHARGE_SAVED", entity_type: "charge", entity_id: parsed.data.id || null });
-  revalidatePath("/admin/charges");
+  revalidatePath("/admin/masters");
   return { ok: true, message: "Charge saved." };
 }
 
@@ -50,7 +50,7 @@ export async function saveReportCategory(_: ActionState, formData: FormData): Pr
   const { error } = await query;
   if (error) return { ok: false, message: error.code === "23505" ? "This category already exists." : "Category could not be saved." };
   await admin.from("audit_logs").insert({ actor_user_id: actor.id, action: "REPORT_CATEGORY_SAVED", entity_type: "report_category", entity_id: parsed.data.id || null });
-  revalidatePath("/admin/report-categories");
+  revalidatePath("/admin/masters");
   return { ok: true, message: "Report category saved." };
 }
 
@@ -73,11 +73,11 @@ const deletableMasterSchema = z.object({
 });
 
 const deletePaths = {
-  department: "/admin/departments",
-  charge: "/admin/charges",
-  report_category: "/admin/report-categories",
+  department: "/admin/masters",
+  charge: "/admin/masters",
+  report_category: "/admin/masters",
   clinical_term: "/admin/clinical-directory",
-  room_bed: "/admin/rooms",
+  room_bed: "/admin/masters",
   medicine: "/pharmacy/medicines",
   medicine_batch: "/pharmacy/stock",
 } as const;
@@ -112,10 +112,10 @@ export async function deleteMasterRecord(_: ActionState, formData: FormData): Pr
 }
 
 export async function saveHospitalSettings(_: ActionState, formData: FormData): Promise<ActionState> {
-  const parsed = z.object({ hospitalName: z.string().trim().min(2).max(150), address: z.string().trim().max(1000).optional(), phone: z.string().trim().max(30).optional(), email: z.string().trim().email().optional().or(z.literal("")), prescriptionFooter: z.string().trim().max(1000).optional(), tokenFooter: z.string().trim().max(500).optional(), digitalText: z.string().trim().max(1000).optional() }).safeParse(Object.fromEntries(formData));
+  const parsed = z.object({ hospitalName: z.string().trim().min(2).max(150), address: z.string().trim().max(1000).optional(), phone: z.string().trim().max(30).optional(), email: z.string().trim().email().optional().or(z.literal("")), prescriptionFooter: z.string().trim().max(1000).optional(), tokenFooter: z.string().trim().max(500).optional(), digitalText: z.string().trim().max(1000).optional(), printFeeOnPrescription: z.string().optional() }).safeParse(Object.fromEntries(formData));
   if (!parsed.success) return { ok: false, fieldErrors: parsed.error.flatten().fieldErrors };
   const { actor, admin } = await adminActor();
-  const { error } = await admin.from("hospital_settings").upsert({ id: true, hospital_name: parsed.data.hospitalName, address: parsed.data.address || null, phone: parsed.data.phone || null, email: parsed.data.email || null, prescription_footer: parsed.data.prescriptionFooter || null, token_footer: parsed.data.tokenFooter || null, digital_prescription_text: parsed.data.digitalText || null });
+  const { error } = await admin.from("hospital_settings").upsert({ id: true, hospital_name: parsed.data.hospitalName, address: parsed.data.address || null, phone: parsed.data.phone || null, email: parsed.data.email || null, prescription_footer: parsed.data.prescriptionFooter || null, token_footer: parsed.data.tokenFooter || null, digital_prescription_text: parsed.data.digitalText || null, print_fee_on_prescription: parsed.data.printFeeOnPrescription === "on" });
   if (error) return { ok: false, message: "Hospital settings could not be saved." };
   await admin.from("audit_logs").insert({ actor_user_id: actor.id, action: "SETTINGS_UPDATED", entity_type: "hospital_settings" });
   revalidatePath("/admin/settings");

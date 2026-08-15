@@ -5,15 +5,31 @@ import type { Profile } from "@/types/hospital";
 
 export type DashboardSummary = Record<string, number>;
 
+/** Row shape returned by the list_pending_prescriptions RPC. */
+export type PendingPrescriptionRow = {
+  id: string;
+  prescription_number: number;
+  status: string;
+  created_at: string;
+  expires_at: string;
+  token_number: number | null;
+  source: string;
+  patient_name: string | null;
+  patient_phone: string | null;
+  doctor_name: string | null;
+  items: Array<{ id: string }>;
+};
+
 export async function getDashboardData(profile: Profile) {
   const supabase = await createSupabaseServerClient();
-  if (profile.role === "admin" || profile.role === "pharmacy") {
-    await supabase.rpc("expire_stale_prescriptions");
-  }
+  // Prescription expiry is swept by the Supabase pg_cron job
+  // "expire-stale-hospital-prescriptions" (every minute), not per dashboard load.
   const summaryPromise = supabase.rpc("dashboard_summary");
   if (profile.role === "pharmacy") {
-    const [summaryResult, result] = await Promise.all([summaryPromise, supabase.from("prescriptions").select("id,prescription_number,status,created_at,visit_id,ip_ticket_id,doctors(display_name),visits(patients(name)),ip_tickets(patients(name)),prescription_items(id)").in("status", ["pending", "partially_dispensed"]).order("created_at").limit(8)]);
-    return { summary: (summaryResult.data ?? {}) as DashboardSummary, role: profile.role, activity: { kind: "pharmacy" as const, rows: result.data ?? [] } };
+    // Via RPC: the pharmacy role has no SELECT on public.patients, so an
+    // embedded patient join resolves to null and every name renders as "—".
+    const [summaryResult, result] = await Promise.all([summaryPromise, supabase.rpc("list_pending_prescriptions", { p_query: null, p_limit: 8 })]);
+    return { summary: (summaryResult.data ?? {}) as DashboardSummary, role: profile.role, activity: { kind: "pharmacy" as const, rows: (result.data ?? []) as PendingPrescriptionRow[] } };
   }
   if (profile.role === "ip") {
     const [summaryResult, result] = await Promise.all([summaryPromise, supabase.from("ip_tickets").select("id,ticket_number,admission_at,room,bed,status,is_emergency,patients(name),doctors(display_name),ip_charges(amount_paise),ip_payments(amount_paise)").in("status", ["admitted", "discharge_pending"]).order("admission_at").limit(8)]);

@@ -13,8 +13,10 @@ export async function findMatchingPatientIds(
   let query = supabase.from("patients").select("id").limit(limit);
 
   query = digits.length >= 2
-    ? query.like("phone_normalized", `${digits.slice(-10)}%`)
-    : query.ilike("name_normalized", prefixSearchPattern(value).toLowerCase());
+    ? query.or(`phone_normalized.like.${digits.slice(-10)}%,uhid.ilike.%${digits}%`)
+    : /^mh-?\d/i.test(value.trim())
+      ? query.ilike("uhid", `${value.trim().replace(/\s+/g, "")}%`)
+      : query.ilike("name_normalized", prefixSearchPattern(value).toLowerCase());
 
   const { data, error } = await query;
   if (error) throw new Error("Patient search could not be completed.");

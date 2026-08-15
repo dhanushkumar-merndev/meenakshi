@@ -3,6 +3,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requirePermission } from "@/lib/auth/dal";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { rupeesToPaise } from "@/lib/domain/money";
 import { databaseIdSchema } from "@/lib/validation/database-id";
 import type { ActionState } from "@/types/hospital";
 
@@ -18,6 +19,10 @@ const schema = z.object({
   followUpDays: z.string().optional(),
   medicines: z.string(),
   tests: z.string(),
+  fee: z.string().optional(),
+  admissionRecommended: z.string().optional(),
+  admissionWardType: z.enum(["general", "private", "icu"]).optional(),
+  admissionReason: z.string().max(2000).optional(),
   intent: z.enum(["draft", "complete"]),
 });
 const medicineSchema = z
@@ -58,6 +63,25 @@ export async function saveConsultation(
   const followUpDays = parsed.data.followUpDays
     ? Number(parsed.data.followUpDays)
     : null;
+  // The consulting doctor owns the fee; the pharmacy counter collects it.
+  // 0 is a valid deliberate entry (free follow-up), blank is not.
+  const rawFee = parsed.data.fee?.trim() ?? "";
+  const feePaise = rawFee === "" ? null : rupeesToPaise(rawFee);
+  if (parsed.data.intent === "complete") {
+    if (feePaise === null || Number.isNaN(feePaise))
+      return {
+        ok: false,
+        fieldErrors: {
+          fee: ["Enter the consultation fee to complete this consultation."],
+        },
+      };
+    if (feePaise < 0)
+      return {
+        ok: false,
+        fieldErrors: { fee: ["Consultation fee cannot be negative."] },
+      };
+  }
+  const admissionRecommended = Boolean(parsed.data.admissionRecommended);
   const supabase = await createSupabaseServerClient();
   const { error } = await supabase.rpc("save_visit_consultation", {
     p_visit_id: parsed.data.visitId,
@@ -72,6 +96,15 @@ export async function saveConsultation(
     p_medicines: medicines,
     p_tests: tests,
     p_complete: parsed.data.intent === "complete",
+    p_fee_paise: feePaise !== null && !Number.isNaN(feePaise) ? feePaise : null,
+    // Doctor recommends a ward type only; IP staff assign the actual bed.
+    p_admission_recommended: admissionRecommended,
+    p_admission_ward_type: admissionRecommended
+      ? (parsed.data.admissionWardType ?? "general")
+      : null,
+    p_admission_reason: admissionRecommended
+      ? parsed.data.admissionReason || null
+      : null,
   });
   if (error)
     return {

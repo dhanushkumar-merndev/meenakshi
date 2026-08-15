@@ -48,6 +48,8 @@ type VisitDetail = {
     display_name: string;
     qualification: string | null;
     registration_number: string | null;
+    op_fee_paise: number;
+    follow_up_fee_paise: number;
   } | null;
   departments: { name: string } | null;
   vitals: {
@@ -71,6 +73,9 @@ type VisitDetail = {
     follow_up_date: string | null;
     follow_up_days: number | null;
     status: string;
+    admission_recommended: boolean | null;
+    admission_ward_type: string | null;
+    admission_reason: string | null;
   } | null;
   prescriptions: {
     id: string;
@@ -118,7 +123,7 @@ export default async function VisitPage({
   const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase
     .from("visits")
-    .select(`id,token_number,created_at,visit_date,visit_type,status,patient_id,doctor_id,patients(name,phone_normalized,dob,gender,allergies,blood_group),doctors(display_name,qualification,registration_number),departments(name),vitals(weight_kg,height_cm,temperature_c,bp_systolic,bp_diastolic,pulse,spo2,respiratory_rate,notes),consultations(symptoms,history,examination,assessment,advice,follow_up_type,follow_up_date,follow_up_days,status),prescriptions(id,prescription_number,status,prescription_items(medicine_id,medicine_name,dose,frequency,duration,route,notes,requested_quantity)),test_orders(id,test_name,notes,status)${finance ? ",visit_payments(amount_paise,mode,created_at)" : ""}`)
+    .select(`id,token_number,created_at,visit_date,visit_type,status,patient_id,doctor_id,patients(name,phone_normalized,dob,gender,allergies,blood_group),doctors(display_name,qualification,registration_number,op_fee_paise,follow_up_fee_paise),departments(name),vitals(weight_kg,height_cm,temperature_c,bp_systolic,bp_diastolic,pulse,spo2,respiratory_rate,notes),consultations(symptoms,history,examination,assessment,advice,follow_up_type,follow_up_date,follow_up_days,status,admission_recommended,admission_ward_type,admission_reason),prescriptions(id,prescription_number,status,prescription_items(medicine_id,medicine_name,dose,frequency,duration,route,notes,requested_quantity)),test_orders(id,test_name,notes,status)${finance ? ",visit_payments(amount_paise,mode,created_at)" : ""}`)
     .eq("id", id)
     .single();
   if (error || !data) notFound();
@@ -156,6 +161,16 @@ export default async function VisitPage({
     visit.fee_paise,
     visit.visit_payments?.map((p) => p.amount_paise) ?? [],
   );
+  // visits.fee_paise is column-revoked from authenticated, so the doctor cannot
+  // read it back. Prefill from their own configured fee; they can override it.
+  const configuredFeePaise =
+    visit.visit_type === "follow_up"
+      ? visit.doctors?.follow_up_fee_paise
+      : visit.doctors?.op_fee_paise;
+  const defaultFeeRupees =
+    typeof configuredFeePaise === "number"
+      ? (configuredFeePaise / 100).toFixed(2)
+      : undefined;
   const canEditClinical =
     hasPermission(profile.role, "writeConsultation") &&
     (profile.role === "admin" || profile.doctorId === visit.doctor_id) &&
@@ -175,8 +190,9 @@ export default async function VisitPage({
       }
     : undefined;
   const canConvertToIp=(profile.role==="doctor"||profile.role==="admin")&&(profile.role==="admin"||profile.doctorId===visit.doctor_id);
-  const [{data:availableRooms},{data:existingAdmission}]=canConvertToIp?await Promise.all([supabase.from("room_beds").select("id,room_number,bed_number,floor").eq("active",true).order("floor").order("room_number"),supabase.from("ip_tickets").select("id").eq("source_visit_id",visit.id).in("status",["admitted","discharge_pending"]).maybeSingle()]):[{data:[]},{data:null}];
-  const occupiedResult=canConvertToIp?await supabase.from("ip_tickets").select("room_bed_id").in("status",["admitted","discharge_pending"]).not("room_bed_id","is",null):{data:[]};
+  // These three are independent of each other; running them in one Promise.all
+  // removes a round-trip from the critical path.
+  const [{data:availableRooms},{data:existingAdmission},occupiedResult]=canConvertToIp?await Promise.all([supabase.from("room_beds").select("id,room_number,bed_number,floor").eq("active",true).order("floor").order("room_number"),supabase.from("ip_tickets").select("id").eq("source_visit_id",visit.id).in("status",["admitted","discharge_pending"]).maybeSingle(),supabase.from("ip_tickets").select("room_bed_id").in("status",["admitted","discharge_pending"]).not("room_bed_id","is",null)]):[{data:[]},{data:null},{data:[]}];
   const occupiedBeds=new Set((occupiedResult.data??[]).map(row=>row.room_bed_id));
   return (
     <div>
@@ -390,6 +406,7 @@ export default async function VisitPage({
             test_name: item.test_name,
             notes: item.notes ?? "",
           }))}
+          defaultFee={defaultFeeRupees}
         />
       ) : consultation ? (
         <div className="space-y-4">

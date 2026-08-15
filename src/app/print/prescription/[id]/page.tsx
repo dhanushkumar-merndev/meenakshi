@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { calculateAge, formatHospitalDate } from "@/lib/domain/date";
 import { formatPrescriptionNumber } from "@/lib/domain/prescription";
+import { formatInr } from "@/lib/domain/money";
 import { PrintButton } from "@/components/shared/print-button";
 import { HospitalLogo } from "@/components/shared/hospital-logo";
 
@@ -66,6 +67,20 @@ export default async function PrescriptionPrintPage({
     .eq("status", "completed")
     .single();
   if (error || !data) notFound();
+  // Money is kept off the prescription unless the hospital explicitly opts in
+  // (AGENTS.md 24). The fee itself lives on visits, which is column-restricted,
+  // so it is read through the finance RPC only when the setting is on.
+  const { data: printSettings } = await supabase
+    .from("hospital_settings")
+    .select("print_fee_on_prescription")
+    .eq("id", true)
+    .single();
+  let feePaise: number | null = null;
+  if (printSettings?.print_fee_on_prescription) {
+    const { data: finance } = await supabase.rpc("get_visit_financial_summaries", { p_visit_ids: [id] });
+    const row = (finance ?? [])[0] as { fee_paise?: number } | undefined;
+    feePaise = typeof row?.fee_paise === "number" ? row.fee_paise : null;
+  }
   const rx = data as unknown as Rx;
   const patient = rx.patients;
   const doctor = rx.doctors;
@@ -217,6 +232,13 @@ export default async function PrescriptionPrintPage({
               Advice
             </h3>
             <p className="mt-1 whitespace-pre-wrap">{c.advice}</p>
+          </section>
+        ) : null}
+        {feePaise !== null ? (
+          <section className="mt-4 border-t pt-2 text-right">
+            <p>
+              <b>Consultation fee:</b> {formatInr(feePaise)}
+            </p>
           </section>
         ) : null}
         <footer className="mt-12 flex justify-between border-t pt-3 text-[10px]">

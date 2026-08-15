@@ -39,6 +39,7 @@ const ErrorText = ({ errors }: { errors?: string[] }) =>
 export function NewPatientDialog() {
   const [open, setOpen] = useState(false);
   const [gender, setGender] = useState("unknown");
+  const [bloodGroup, setBloodGroup] = useState("");
   const [dob, setDob] = useState("");
   const [state, action, pending] = useActionState(createPatient, initial);
   const router = useRouter();
@@ -58,8 +59,8 @@ export function NewPatientDialog() {
           <DialogHeader>
             <DialogTitle>Add patient</DialogTitle>
             <DialogDescription>
-              Phone is shown as the Patient ID. It can be corrected later
-              without losing history.
+              UHID is the Patient ID. Leave it blank to auto-generate. Several
+              patients may share one phone number.
             </DialogDescription>
           </DialogHeader>
           {state.message && !state.ok ? (
@@ -74,7 +75,12 @@ export function NewPatientDialog() {
               <ErrorText errors={state.fieldErrors?.name} />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="patient-phone">Phone *</Label>
+              <Label htmlFor="patient-uhid">UHID</Label>
+              <Input id="patient-uhid" name="uhid" placeholder="Auto (MH-000123)" />
+              <ErrorText errors={state.fieldErrors?.uhid} />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="patient-phone">Mobile number *</Label>
               <Input
                 id="patient-phone"
                 name="phone"
@@ -96,6 +102,19 @@ export function NewPatientDialog() {
               />
             </div>
             <div className="space-y-2">
+              <Label htmlFor="patient-age">Age (if date of birth unknown)</Label>
+              <Input
+                id="patient-age"
+                name="age"
+                inputMode="numeric"
+                placeholder="32"
+                disabled={Boolean(dob)}
+              />
+              <p className="text-xs text-muted-foreground">
+                Enter either a date of birth or an age.
+              </p>
+            </div>
+            <div className="space-y-2">
               <Label>Gender</Label>
               <input type="hidden" name="gender" value={gender} />
               <Select
@@ -114,16 +133,38 @@ export function NewPatientDialog() {
               </Select>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="blood-group">Blood group</Label>
-              <Input id="blood-group" name="bloodGroup" placeholder="O+" />
+              <Label>Blood group</Label>
+              <input type="hidden" name="bloodGroup" value={bloodGroup} />
+              <Select
+                value={bloodGroup}
+                onValueChange={(value) => setBloodGroup(String(value))}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">Not known</SelectItem>
+                  {["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"].map((group) => (
+                    <SelectItem key={group} value={group}>{group}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div className="space-y-2 sm:col-span-2">
-              <Label htmlFor="address">Address</Label>
+              <Label htmlFor="address">Place / Address</Label>
               <Textarea id="address" name="address" rows={2} />
             </div>
             <div className="space-y-2 sm:col-span-2">
-              <Label htmlFor="allergies">Known allergies</Label>
+              <Label htmlFor="allergies">Allergic history</Label>
               <Textarea id="allergies" name="allergies" rows={2} />
+            </div>
+            <div className="space-y-2 sm:col-span-2">
+              <Label htmlFor="reference-detail">Reference detail</Label>
+              <Input
+                id="reference-detail"
+                name="referenceDetail"
+                placeholder="Referred by Dr Kumar / health camp / walk-in"
+              />
             </div>
           </div>
           <DialogFooter showCloseButton>

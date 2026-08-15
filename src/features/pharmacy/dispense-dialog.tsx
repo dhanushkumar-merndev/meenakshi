@@ -2,6 +2,7 @@
 import { useActionState, useMemo, useState } from "react";
 import { CheckCircle2, LoaderCircle, Pill } from "lucide-react";
 import { dispensePrescription } from "./actions";
+import { formatInr } from "@/lib/domain/money";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -52,6 +53,8 @@ export function DispenseDialog({
   source,
   items,
   batches,
+  consultationBalancePaise,
+  doctorName,
 }: {
   prescriptionId: string;
   prescriptionNumber: string;
@@ -59,12 +62,19 @@ export function DispenseDialog({
   source: string;
   items: Item[];
   batches: Batch[];
+  /** Outstanding consultation fee the doctor set, collected at this counter. */
+  consultationBalancePaise?: number;
+  doctorName?: string | null;
 }) {
   const [state, action, pending] = useActionState(dispensePrescription, {
     ok: false,
   });
   const [mode, setMode] = useState("cash");
   const [key] = useState(() => crypto.randomUUID());
+  const outstanding = consultationBalancePaise ?? 0;
+  const [feeCollected, setFeeCollected] = useState(() =>
+    outstanding > 0 ? (outstanding / 100).toFixed(2) : "",
+  );
   const [lines, setLines] = useState(() =>
     items.map((item) => {
       const batch = batches
@@ -91,6 +101,13 @@ export function DispenseDialog({
         })),
     [lines],
   );
+  // The pharmacy counter cannot close an OP prescription while the doctor's
+  // consultation fee is still outstanding.
+  const feeEntered = Number(feeCollected);
+  const feeUnpaid =
+    source === "op" &&
+    outstanding > 0 &&
+    (!feeCollected.trim() || Number.isNaN(feeEntered) || feeEntered <= 0);
   if (state.ok) {
     const completed = state.data?.prescriptionStatus === "dispensed";
     return (
@@ -200,29 +217,54 @@ export function DispenseDialog({
             </Table>
           </div>
           {source === "op" ? (
-            <div className="space-y-2">
-              <Label>Payment mode</Label>
-              <Select
-                value={mode}
-                onValueChange={(value) => setMode(value as string)}
-              >
-                <SelectTrigger className="w-48">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="cash">Cash</SelectItem>
-                  <SelectItem value="upi">UPI</SelectItem>
-                  <SelectItem value="card">Card</SelectItem>
-                  <SelectItem value="bank_transfer">Bank Transfer</SelectItem>
-                  <SelectItem value="other">Other</SelectItem>
-                </SelectContent>
-              </Select>
+            <div className="flex flex-wrap gap-4">
+              <div className="space-y-2">
+                <Label>Payment mode</Label>
+                <Select
+                  value={mode}
+                  onValueChange={(value) => setMode(value as string)}
+                >
+                  <SelectTrigger className="w-48">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="cash">Cash</SelectItem>
+                    <SelectItem value="upi">UPI</SelectItem>
+                    <SelectItem value="card">Card</SelectItem>
+                    <SelectItem value="bank_transfer">Bank Transfer</SelectItem>
+                    <SelectItem value="other">Other</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              {outstanding > 0 ? (
+                <div className="space-y-2">
+                  <Label htmlFor={`fee-${prescriptionId}`}>
+                    Consultation fee collected (₹){" "}
+                    <span className="text-destructive">*</span>
+                  </Label>
+                  <Input
+                    id={`fee-${prescriptionId}`}
+                    name="consultationCollected"
+                    inputMode="decimal"
+                    className="w-48"
+                    value={feeCollected}
+                    onChange={(event) => setFeeCollected(event.target.value)}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Set by {doctorName ?? "the consulting doctor"} · outstanding{" "}
+                    {formatInr(outstanding)}
+                  </p>
+                </div>
+              ) : null}
             </div>
           ) : null}
           <DialogFooter showCloseButton>
-            <Button disabled={pending || payload.length === 0} type="submit">
+            <Button
+              disabled={pending || payload.length === 0 || feeUnpaid}
+              type="submit"
+            >
               {pending ? <LoaderCircle className="animate-spin" /> : <Pill />}{" "}
-              Confirm Dispense
+              {feeUnpaid ? "Enter consultation fee" : "Confirm Dispense"}
             </Button>
           </DialogFooter>
         </form>

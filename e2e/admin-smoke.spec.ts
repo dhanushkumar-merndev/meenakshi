@@ -2,7 +2,7 @@ import { expect, test } from "@playwright/test";
 
 const email = process.env.E2E_ADMIN_EMAIL;
 const password = process.env.E2E_ADMIN_PASSWORD;
-const routes = ["/dashboard", "/patients", "/reception", "/op", "/doctor", "/ip", "/pharmacy", "/reports", "/admin/users", "/admin/doctors", "/admin/departments", "/admin/charges", "/admin/clinical-directory", "/pharmacy/medicines", "/admin/report-categories", "/admin/exports", "/admin/settings", "/admin/analytics", "/audit"];
+const routes = ["/dashboard", "/patients", "/reception", "/op", "/doctor", "/ip", "/pharmacy", "/reports", "/admin/users", "/admin/doctors", "/admin/masters", "/admin/masters?tab=charges", "/admin/masters?tab=rooms", "/admin/masters?tab=report-categories", "/admin/clinical-directory", "/pharmacy/medicines", "/pharmacy/inventory", "/pharmacy/inventory?tab=bills", "/op/assist", "/reception/payments", "/reception/payments?view=collected", "/ip?view=grid", "/admin/exports", "/admin/settings", "/admin/analytics", "/audit"];
 
 test.describe("authenticated admin application", () => {
   test.skip(!email || !password, "Set E2E_ADMIN_EMAIL and E2E_ADMIN_PASSWORD for authenticated tests.");

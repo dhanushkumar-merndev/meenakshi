@@ -166,6 +166,11 @@
     border-radius: 999px;
     background: var(--sidebar-border);
   }
+
+  .login-bg {
+    background-color: #DFDBE5;
+    background-image: url("/login-pattern.svg");
+  }
 }
 
 @media print {

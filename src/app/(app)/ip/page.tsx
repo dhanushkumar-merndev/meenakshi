@@ -7,6 +7,7 @@ import { containsSearchPattern, EMPTY_UUID } from "@/lib/domain/search";
 import { findMatchingPatientIds } from "@/lib/search/patients";
 import { AdmissionDialog } from "@/features/ip/ip-dialogs";
 import { PageHeader } from "@/components/shared/page-header";
+import { FilterTabs } from "@/components/shared/filter-tabs";
 import { TablePager } from "@/components/shared/table-pager";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { DebouncedSearchInput } from "@/components/shared/debounced-search-input";
@@ -34,12 +35,15 @@ type Ticket = {
   ip_charges: Array<{ amount_paise: number }>;
   ip_payments: Array<{ amount_paise: number }>;
 };
-export default async function IpPage({ searchParams }: { searchParams: Promise<{ status?: string; page?: string; q?: string }> }) {
+export default async function IpPage({ searchParams }: { searchParams: Promise<{ status?: string; page?: string; q?: string; view?: string }> }) {
   const profile = await requireRoute("/ip");
   const params = await searchParams; const selectedStatus = params.status ?? "active"; const page = Math.max(1, Number(params.page) || 1); const size = 50; const q = params.q?.trim() ?? "";
+  // Grid shows live bed occupancy across every room, so it ignores the status
+  // filter and paging that only make sense for the ticket list.
+  const view = params.view === "grid" ? "grid" : "list";
   const supabase = await createSupabaseServerClient();
   const patientIds = q ? await findMatchingPatientIds(supabase, q) : [];
-  const [ticketsResult, doctorsResult, roomsResult] = await Promise.all([
+  const [ticketsResult, doctorsResult, roomsResult, occupancyResult, referralResult] = await Promise.all([
     (() => {
       let query = supabase
       .from("ip_tickets")
@@ -62,16 +66,25 @@ export default async function IpPage({ searchParams }: { searchParams: Promise<{
       .select("id,display_name")
       .eq("active", true)
       .order("display_name"),
-    supabase.from("room_beds").select("id,room_number,bed_number,floor").eq("active",true).order("floor").order("room_number"),
+    supabase.from("room_beds").select("id,room_number,bed_number,floor,room_type").eq("active",true).order("floor").order("room_number").order("bed_number"),
+    view === "grid"
+      ? supabase
+          .from("ip_tickets")
+          .select("id,room_bed_id,admission_at,patients(name,phone_normalized),doctors(display_name)")
+          .in("status", ["admitted", "discharge_pending"])
+          .not("room_bed_id", "is", null)
+      : Promise.resolve({ data: [] }),
+    supabase.rpc("list_admission_referrals", { p_limit: 25 }),
   ]);
+  const referrals = (referralResult.data ?? []) as unknown as Referral[];
   const tickets = (ticketsResult.data ?? []) as unknown as Ticket[];
   const occupied = new Set(tickets.filter((ticket)=>["admitted","discharge_pending"].includes(ticket.status)).map((ticket)=>ticket.room_bed_id));
   const canFinance = profile.role === "admin" || profile.role === "ip";
   return (
     <div>
       <PageHeader
-        title={selectedStatus === "all" ? "IP Tickets" : selectedStatus === "discharge_pending" ? "Pending Discharges" : selectedStatus === "discharged" ? "Discharged Patients" : "Current IP Patients"}
-        description="One ticket holds every charge, payment, note, and discharge record"
+        title={view === "grid" ? "Room Occupancy" : selectedStatus === "all" ? "IP Tickets" : selectedStatus === "discharge_pending" ? "Pending Discharges" : selectedStatus === "discharged" ? "Discharged Patients" : "Current IP Patients"}
+        description={view === "grid" ? "Live grid of available and occupied hospital rooms and beds" : "One ticket holds every charge, payment, note, and discharge record"}
         actions={
           profile.role === "admin" || profile.role === "ip" ? (
             <AdmissionDialog
@@ -83,6 +96,89 @@ export default async function IpPage({ searchParams }: { searchParams: Promise<{
             />
           ) : undefined
         }
+      />
+      <div className="mb-4 flex justify-end">
+        <FilterTabs
+          ariaLabel="Switch between ticket list and room grid"
+          active={view}
+          param="view"
+          params={{ q, status: selectedStatus }}
+          tabs={[
+            { label: "List", value: "list" },
+            { label: "Grid", value: "grid" },
+          ]}
+        />
+      </div>
+      {referrals.length ? (
+        <Card className="mb-4 border-primary/40">
+          <CardContent className="p-0">
+            <div className="border-b px-4 py-3">
+              <h2 className="text-sm font-semibold">
+                Admission referrals from doctors ({referrals.length})
+              </h2>
+              <p className="text-xs text-muted-foreground">
+                The doctor recommends the ward type; you assign the room and bed.
+              </p>
+            </div>
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Patient</TableHead>
+                    <TableHead>Referred By</TableHead>
+                    <TableHead>Ward Type</TableHead>
+                    <TableHead>Admission Reason</TableHead>
+                    <TableHead>Diagnosis</TableHead>
+                    <TableHead>Recommended</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {referrals.map((referral) => (
+                    <TableRow key={referral.consultation_id}>
+                      <TableCell className="font-medium">
+                        {referral.patient_name}
+                        <span className="block text-xs font-normal text-muted-foreground">
+                          {referral.patient_phone}
+                        </span>
+                      </TableCell>
+                      <TableCell>{referral.doctor_name}</TableCell>
+                      <TableCell>
+                        <StatusBadge status={referral.ward_type} />
+                      </TableCell>
+                      <TableCell className="max-w-56 truncate">
+                        {referral.admission_reason ?? "—"}
+                      </TableCell>
+                      <TableCell className="max-w-56 truncate">
+                        {referral.assessment ?? "—"}
+                      </TableCell>
+                      <TableCell className="whitespace-nowrap">
+                        {formatHospitalDate(referral.recommended_at, true)}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </CardContent>
+        </Card>
+      ) : null}
+      {view === "grid" ? (
+        <RoomGrid
+          rooms={(roomsResult.data ?? []) as RoomBed[]}
+          tickets={(occupancyResult.data ?? []) as unknown as Occupancy[]}
+        />
+      ) : (
+      <>
+      <FilterTabs
+        ariaLabel="Filter IP tickets by status"
+        active={selectedStatus}
+        params={{ q }}
+        tabs={[
+          { label: "Current", value: "active" },
+          { label: "Pending Discharge", value: "discharge_pending" },
+          { label: "Discharged", value: "discharged" },
+          { label: "All Tickets", value: "all" },
+        ]}
       />
       <DebouncedSearchInput className="mb-4 max-w-md" initialValue={q} placeholder="Search IP ticket, patient name or phone" ariaLabel="Search IP patients" />
       <Card>
@@ -120,14 +216,14 @@ export default async function IpPage({ searchParams }: { searchParams: Promise<{
                         <TableCell className="font-medium">
                           {ticket.ticket_number}
                         </TableCell>
-                        <TableCell>{ticket.patients?.name ?? (ticket.is_emergency ? "Unidentified emergency" : "—")}</TableCell>
-                        <TableCell>{(roomsResult.data ?? []).find((room) => room.id === ticket.room_bed_id)?.floor ?? "—"}</TableCell>
-                        <TableCell><StatusBadge status="occupied" /></TableCell>
-                        <TableCell>{ipDaysSince(ticket.admission_at)}</TableCell>
-                        <TableCell>{ticket.doctors?.display_name}</TableCell>
                         <TableCell>
                           {ticket.room ?? "—"}/{ticket.bed ?? "—"}
                         </TableCell>
+                        <TableCell>{(roomsResult.data ?? []).find((room) => room.id === ticket.room_bed_id)?.floor ?? "—"}</TableCell>
+                        <TableCell><StatusBadge status="occupied" /></TableCell>
+                        <TableCell className="font-medium">{ticket.patients?.name ?? (ticket.is_emergency ? "Unidentified emergency" : "—")}</TableCell>
+                        <TableCell>{ipDaysSince(ticket.admission_at)}</TableCell>
+                        <TableCell>{ticket.doctors?.display_name}</TableCell>
                         <TableCell>
                           {formatHospitalDate(ticket.admission_at)}
                         </TableCell>
@@ -161,9 +257,93 @@ export default async function IpPage({ searchParams }: { searchParams: Promise<{
                 )}
               </TableBody>
             </Table>
-          </div><TablePager page={page} pages={Math.max(1, Math.ceil((ticketsResult.count ?? 0) / size))} total={ticketsResult.count ?? 0} params={{ status: selectedStatus, q }} />
+          </div><TablePager page={page} pages={Math.max(1, Math.ceil((ticketsResult.count ?? 0) / size))} total={ticketsResult.count ?? 0} params={{ status: selectedStatus, q, view }} />
         </CardContent>
       </Card>
+      </>
+      )}
+    </div>
+  );
+}
+
+type Referral = {
+  consultation_id: string;
+  visit_id: string;
+  patient_id: string;
+  patient_name: string;
+  patient_phone: string;
+  doctor_name: string;
+  ward_type: string;
+  admission_reason: string | null;
+  assessment: string | null;
+  recommended_at: string;
+};
+type RoomBed = { id: string; room_number: string; bed_number: string; floor: string; room_type: string | null };
+type Occupancy = {
+  id: string;
+  room_bed_id: string | null;
+  admission_at: string;
+  patients: { name: string; phone_normalized: string } | null;
+  doctors: { display_name: string } | null;
+};
+
+/** Live bed board: every active bed, grouped by floor, occupied ones linked to their ticket. */
+function RoomGrid({ rooms, tickets }: { rooms: RoomBed[]; tickets: Occupancy[] }) {
+  const byBed = new Map(tickets.map((ticket) => [ticket.room_bed_id, ticket]));
+  const floors = [...new Set(rooms.map((room) => room.floor))];
+  if (!rooms.length)
+    return (
+      <Card>
+        <CardContent className="p-10 text-center text-muted-foreground">
+          No rooms or beds configured yet.
+        </CardContent>
+      </Card>
+    );
+  return (
+    <div className="space-y-6">
+      {floors.map((floor) => (
+        <section key={floor}>
+          <h2 className="mb-3 text-sm font-semibold">{floor}</h2>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            {rooms
+              .filter((room) => room.floor === floor)
+              .map((room) => {
+                const ticket = byBed.get(room.id);
+                return (
+                  <Card
+                    key={room.id}
+                    className={ticket ? "border-destructive/30" : "border-primary/30"}
+                  >
+                    <CardContent className="space-y-1 p-4 text-sm">
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="font-medium">
+                          Room {room.room_number} · Bed {room.bed_number}
+                        </p>
+                        <StatusBadge status={ticket ? "occupied" : "available"} />
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        {room.room_type ?? "Standard"}
+                      </p>
+                      {ticket ? (
+                        <>
+                          <p className="pt-1 font-medium">{ticket.patients?.name ?? "—"}</p>
+                          <p className="text-muted-foreground">{ticket.patients?.phone_normalized ?? "—"}</p>
+                          <p>{ipDaysSince(ticket.admission_at)} IP days</p>
+                          <p>{ticket.doctors?.display_name ?? "—"}</p>
+                          <Button className="mt-2" size="sm" variant="outline" render={<Link href={`/ip/${ticket.id}`} />}>
+                            Open IP ticket
+                          </Button>
+                        </>
+                      ) : (
+                        <p className="py-4 text-center text-muted-foreground">Ready for assignment</p>
+                      )}
+                    </CardContent>
+                  </Card>
+                );
+              })}
+          </div>
+        </section>
+      ))}
     </div>
   );
 }

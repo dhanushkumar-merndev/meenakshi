@@ -50,10 +50,6 @@ export function CreateVisitDialog({
   const [open, setOpen] = useState(false);
   const [doctorId, setDoctorId] = useState(doctors[0]?.id ?? "");
   const [visitType, setVisitType] = useState("op");
-  const [collected, setCollected] = useState(() =>
-    String((doctors[0]?.opFeePaise ?? 0) / 100),
-  );
-  const [mode, setMode] = useState("cash");
   const [previousVisitId, setPreviousVisitId] = useState("");
   const [idempotencyKey] = useState(() => crypto.randomUUID());
   const [state, action, pending] = useActionState(createVisit, initial);
@@ -61,28 +57,15 @@ export function CreateVisitDialog({
     () => doctors.find((item) => item.id === doctorId),
     [doctors, doctorId],
   );
-  const fee =
-    ((visitType === "follow_up"
-      ? doctor?.followUpFeePaise
-      : doctor?.opFeePaise) ?? 0) / 100;
 
+  // No fee is captured at registration: the consulting doctor sets it when the
+  // consultation is completed, and reception or pharmacy collects it afterwards.
   function updateVisitType(nextVisitType: string) {
     setVisitType(nextVisitType);
-    const nextFee =
-      ((nextVisitType === "follow_up"
-        ? doctor?.followUpFeePaise
-        : doctor?.opFeePaise) ?? 0) / 100;
-    setCollected(String(nextFee));
   }
 
   function updateDoctor(nextDoctorId: string) {
-    const nextDoctor = doctors.find((item) => item.id === nextDoctorId);
     setDoctorId(nextDoctorId);
-    const nextFee =
-      ((visitType === "follow_up"
-        ? nextDoctor?.followUpFeePaise
-        : nextDoctor?.opFeePaise) ?? 0) / 100;
-    setCollected(String(nextFee));
   }
 
   return (
@@ -137,7 +120,6 @@ export function CreateVisitDialog({
             <input type="hidden" name="idempotencyKey" value={idempotencyKey} />
             <input type="hidden" name="doctorId" value={doctorId} />
             <input type="hidden" name="visitType" value={visitType} />
-            <input type="hidden" name="paymentMode" value={mode} />
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2 sm:col-span-2">
                 <Label>Patient</Label>
@@ -189,47 +171,6 @@ export function CreateVisitDialog({
                   value={doctor?.department ?? "—"}
                   readOnly
                 />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="visit-fee">Consultation fee</Label>
-                <Input id="visit-fee" name="fee" value={fee} readOnly />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="collected">Amount collected offline</Label>
-                <Input
-                  id="collected"
-                  name="collected"
-                  inputMode="decimal"
-                  value={collected}
-                  onChange={(event) => setCollected(event.target.value)}
-                />
-                <p className="text-xs text-destructive">
-                  {state.fieldErrors?.collected?.[0]}
-                </p>
-              </div>
-              <div className="space-y-2">
-                <Label>Payment mode</Label>
-                <Select
-                  value={mode}
-                  onValueChange={(v) => setMode(v as string)}
-                >
-                  <SelectTrigger className="w-full">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {[
-                      ["cash", "Cash"],
-                      ["upi", "UPI"],
-                      ["card", "Card"],
-                      ["bank_transfer", "Bank Transfer"],
-                      ["other", "Other"],
-                    ].map(([value, label]) => (
-                      <SelectItem key={value} value={value}>
-                        {label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
               </div>
               {visitType === "follow_up" ? (
                 <div className="space-y-2 sm:col-span-2">

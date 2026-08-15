@@ -28,7 +28,11 @@ export function OperationalLiveSync({ role }: { role: AppRole }) {
       if (!response.ok) throw new Error("Live refresh unavailable");
       return (await response.json()) as { signature: string };
     },
-    refetchInterval: 60_000,
+    // Realtime below is the primary freshness signal. This poll is only a
+    // safety net for a dropped websocket, so it runs every 10 minutes rather
+    // than every minute: at 60s it was ~9,600 needless function invocations a
+    // day across 20 staff, for data realtime had already delivered.
+    refetchInterval: 600_000,
     refetchIntervalInBackground: false,
   });
 
@@ -41,21 +45,29 @@ export function OperationalLiveSync({ role }: { role: AppRole }) {
   useEffect(() => {
     const supabase = createSupabaseBrowserClient();
     let channel = supabase.channel(`operations:${role}`);
+    // router.refresh() re-runs the whole server component tree, so firing it
+    // per row was expensive: one pharmacy dispense touches prescriptions,
+    // prescription_items and a batch row, and every watched table change hit
+    // every signed-in user of that role. Bursts are coalesced into one refresh.
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const scheduleRefresh = () => {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => {
+        void queryClient.invalidateQueries({ queryKey });
+        void queryClient.invalidateQueries({ queryKey: ["hospital-notifications"] });
+        if (document.visibilityState === "visible") router.refresh();
+      }, 2_000);
+    };
     for (const table of roleTables[role]) {
       channel = channel.on(
         "postgres_changes",
         { event: "*", schema: "public", table },
-        () => {
-          void queryClient.invalidateQueries({ queryKey });
-          void queryClient.invalidateQueries({
-            queryKey: ["hospital-notifications"],
-          });
-          if (document.visibilityState === "visible") router.refresh();
-        },
+        scheduleRefresh,
       );
     }
     channel.subscribe();
     return () => {
+      if (timer) clearTimeout(timer);
       void supabase.removeChannel(channel);
     };
   }, [pathname, queryClient, queryKey, role, router]);

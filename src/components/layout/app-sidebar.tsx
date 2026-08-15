@@ -6,7 +6,7 @@ import * as Icons from "lucide-react";
 import { LogOut } from "lucide-react";
 import { HospitalLogo } from "@/components/shared/hospital-logo";
 import { signOut } from "@/app/(auth)/login/actions";
-import { getActiveNavigationHref, ROLE_NAVIGATION } from "./navigation";
+import { getActiveNavigationHref, groupNavigation, ROLE_NAVIGATION } from "./navigation";
 import type { Profile } from "@/types/hospital";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -21,6 +21,7 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
+  useSidebar,
 } from "@/components/ui/sidebar";
 
 function NavIcon({ name }: { name: string }) {
@@ -31,30 +32,35 @@ function NavIcon({ name }: { name: string }) {
 
 export function AppSidebar({ profile }: { profile: Profile }) {
   const pathname = usePathname();
+  const { setOpenMobile, isMobile } = useSidebar();
   const items = ROLE_NAVIGATION[profile.role];
   const activeHref = getActiveNavigationHref(items, pathname);
-  const groups = profile.role === "admin" ? [
-    { label: "Hospital", items: items.slice(0, 8) },
-    { label: "Administration", items: items.slice(8, -1) },
-    { label: "Security", items: items.slice(-1) },
-  ] : [{ label: "Workspace", items }];
+  const groups = groupNavigation(
+    items,
+    profile.role === "admin" ? "Hospital" : "Workspace",
+  );
   return (
     <Sidebar collapsible="icon" className="min-h-0" data-app-shell>
       <SidebarHeader className="border-b border-sidebar-border p-3 group-data-[collapsible=icon]:p-2">
         <Link
-          className="flex min-h-10 items-center gap-3 overflow-hidden group-data-[collapsible=icon]:justify-center"
+          className="flex min-h-10 items-center gap-3 overflow-hidden group-data-[collapsible=icon]:gap-0 group-data-[collapsible=icon]:justify-center"
           href="/dashboard"
+          onClick={() => isMobile && setOpenMobile(false)}
         >
-          <span className="flex size-13 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-white group-data-[collapsible=icon]:size-9">
+          <span className="flex size-13 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-white transition-[width,height] duration-200 ease-linear group-data-[collapsible=icon]:size-9">
             <HospitalLogo size={52} className="size-full p-0.5" />
           </span>
-          <span className="min-w-0 group-data-[collapsible=icon]:hidden">
+          {/* Opacity fade — w-0 removes layout space in collapsed state */}
+          <span className="min-w-0 w-full overflow-hidden transition-opacity duration-200 ease-linear group-data-[collapsible=icon]:w-0 group-data-[collapsible=icon]:opacity-0">
             <span className="block truncate font-semibold">Meenakshi Hospital</span>
             <span className="block truncate text-xs text-sidebar-foreground/65">Care operations</span>
           </span>
         </Link>
       </SidebarHeader>
-      <SidebarContent className="overscroll-contain group-data-[collapsible=icon]:overflow-y-auto!">
+      <SidebarContent
+        className="overscroll-contain group-data-[collapsible=icon]:overflow-y-auto!"
+        onClick={() => isMobile && setOpenMobile(false)}
+      >
         {groups.map((group) => <SidebarGroup className="group-data-[collapsible=icon]:px-2" key={group.label}>
           <SidebarGroupLabel>{group.label}</SidebarGroupLabel>
           <SidebarGroupContent>
@@ -62,13 +68,16 @@ export function AppSidebar({ profile }: { profile: Profile }) {
               {group.items.map((item) => (
                 <SidebarMenuItem key={item.href}>
                   <SidebarMenuButton
-                    className="group-data-[collapsible=icon]:mx-auto group-data-[collapsible=icon]:size-9!"
+                    className="group-data-[collapsible=icon]:mx-auto group-data-[collapsible=icon]:size-9! group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:gap-0"
                     render={<Link href={item.href} />}
                     isActive={activeHref === item.href}
                     tooltip={{ children: item.title, sideOffset: 10 }}
                   >
                     <NavIcon name={item.icon} />
-                    <span>{item.title}</span>
+                    {/* Fade + collapse layout so icon is centered in hover box */}
+                    <span className="overflow-hidden transition-opacity duration-200 ease-linear group-data-[collapsible=icon]:w-0 group-data-[collapsible=icon]:opacity-0">
+                      {item.title}
+                    </span>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
               ))}
@@ -87,13 +96,16 @@ export function AppSidebar({ profile }: { profile: Profile }) {
                 .join("")}
             </AvatarFallback>
           </Avatar>
-          <div className="min-w-0 flex-1 group-data-[collapsible=icon]:hidden">
+          <div className="min-w-0 flex-1 overflow-hidden transition-opacity duration-200 ease-linear group-data-[collapsible=icon]:w-0 group-data-[collapsible=icon]:opacity-0">
             <p className="truncate text-sm font-medium">{profile.fullName}</p>
             <Badge variant="secondary" className="mt-0.5 capitalize">
               {profile.role}
             </Badge>
           </div>
-          <form action={signOut} className="group-data-[collapsible=icon]:hidden">
+          <form
+            action={signOut}
+            className="overflow-hidden transition-opacity duration-200 ease-linear group-data-[collapsible=icon]:w-0 group-data-[collapsible=icon]:opacity-0"
+          >
             <button
               aria-label="Sign out"
               className="rounded-md p-2 hover:bg-sidebar-accent"
@@ -107,3 +119,4 @@ export function AppSidebar({ profile }: { profile: Profile }) {
     </Sidebar>
   );
 }
+

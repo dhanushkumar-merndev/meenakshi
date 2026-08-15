@@ -6,14 +6,16 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
   const params = await searchParams;
   const next = typeof params.next === "string" ? params.next : undefined;
   return (
-    <main className="flex min-h-screen items-center justify-center p-4">
-      <Card className="w-full max-w-sm shadow-sm">
-        <CardHeader className="text-center">
-          <div className="mx-auto mb-2 flex size-24 items-center justify-center overflow-hidden rounded-2xl border bg-white"><HospitalLogo size={88} className="size-full p-1" /></div>
-          <CardTitle className="text-xl">Meenakshi Hospital</CardTitle>
-          <CardDescription>Sign in with your staff account</CardDescription>
+    <main className="login-bg flex min-h-screen items-center justify-center p-4 sm:p-6">
+      <Card className="w-full max-w-md shadow-lg border-teal-900/10 bg-white/95 backdrop-blur-sm">
+        <CardHeader className="text-center pb-4">
+          <div className="mx-auto mb-3 flex size-16 items-center justify-center overflow-hidden rounded-2xl border bg-white shadow-xs">
+            <HospitalLogo size={52} className="size-full p-1" />
+          </div>
+          <CardTitle className="text-2xl font-bold tracking-tight text-teal-950">Meenakshi Hospital</CardTitle>
+          <CardDescription className="text-base text-teal-700/80">Sign in with your staff account</CardDescription>
         </CardHeader>
-        <CardContent><LoginForm next={next} /></CardContent>
+        <CardContent className="px-6 pb-6"><LoginForm next={next} /></CardContent>
       </Card>
     </main>
   );

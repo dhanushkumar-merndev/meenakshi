@@ -1,0 +1,211 @@
+import { requireRoute } from "@/lib/auth/dal";
+import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { formatHospitalDate } from "@/lib/domain/date";
+import { formatInr } from "@/lib/domain/money";
+import {
+  InventoryItemDialog,
+  ProcedureBillDialog,
+  type InventoryItem,
+} from "@/features/pharmacy/inventory-dialogs";
+import { PageHeader } from "@/components/shared/page-header";
+import { FilterTabs } from "@/components/shared/filter-tabs";
+import { StatusBadge } from "@/components/shared/status-badge";
+import { DebouncedSearchInput } from "@/components/shared/debounced-search-input";
+import { Card, CardContent } from "@/components/ui/card";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+
+type Sale = {
+  id: string;
+  sale_number: number;
+  procedure_name: string;
+  procedure_fee_paise: number;
+  items_total_paise: number;
+  total_paise: number;
+  payment_mode: string | null;
+  ip_ticket_id: string | null;
+  created_at: string;
+  patients: { name: string; uhid: string } | null;
+  doctors: { display_name: string } | null;
+};
+
+export default async function InventoryPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ tab?: string; q?: string }>;
+}) {
+  await requireRoute("/pharmacy");
+  const params = await searchParams;
+  const q = params.q?.trim() ?? "";
+  const tab = params.tab === "bills" ? "bills" : "stock";
+  const supabase = await createSupabaseServerClient();
+
+  const [itemsResult, doctorsResult, salesResult] = await Promise.all([
+    supabase.rpc("search_inventory_items", { p_query: tab === "stock" ? q || null : null, p_limit: 100 }),
+    supabase.from("doctors").select("id,display_name").eq("active", true).order("display_name"),
+    tab === "bills"
+      ? supabase
+          .from("procedure_sales")
+          .select("id,sale_number,procedure_name,procedure_fee_paise,items_total_paise,total_paise,payment_mode,ip_ticket_id,created_at,patients(name,uhid),doctors(display_name)")
+          .order("created_at", { ascending: false })
+          .limit(50)
+      : Promise.resolve({ data: [] }),
+  ]);
+
+  const items = (itemsResult.data ?? []) as unknown as InventoryItem[];
+  const doctors = (doctorsResult.data ?? []).map((d) => ({ id: d.id, label: d.display_name }));
+  const sales = (salesResult.data ?? []) as unknown as Sale[];
+
+  return (
+    <div>
+      <PageHeader
+        title="Inventory"
+        description="Consumables such as sutures, gauze and dressing material, and the procedure bills that use them"
+        actions={
+          <div className="flex gap-2">
+            <InventoryItemDialog />
+            <ProcedureBillDialog items={items} doctors={doctors} />
+          </div>
+        }
+      />
+      <FilterTabs
+        ariaLabel="Switch between inventory stock and procedure bills"
+        active={tab}
+        param="tab"
+        params={{ q }}
+        tabs={[
+          { label: "Stock", value: "stock" },
+          { label: "Procedure Bills", value: "bills" },
+        ]}
+      />
+      {tab === "stock" ? (
+        <>
+          <DebouncedSearchInput
+            className="mb-4 max-w-md"
+            initialValue={q}
+            placeholder="Search inventory item"
+            ariaLabel="Search inventory items"
+          />
+          <Card>
+            <CardContent className="p-0">
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>S. No</TableHead>
+                      <TableHead>Name</TableHead>
+                      <TableHead>Unit</TableHead>
+                      <TableHead>Price</TableHead>
+                      <TableHead>Quantity</TableHead>
+                      <TableHead>Expiry</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead className="text-right">Action</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {items.length ? (
+                      items.map((item) => {
+                        const status =
+                          item.quantity === 0
+                            ? "out_of_stock"
+                            : item.quantity <= item.low_stock_threshold
+                              ? "low_stock"
+                              : "in_stock";
+                        return (
+                          <TableRow key={item.id}>
+                            <TableCell className="font-mono text-xs">{item.item_code}</TableCell>
+                            <TableCell className="font-medium">{item.name}</TableCell>
+                            <TableCell>{item.unit ?? "—"}</TableCell>
+                            <TableCell className="tabular-nums">{formatInr(item.selling_price_paise)}</TableCell>
+                            <TableCell className="tabular-nums">{item.quantity}</TableCell>
+                            <TableCell className="whitespace-nowrap">
+                              {item.expiry_date ? formatHospitalDate(item.expiry_date) : "—"}
+                            </TableCell>
+                            <TableCell><StatusBadge status={status} /></TableCell>
+                            <TableCell className="text-right">
+                              <InventoryItemDialog item={item} />
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })
+                    ) : (
+                      <TableRow>
+                        <TableCell colSpan={8} className="h-32 text-center text-muted-foreground">
+                          {q ? "No inventory item matches this search." : "No inventory items yet. Add gauze, sutures and dressing material here."}
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
+            </CardContent>
+          </Card>
+        </>
+      ) : (
+        <Card>
+          <CardContent className="p-0">
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Bill No</TableHead>
+                    <TableHead>Date/Time</TableHead>
+                    <TableHead>Patient</TableHead>
+                    <TableHead>Doctor</TableHead>
+                    <TableHead>Procedure</TableHead>
+                    <TableHead>Procedure Fee</TableHead>
+                    <TableHead>Items</TableHead>
+                    <TableHead>Total</TableHead>
+                    <TableHead>Settlement</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {sales.length ? (
+                    sales.map((sale) => (
+                      <TableRow key={sale.id}>
+                        <TableCell className="font-mono text-xs">
+                          PR-{String(sale.sale_number).padStart(6, "0")}
+                        </TableCell>
+                        <TableCell className="whitespace-nowrap">{formatHospitalDate(sale.created_at, true)}</TableCell>
+                        <TableCell>
+                          <span className="font-medium">{sale.patients?.name ?? "—"}</span>
+                          <span className="block text-xs text-muted-foreground">{sale.patients?.uhid ?? ""}</span>
+                        </TableCell>
+                        <TableCell>{sale.doctors?.display_name ?? "—"}</TableCell>
+                        <TableCell>{sale.procedure_name}</TableCell>
+                        <TableCell className="tabular-nums">{formatInr(sale.procedure_fee_paise)}</TableCell>
+                        <TableCell className="tabular-nums">{formatInr(sale.items_total_paise)}</TableCell>
+                        <TableCell className="font-medium tabular-nums">{formatInr(sale.total_paise)}</TableCell>
+                        <TableCell>
+                          {sale.ip_ticket_id ? (
+                            <StatusBadge status="on IP ticket" />
+                          ) : (
+                            <span className="text-xs capitalize text-muted-foreground">
+                              {sale.payment_mode?.replaceAll("_", " ") ?? "—"}
+                            </span>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  ) : (
+                    <TableRow>
+                      <TableCell colSpan={9} className="h-32 text-center text-muted-foreground">
+                        No procedure bills yet.
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  );
+}
