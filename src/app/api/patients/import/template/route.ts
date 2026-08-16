@@ -21,7 +21,7 @@ export async function GET() {
   const instructions = XLSX.utils.aoa_to_sheet([
     ["Meenakshi Hospital Patient Import"],
     ["Required columns", "name, phone"],
-    ["phone", "10-digit Indian mobile number. This is the patient's visible Patient ID."],
+    ["phone", "10-digit Indian mobile number. Several patients may share one; the Patient ID is the UHID."],
     ["gender", "male, female, other or unknown (blank means unknown)"],
     ["dob", "YYYY-MM-DD, or leave blank if not known"],
     ["blood_group", "A+, A-, B+, B-, AB+, AB-, O+ or O-"],

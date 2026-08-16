@@ -38,8 +38,8 @@ type Ticket = {
   discharge_advice: string | null;
   follow_up: string | null;
   status: string;
-  patients: { name: string; phone_normalized: string } | null;
-  doctors: { display_name: string } | null;
+  patients: { name: string; uhid: string | null; phone_normalized: string } | null;
+  doctors: { display_name: string; ip_visit_fee_paise: number | null } | null;
   ip_charges: Array<{
     id: string;
     created_at: string;
@@ -74,7 +74,7 @@ export default async function IpTicketPage({
   const { data, error } = await supabase
     .from("ip_tickets")
     .select(
-      "id,ticket_number,patient_id,is_emergency,admission_at,discharge_at,room,bed,admission_reason,status,final_diagnosis,hospital_course,treatment_summary,discharge_medicines,discharge_advice,follow_up,patients(name,phone_normalized),doctors(display_name),ip_charges(id,created_at,category,item,quantity,rate_paise,amount_paise),ip_payments(id,created_at,amount_paise,mode,reference),ip_progress_notes(id,created_at,note,doctors(display_name))",
+      "id,ticket_number,patient_id,is_emergency,admission_at,discharge_at,room,bed,admission_reason,status,final_diagnosis,hospital_course,treatment_summary,discharge_medicines,discharge_advice,follow_up,patients(name,uhid,phone_normalized),doctors(display_name,ip_visit_fee_paise),ip_charges(id,created_at,category,item,quantity,rate_paise,amount_paise),ip_payments(id,created_at,amount_paise,mode,reference),ip_progress_notes(id,created_at,note,doctors(display_name))",
     )
     .eq("id", id)
     .single();
@@ -92,13 +92,13 @@ export default async function IpTicketPage({
     <div>
       <PageHeader
         title={`${ticket.ticket_number} · ${ticket.patients?.name ?? "Unidentified Emergency Patient"}`}
-        description={`Patient ID ${ticket.patients?.phone_normalized ?? "Pending assignment"} · admitted ${formatHospitalDate(ticket.admission_at, true)}`}
+        description={`Patient ID ${ticket.patients?.uhid ?? "Pending assignment"} · admitted ${formatHospitalDate(ticket.admission_at, true)}`}
         actions={
           <>
             {canManage && !ticket.patient_id && ticket.status !== "discharged" ? <AssignPatientDialog ticketId={ticket.id} /> : null}
             {canFinance ? <Button size="sm" variant="outline" render={<Link href={`/print/ip-ticket/${ticket.id}`} />}><Printer /> Running Bill</Button> : null}
             {ticket.status === "discharged" ? <>{canFinance ? <Button size="sm" variant="outline" render={<Link href={`/print/ip-bill/${ticket.id}`} />}><Printer /> Final Bill</Button> : null}<Button size="sm" render={<Link href={`/print/discharge/${ticket.id}`} />}><Printer /> Discharge Summary</Button></> : null}
-            {canDoctor && ticket.status === "admitted" ? <ProgressNoteDialog ticketId={ticket.id} /> : null}
+            {canDoctor && ticket.status === "admitted" ? <ProgressNoteDialog ticketId={ticket.id} defaultFee={typeof ticket.doctors?.ip_visit_fee_paise === "number" ? (ticket.doctors.ip_visit_fee_paise / 100).toFixed(2) : undefined} /> : null}
             {canDoctor && ["admitted","discharge_pending"].includes(ticket.status) ? <DischargeSummaryDialog ticketId={ticket.id} initialValues={{finalDiagnosis:ticket.final_diagnosis,hospitalCourse:ticket.hospital_course,treatmentSummary:ticket.treatment_summary,dischargeMedicines:ticket.discharge_medicines,dischargeAdvice:ticket.discharge_advice,followUp:ticket.follow_up}} /> : null}
             {canManage && ticket.status !== "discharged" ? <>
               <ChargeDialog ticketId={ticket.id} presets={chargePresets} />

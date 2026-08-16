@@ -18,10 +18,10 @@ test.describe("reception quick registration", () => {
     await signIn(page, "reception");
     await page.goto("/reception");
     await page.getByRole("button", { name: "Find or Add Patient" }).click();
-    await page.getByPlaceholder("Phone or patient name").fill(`9${stamp}`);
+    await page.getByPlaceholder("UHID, mobile number or patient name").fill(`9${stamp}`);
     await page.getByRole("button", { name: "Add new patient" }).click();
     await page.getByLabel("Patient name *").fill(patientName);
-    await page.getByLabel("Phone / Patient ID *").fill(`9${stamp}`);
+    await page.getByLabel("Mobile number *").fill(`9${stamp}`);
 
     // The extra fields stay out of the way until asked for.
     await expect(page.locator("#quick-gender")).toHaveCount(0);
@@ -38,8 +38,7 @@ test.describe("reception quick registration", () => {
     await page.getByRole("option", { name: "O+", exact: true }).click();
     await page.getByRole("button", { name: "+ Penicillin" }).click();
 
-    await page.getByRole("button", { name: "Create & continue" }).click();
-    await page.getByRole("button", { name: "Create Visit" }).click();
+    await page.getByRole("button", { name: "Register & Create Visit" }).click();
     await expect(page.getByRole("heading", { name: "Visit created" })).toBeVisible({ timeout: 30_000 });
     await page.keyboard.press("Escape");
 

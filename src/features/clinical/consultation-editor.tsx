@@ -4,6 +4,7 @@ import { FileCheck2, LoaderCircle, Plus, Save, Trash2 } from "lucide-react";
 import { saveConsultation, startConsultation } from "./actions";
 import { MedicineCombobox } from "./medicine-combobox";
 import { DiagnosisPicker } from "./diagnosis-picker";
+import { TermCombobox } from "./term-combobox";
 import type { ActionState } from "@/types/hospital";
 import { DatePickerField } from "@/components/shared/date-picker-field";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -50,7 +51,7 @@ type MedicineLine = {
   quantityAuto: boolean;
 };
 type SavedMedicineLine = Omit<MedicineLine, "key" | "quantityAuto">;
-type TestLine = { key: string; test_name: string; notes: string };
+type TestLine = { key: string; test_name: string; category: string; notes: string };
 type InitialConsultation = {
   symptoms?: string | null;
   history?: string | null;
@@ -82,12 +83,15 @@ export function ConsultationEditor({
   initial,
   initialMedicines = [],
   initialTests = [],
+  testCategories = [],
   defaultFee,
 }: {
   visitId: string;
   initial?: InitialConsultation;
   initialMedicines?: SavedMedicineLine[];
   initialTests?: Omit<TestLine, "key">[];
+  /** Report categories the hospital configures; the kind of test being ordered. */
+  testCategories?: string[];
   /** Doctor's configured fee in rupees, pre-filled but always editable. */
   defaultFee?: string;
 }) {
@@ -173,6 +177,7 @@ export function ConsultationEditor({
         value={JSON.stringify(
           tests.map((line) => ({
             test_name: line.test_name,
+            category: line.category,
             notes: line.notes,
           })),
         )}
@@ -400,7 +405,12 @@ export function ConsultationEditor({
             onClick={() =>
               setTests((rows) => [
                 ...rows,
-                { key: crypto.randomUUID(), test_name: "", notes: "" },
+                {
+                  key: crypto.randomUUID(),
+                  test_name: "",
+                  category: testCategories[0] ?? "",
+                  notes: "",
+                },
               ])
             }
           >
@@ -410,22 +420,50 @@ export function ConsultationEditor({
         <CardContent className="space-y-3">
           {tests.map((row) => (
             <div
-              className="grid gap-2 sm:grid-cols-[1fr_1fr_auto]"
+              className="grid gap-2 sm:grid-cols-[1.2fr_0.8fr_1fr_auto]"
               key={row.key}
             >
-              <Input
-                placeholder="Test name"
+              {/* Picked from the investigation directory, or typed when the
+                  hospital orders something the directory does not list yet. */}
+              <TermCombobox
+                termType="investigation"
+                ariaLabel="Test name"
+                placeholder="Select or type a test"
                 value={row.test_name}
-                onChange={(e) =>
+                onChange={(test_name) =>
                   setTests((rows) =>
                     rows.map((item) =>
-                      item.key === row.key
-                        ? { ...item, test_name: e.target.value }
-                        : item,
+                      item.key === row.key ? { ...item, test_name } : item,
                     ),
                   )
                 }
               />
+              {/* Which kind of investigation this is: the lab, the X-ray room
+                  and the scan centre are different places, and the uploaded
+                  report is filed under the same category. */}
+              <Select
+                value={row.category}
+                onValueChange={(value) =>
+                  setTests((rows) =>
+                    rows.map((item) =>
+                      item.key === row.key ? { ...item, category: String(value) } : item,
+                    ),
+                  )
+                }
+              >
+                <SelectTrigger className="w-full" aria-label="Investigation type">
+                  <SelectValue placeholder="Type">
+                    {() => row.category || "Type"}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  {testCategories.map((category) => (
+                    <SelectItem key={category} value={category} label={category}>
+                      {category}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
               <Input
                 placeholder="Notes"
                 value={row.notes}

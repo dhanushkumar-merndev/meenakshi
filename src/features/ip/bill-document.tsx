@@ -24,13 +24,15 @@ export function IpBillDocument({
 
   return (
     <article className="min-h-[270mm] border border-black/20 p-7">
-      <header className="flex items-start justify-between gap-6 border-b-2 border-primary pb-4">
+      {/* Hospital banner first, document title under it: three columns across
+          the top squeezed the title into one word per line. */}
+      <header className="border-b-2 border-primary pb-3">
         <HospitalLetterhead identity={identity} />
-        <div className="text-right">
+        <div className="mt-3 flex items-baseline justify-between gap-4 border-t pt-2">
           <h2 className="text-lg font-bold">
             {final ? "FINAL IP BILL" : "IP RUNNING BILL"}
           </h2>
-          <p>{ticket.ticket_number}</p>
+          <p className="font-mono">{ticket.ticket_number}</p>
         </div>
       </header>
       <section className="my-4 grid grid-cols-2 gap-x-8 gap-y-1 text-sm sm:grid-cols-4">
@@ -40,7 +42,7 @@ export function IpBillDocument({
         </p>
         <p>
           <b>Patient ID:</b>{" "}
-          {ticket.patients?.phone_normalized ?? "Pending assignment"}
+          {ticket.patients?.uhid ?? "Pending assignment"}
         </p>
         <p><b>Doctor:</b> {ticket.doctors?.display_name}</p>
         <p><b>Room/Bed:</b> {ticket.room ?? "—"}/{ticket.bed ?? "—"}</p>

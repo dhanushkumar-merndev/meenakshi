@@ -17,6 +17,7 @@ export const MEDICINE_IMPORT_HEADERS = [
   "batch_number",
   "expiry_date",
   "opening_quantity",
+  "units_per_pack",
   "purchase_price",
   "selling_price",
   "low_stock_threshold",
@@ -33,6 +34,7 @@ export type NormalizedMedicineImport = {
   opening_quantity: number;
   purchase_price_paise: number | null;
   selling_price_paise: number;
+  units_per_pack: number;
   low_stock_threshold: number;
   active: boolean;
 };
@@ -62,6 +64,10 @@ export function validateMedicineImportRows(input: unknown[]): {
       text(data.low_stock_threshold) === ""
         ? 10
         : Number(data.low_stock_threshold);
+    // opening_quantity is in PIECES; units_per_pack only says how many pieces
+    // make one strip/box, and prices are per pack.
+    const units_per_pack =
+      text(data.units_per_pack) === "" ? 1 : Number(data.units_per_pack);
     if (!medicine_name) errors.push("medicine_name is required");
     if (!dosage_form) errors.push("dosage_form is required");
     if (!batch_number) errors.push("batch_number is required");
@@ -70,6 +76,8 @@ export function validateMedicineImportRows(input: unknown[]): {
       errors.push("opening_quantity must be a whole number >= 0");
     if (!Number.isInteger(threshold) || threshold < 0)
       errors.push("low_stock_threshold must be a whole number >= 0");
+    if (!Number.isInteger(units_per_pack) || units_per_pack < 1 || units_per_pack > 10_000)
+      errors.push("units_per_pack must be a whole number from 1 to 10000");
     let selling_price_paise = 0;
     let purchase_price_paise: number | null = null;
     let active = true;
@@ -117,6 +125,7 @@ export function validateMedicineImportRows(input: unknown[]): {
       opening_quantity,
       purchase_price_paise,
       selling_price_paise,
+      units_per_pack,
       low_stock_threshold: threshold,
       active,
     });

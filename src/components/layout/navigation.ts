@@ -76,6 +76,9 @@ export const ROLE_NAVIGATION: Record<AppRole, NavigationItem[]> = {
     { title: "Today OP", href: "/doctor", icon: "list-ordered" },
     { title: "My Follow-ups", href: "/doctor/follow-ups", icon: "calendar-check" },
     { title: "My IP Patients", href: "/ip", icon: "bed" },
+    // A doctor who ordered an investigation needs somewhere to go when the
+    // result comes back; the notification bell links here too.
+    { title: "Reports", href: "/reports", icon: "files" },
     { title: "Patient Search", href: "/patients", icon: "search" },
   ],
   ip: [

@@ -1,6 +1,6 @@
 import { requireRoute } from "@/lib/auth/dal";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import { formatInr } from "@/lib/domain/money";
+import { formatInr, packBreakdown, piecePricePaise } from "@/lib/domain/money";
 import { stockStatus } from "@/lib/domain/stock";
 import { PageHeader } from "@/components/shared/page-header";
 import { DebouncedSearchInput } from "@/components/shared/debounced-search-input";
@@ -21,6 +21,7 @@ type Batch = {
   batch_number: string;
   expiry_date: string;
   quantity: number;
+  units_per_pack: number;
   selling_price_paise: number;
   low_stock_threshold: number;
   purchase_price_paise: number | null;
@@ -122,9 +123,25 @@ export default async function StockPage({
                       </TableCell>
                       <TableCell>{batch.batch_number}</TableCell>
                       <TableCell>{batch.expiry_date}</TableCell>
-                      <TableCell>{batch.quantity}</TableCell>
                       <TableCell>
-                        {formatInr(batch.selling_price_paise)}
+                        <span className="font-medium tabular-nums">{batch.quantity}</span>
+                        {/* Stock is pieces; the pack breakdown is what the
+                            pharmacist counts off the shelf. */}
+                        {packBreakdown(batch.quantity, batch.units_per_pack ?? 1) ? (
+                          <span className="block text-xs text-muted-foreground">
+                            {packBreakdown(batch.quantity, batch.units_per_pack)!.label}
+                          </span>
+                        ) : null}
+                      </TableCell>
+                      <TableCell>
+                        <span className="tabular-nums">
+                          {formatInr(batch.selling_price_paise)}
+                        </span>
+                        <span className="block text-xs text-muted-foreground">
+                          {(batch.units_per_pack ?? 1) > 1
+                            ? `per pack · ${formatInr(piecePricePaise(batch.selling_price_paise, batch.units_per_pack))} each`
+                            : "per unit"}
+                        </span>
                       </TableCell>
                       <TableCell>
                         <StatusBadge
@@ -157,6 +174,7 @@ export default async function StockPage({
                               batch.selling_price_paise / 100
                             ).toFixed(2),
                             lowStockThreshold: batch.low_stock_threshold,
+                            unitsPerPack: batch.units_per_pack ?? 1,
                             active: batch.active,
                           }}
                         />

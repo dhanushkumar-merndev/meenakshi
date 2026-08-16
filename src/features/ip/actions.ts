@@ -58,7 +58,8 @@ export async function createAdmission(
   });
   const result = Array.isArray(data) ? data[0] : data;
   if (error || !result) {
-    console.error("IP admission RPC failed", { code: error?.code, message: error?.message, details: error?.details });
+    // Every branch below already tells the user what went wrong, and the
+    // database code is on the audit trail, so nothing is logged here.
     const message = error?.message.toLowerCase() ?? "";
     if (message.includes("occupied") || message.includes("unavailable"))
       return { ok: false, message: "That room/bed is no longer available. Select another." };
@@ -210,8 +211,14 @@ export async function addIpPayment(
   return { ok: true, message: "Payment recorded." };
 }
 
-const noteSchema=z.object({ticketId:databaseIdSchema,note:z.string().min(2).max(10000),chargeable:z.string().optional(),idempotencyKey:databaseIdSchema});
-export async function addProgressNote(_:ActionState,formData:FormData):Promise<ActionState>{await requirePermission("writeConsultation");const parsed=noteSchema.safeParse(Object.fromEntries(formData));if(!parsed.success)return{ok:false,fieldErrors:parsed.error.flatten().fieldErrors};const supabase=await createSupabaseServerClient();const{error}=await supabase.rpc("add_ip_progress_note",{p_ticket_id:parsed.data.ticketId,p_note:parsed.data.note,p_chargeable:parsed.data.chargeable==="on",p_idempotency_key:parsed.data.idempotencyKey});if(error)return{ok:false,message:"Progress note could not be saved."};revalidatePath(`/ip/${parsed.data.ticketId}`);return{ok:true,message:"Progress note saved."}}
+const noteSchema=z.object({ticketId:databaseIdSchema,note:z.string().min(2).max(10000),chargeable:z.string().optional(),fee:z.string().trim().optional(),idempotencyKey:databaseIdSchema});
+export async function addProgressNote(_:ActionState,formData:FormData):Promise<ActionState>{await requirePermission("writeConsultation");const parsed=noteSchema.safeParse(Object.fromEntries(formData));if(!parsed.success)return{ok:false,fieldErrors:parsed.error.flatten().fieldErrors};
+  // The doctor types what this visit is worth. Blank falls back to their
+  // configured IP visit fee; 0 is a deliberate waiver and must be kept.
+  const chargeable=parsed.data.chargeable==="on";let feePaise:number|null=null;
+  if(chargeable&&parsed.data.fee){try{feePaise=rupeesToPaise(parsed.data.fee);}catch(error){return{ok:false,fieldErrors:{fee:[(error as Error).message]}};}
+    if(feePaise<0)return{ok:false,fieldErrors:{fee:["Fee cannot be negative."]}};}
+  const supabase=await createSupabaseServerClient();const{error}=await supabase.rpc("add_ip_progress_note",{p_ticket_id:parsed.data.ticketId,p_note:parsed.data.note,p_chargeable:chargeable,p_idempotency_key:parsed.data.idempotencyKey,p_fee_paise:feePaise});if(error)return{ok:false,message:"Progress note could not be saved."};revalidatePath(`/ip/${parsed.data.ticketId}`);return{ok:true,message:"Progress note saved."}}
 const summarySchema=z.object({ticketId:databaseIdSchema,finalDiagnosis:z.string().min(2).max(5000),hospitalCourse:z.string().min(2).max(10000),treatmentSummary:z.string().max(10000).optional(),dischargeMedicines:z.string().max(10000).optional(),dischargeAdvice:z.string().min(2).max(10000),followUp:z.string().max(2000).optional()});
 export async function saveDischargeSummary(_:ActionState,formData:FormData):Promise<ActionState>{await requirePermission("writeConsultation");const parsed=summarySchema.safeParse(Object.fromEntries(formData));if(!parsed.success)return{ok:false,fieldErrors:parsed.error.flatten().fieldErrors};const supabase=await createSupabaseServerClient();const{error}=await supabase.rpc("save_ip_discharge_summary",{p_ticket_id:parsed.data.ticketId,p_final_diagnosis:parsed.data.finalDiagnosis,p_hospital_course:parsed.data.hospitalCourse,p_treatment_summary:parsed.data.treatmentSummary||null,p_discharge_medicines:parsed.data.dischargeMedicines||null,p_discharge_advice:parsed.data.dischargeAdvice,p_follow_up:parsed.data.followUp||null});if(error)return{ok:false,message:"Discharge summary could not be saved."};revalidatePath(`/ip/${parsed.data.ticketId}`);revalidatePath("/ip");return{ok:true,message:"Clinical discharge summary saved; IP staff may complete discharge."}}
 const completeSchema=z.object({ticketId:databaseIdSchema});

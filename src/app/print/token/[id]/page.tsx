@@ -14,7 +14,7 @@ export default async function TokenPrintPage({
   const { data, error } = await supabase
     .from("visits")
     .select(
-      "patient_id,token_number,created_at,visit_date,patients(name,phone_normalized),doctors(display_name),departments(name)",
+      "patient_id,token_number,created_at,visit_date,patients(name,uhid,phone_normalized),doctors(display_name),departments(name)",
     )
     .eq("id", id)
     .single();
@@ -24,7 +24,7 @@ export default async function TokenPrintPage({
     patient_id: string;
     visit_date: string;
     created_at: string;
-    patients: { name: string; phone_normalized: string } | null;
+    patients: { name: string; uhid: string | null; phone_normalized: string } | null;
     doctors: { display_name: string } | null;
     departments: { name: string } | null;
   };
@@ -50,12 +50,14 @@ export default async function TokenPrintPage({
   const departmentNames = visit.departments?.name ?? "—";
   const at = new Date(visit.created_at);
   return (
-    <main className="mx-auto min-h-screen max-w-sm bg-white p-5 text-black">
+    // Wide enough for the two-column letterhead; still a slip, not a page.
+    <main className="mx-auto min-h-screen max-w-md bg-white p-5 text-black">
       <div data-print-hidden className="mb-5 flex justify-end">
         <PrintButton label="Print Token" />
       </div>
       <article className="border border-black p-6 text-center font-sans">
-        <HospitalLetterhead align="center" identity={identity} logoSize={56} />
+        {/* Same banner as every other document the patient is handed. */}
+        <HospitalLetterhead identity={identity} logoSize={48} className="text-left" />
         <div className="my-5 border-y border-black py-4">
           <p className="text-xs font-semibold uppercase">Token No</p>
           <p className="text-6xl font-bold">{visit.token_number}</p>
@@ -83,6 +85,8 @@ export default async function TokenPrintPage({
           <dt className="font-semibold">Patient</dt>
           <dd>{visit.patients?.name}</dd>
           <dt className="font-semibold">Patient ID</dt>
+          <dd>{visit.patients?.uhid ?? "—"}</dd>
+          <dt className="font-semibold">Mobile</dt>
           <dd>{visit.patients?.phone_normalized}</dd>
           <dt className="font-semibold">Doctor</dt>
           <dd>{multiple ? `${consultants.length} consultants (listed above)` : doctorNames}</dd>

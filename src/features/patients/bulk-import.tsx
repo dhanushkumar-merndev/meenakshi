@@ -20,7 +20,7 @@ export function BulkPatientImport() {
       errorFileName="patient-import-errors.csv"
       columns={[
         { key: "name", label: "Name", value: (row) => row.name },
-        { key: "phone", label: "Phone / Patient ID", value: (row) => row.phone_normalized },
+        { key: "phone", label: "Mobile number", value: (row) => row.phone_normalized },
         { key: "gender", label: "Gender", value: (row) => row.gender },
         { key: "dob", label: "Date of birth", value: (row) => row.dob ?? "—" },
         { key: "blood_group", label: "Blood group", value: (row) => row.blood_group ?? "—" },

@@ -11,6 +11,7 @@ type Rx = {
   created_at: string;
   patients: {
     name: string;
+    uhid: string | null;
     phone_normalized: string;
     dob: string | null;
     gender: string;
@@ -62,7 +63,7 @@ export default async function PrescriptionPrintPage({
   const { data, error } = await supabase
     .from("visits")
     .select(
-      "created_at,patients(name,phone_normalized,dob,gender),doctors(display_name,qualification,registration_number,specialization),departments(name),vitals(weight_kg,temperature_c,bp_systolic,bp_diastolic),consultations(symptoms,history,examination,assessment,advice),test_orders(test_name,notes,created_at),prescriptions(prescription_number,prescription_items(medicine_name,dose,frequency,duration,route,notes))",
+      "created_at,patients(name,uhid,phone_normalized,dob,gender),doctors(display_name,qualification,registration_number,specialization),departments(name),vitals(weight_kg,temperature_c,bp_systolic,bp_diastolic),consultations(symptoms,history,examination,assessment,advice),test_orders(test_name,notes,created_at),prescriptions(prescription_number,prescription_items(medicine_name,dose,frequency,duration,route,notes))",
     )
     .eq("id", id)
     .eq("status", "completed")
@@ -99,16 +100,21 @@ export default async function PrescriptionPrintPage({
         <PrintButton label="Print Prescription" />
       </div>
       <article className="min-h-[270mm] border border-black/20 p-7">
-        <header className="flex items-start justify-between gap-6">
-          <div>
-            <h1 className="text-xl font-bold">{doctor.display_name}</h1>
-            <p>{doctor.qualification}</p>
-            <p>{doctor.specialization ?? rx.departments?.name}</p>
-            <p>Registration: {doctor.registration_number ?? "—"}</p>
+        <header>
+          <HospitalLetterhead identity={identity} logoSize={56} />
+          <div className="my-3 h-1 bg-primary" />
+          {/* The consulting doctor's identity block, kept under the hospital
+              banner so both are on the sheet without two competing headers. */}
+          <div className="flex items-start justify-between gap-6">
+            <div>
+              <h1 className="text-xl font-bold">{doctor.display_name}</h1>
+              <p>{doctor.qualification}</p>
+              <p>{doctor.specialization ?? rx.departments?.name}</p>
+              <p>Registration: {doctor.registration_number ?? "—"}</p>
+            </div>
           </div>
-          <HospitalLetterhead align="right" identity={identity} logoSize={56} />
         </header>
-        <div className="my-4 h-1 bg-primary" />
+        <div className="my-4 border-b border-primary/40" />
         <section className="grid grid-cols-2 gap-x-8 gap-y-1 border-b pb-3 sm:grid-cols-4">
           <p>
             <b>Name:</b> {patient.name}
@@ -118,7 +124,7 @@ export default async function PrescriptionPrintPage({
             {patient.gender}
           </p>
           <p>
-            <b>Patient ID:</b> {patient.phone_normalized}
+            <b>Patient ID:</b> {patient.uhid ?? "—"}
           </p>
           <p>
             <b>Date:</b> {formatHospitalDate(rx.created_at)}

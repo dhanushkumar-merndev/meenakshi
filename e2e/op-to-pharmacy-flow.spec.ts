@@ -44,13 +44,11 @@ test.describe("OP visit through to pharmacy", () => {
     // --- Reception: register and create the visit ---------------------------
     await reception.goto("/reception");
     await reception.getByRole("button", { name: "Find or Add Patient" }).click();
-    await reception.getByPlaceholder("Phone or patient name").fill(phone);
+    await reception.getByPlaceholder("UHID, mobile number or patient name").fill(phone);
     await reception.getByRole("button", { name: "Add new patient" }).click();
     await reception.getByLabel("Patient name *").fill(patientName);
-    await reception.getByLabel("Phone / Patient ID *").fill(phone);
-    await reception.getByRole("button", { name: "Create & continue" }).click();
-
-    await expect(reception.getByRole("heading", { name: "Create visit" })).toBeVisible();
+    await reception.getByLabel("Mobile number *").fill(phone);
+    // Patient details and visit details are one form for a first-time patient.
     // Route the visit to the doctor account the test signs in as, otherwise the
     // patient lands in another consultant's queue.
     await reception.getByLabel("Doctor").click();
@@ -58,7 +56,7 @@ test.describe("OP visit through to pharmacy", () => {
     // Registration must not ask for money: the doctor sets the fee later.
     await expect(reception.getByLabel("Amount collected offline")).toHaveCount(0);
     await expect(reception.getByLabel("Consultation fee")).toHaveCount(0);
-    await reception.getByRole("button", { name: "Create Visit" }).click();
+    await reception.getByRole("button", { name: "Register & Create Visit" }).click();
 
     await expect(reception.getByRole("heading", { name: "Visit created" })).toBeVisible({ timeout: 30_000 });
     const token = (await reception.locator("p.text-6xl").innerText()).trim();

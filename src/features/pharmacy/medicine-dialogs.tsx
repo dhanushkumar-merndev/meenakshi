@@ -123,6 +123,7 @@ export function BatchDialog({
     purchasePrice: string;
     sellingPrice: string;
     lowStockThreshold: number;
+    unitsPerPack: number;
     active: boolean;
   };
   canDelete?: boolean;
@@ -132,7 +133,7 @@ export function BatchDialog({
     item?.medicineId ?? medicines[0]?.id ?? "",
   );
   const [key] = useState(() => crypto.randomUUID());
-  const [unitsPerPack, setUnitsPerPack] = useState(1);
+  const [unitsPerPack, setUnitsPerPack] = useState(item?.unitsPerPack ?? 1);
   const [packCount, setPackCount] = useState(0);
   const [looseUnits, setLooseUnits] = useState(0);
   const [quantityAdjustment, setQuantityAdjustment] = useState(0);
@@ -169,6 +170,9 @@ export function BatchDialog({
           <input type="hidden" name="batchId" value={item?.id ?? ""} />
           <input type="hidden" name="medicineId" value={medicineId} />
           <input type="hidden" name="idempotencyKey" value={key} />
+          {/* Stock is held in pieces; this records how many pieces make a pack,
+              and the selling price below is the price of one pack. */}
+          <input type="hidden" name="unitsPerPack" value={unitsPerPack} />
           {!item ? (
             <input type="hidden" name="quantityDelta" value={openingUnits} />
           ) : null}
@@ -202,13 +206,13 @@ export function BatchDialog({
               ["expiryDate", "Expiry date", item?.expiryDate ?? "", "date"],
               [
                 "purchasePrice",
-                "Purchase price",
+                "Purchase price per pack (₹)",
                 item?.purchasePrice ?? "0",
                 "text",
               ],
               [
                 "sellingPrice",
-                "Selling price",
+                "Selling price per pack (₹)",
                 item?.sellingPrice ?? "",
                 "text",
               ],
@@ -219,12 +223,37 @@ export function BatchDialog({
                 "number",
               ],
             ].map(([name, label, value, type]) => (
+              // Labelled properly: without htmlFor/id these inputs were
+              // unreachable by label, for a screen reader as much as a test.
               <div className="space-y-2" key={name}>
-                <Label>{label}</Label>
-                <Input name={name} type={type} defaultValue={value} required />
+                <Label htmlFor={`batch-${name}`}>{label}</Label>
+                <Input
+                  id={`batch-${name}`}
+                  name={name}
+                  type={type}
+                  defaultValue={value}
+                  required
+                />
               </div>
             ))}
             {item ? (
+              <>
+              <div className="space-y-2">
+                <Label htmlFor="unitsPerPackEdit">Units per pack</Label>
+                <Input
+                  id="unitsPerPackEdit"
+                  type="number"
+                  min={1}
+                  step={1}
+                  value={unitsPerPack}
+                  onChange={(event) => setUnitsPerPack(Number(event.target.value))}
+                  required
+                />
+                <p className="text-xs text-muted-foreground">
+                  Pieces in one strip / box / bottle. The price above is for one
+                  pack; a single piece is priced pro rata.
+                </p>
+              </div>
               <div className="space-y-2">
                 <Label htmlFor="quantityDelta">
                   Stock adjustment (individual units)
@@ -240,6 +269,7 @@ export function BatchDialog({
                   required
                 />
               </div>
+              </>
             ) : (
               <>
                 <div className="space-y-2">
@@ -372,8 +402,8 @@ export function BatchDialog({
                 required
               />
               <p className="text-xs text-muted-foreground">
-                Stock and prices are recorded per individual tablet, capsule,
-                or other dispensing unit.
+                Stock is counted in individual pieces (tablets, capsules, ml).
+                Prices are for one pack, and a single piece is billed pro rata.
               </p>
             </div>
             <label className="flex items-center gap-2 text-sm">

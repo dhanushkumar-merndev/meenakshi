@@ -41,9 +41,47 @@ const medicineSchema = z
   .max(30);
 const testSchema = z
   .array(
-    z.object({ test_name: z.string().trim().min(1).max(300), notes: z.string().max(1000).optional() }),
+    z.object({
+      test_name: z.string().trim().min(1).max(300),
+      category: z.string().trim().max(100).optional(),
+      notes: z.string().max(1000).optional(),
+    }),
   )
   .max(30);
+/** A directory pick carries its code in brackets, e.g. "Asthma (J45.9)". */
+const CODED_SUFFIX = /\s\([A-Z]\d{2}(\.\d+)?\)$/;
+
+/**
+ * Keeps what the doctor typed.
+ *
+ * A diagnosis or investigation written by hand is a gap in the directory: the
+ * next doctor would have to type the same phrase again. Storing it makes it
+ * searchable for everyone (AGENTS.md 20). Coded picks are already in there and
+ * are skipped. Best effort -- a consultation is never failed over this.
+ */
+async function rememberTypedTerms(
+  supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>,
+  assessment: string,
+  tests: z.infer<typeof testSchema>,
+) {
+  const terms = [
+    ...assessment
+      .split("\n")
+      .map((line) => line.trim())
+      .filter((line) => line.length >= 2 && !CODED_SUFFIX.test(line))
+      .map((line) => ["diagnosis", line] as const),
+    ...tests
+      .map((test) => test.test_name.trim())
+      .filter((name) => name.length >= 2)
+      .map((name) => ["investigation", name] as const),
+  ];
+  await Promise.all(
+    terms.map(([type, text]) =>
+      supabase.rpc("add_clinical_term", { p_term_type: type, p_display_text: text }),
+    ),
+  );
+}
+
 export async function saveConsultation(
   _: ActionState,
   formData: FormData,
@@ -129,6 +167,7 @@ export async function saveConsultation(
         ? "This consultation is already completed and cannot be changed."
         : "Consultation could not be saved.",
     };
+  await rememberTypedTerms(supabase, parsed.data.assessment, tests);
   revalidatePath(`/visits/${parsed.data.visitId}`);
   revalidatePath("/doctor");
   revalidatePath("/dashboard");

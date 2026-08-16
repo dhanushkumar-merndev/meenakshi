@@ -61,6 +61,6 @@ test.describe("mobile", () => {
       expect(box.width).toBeLessThanOrEqual(viewport.width);
       expect(box.height).toBeLessThanOrEqual(viewport.height);
     }
-    await expect(page.getByPlaceholder("Phone or patient name")).toBeVisible();
+    await expect(page.getByPlaceholder("UHID, mobile number or patient name")).toBeVisible();
   });
 });

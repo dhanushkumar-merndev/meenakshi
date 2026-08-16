@@ -4,7 +4,9 @@ export const PERMISSIONS = {
   manageUsers: ["admin"],
   manageDoctors: ["admin"],
   viewPatients: ["admin", "reception", "op", "doctor", "ip"],
-  createPatient: ["admin", "reception", "ip"],
+  // Reception owns the patient register; IP staff admit patients that already
+  // exist, so two desks cannot create the same person twice.
+  createPatient: ["admin", "reception"],
   createVisit: ["admin", "reception"],
   recordVitals: ["admin", "op", "doctor"],
   writeConsultation: ["admin", "doctor"],
@@ -37,7 +39,9 @@ export const ROUTE_ROLES: Record<string, readonly AppRole[]> = {
   "/doctor": ["admin", "doctor"],
   "/pharmacy": ["admin", "pharmacy"],
   "/ip": ["admin", "ip", "doctor"],
-  "/reports": ["admin", "reception", "op", "ip"],
+  // Doctors read only: they review the results they ordered. The upload
+  // action stays behind the uploadReport permission.
+  "/reports": ["admin", "reception", "op", "ip", "doctor"],
   "/visits": ["admin", "reception", "op", "doctor"],
 };
 

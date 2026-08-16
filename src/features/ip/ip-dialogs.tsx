@@ -196,7 +196,9 @@ export function AdmissionDialog({
 }
 export function ChargeDialog({ ticketId, presets }: { ticketId: string; presets: Array<{ id: string; category: string; name: string; rate: string }> }) {
   const [state, action, pending] = useActionState(addIpCharge, initial);
-  const [presetId, setPresetId] = useState(presets[0]?.id ?? "custom");
+  // Every IP charge comes from the configured Charges master, so the running
+  // bill only ever contains rates the hospital has approved.
+  const [presetId, setPresetId] = useState(presets[0]?.id ?? "");
   const initialPreset = presets[0];
   const [category, setCategory] = useState(initialPreset?.category ?? "treatment");
   const [item, setItem] = useState(initialPreset?.name ?? "");
@@ -242,14 +244,12 @@ export function ChargeDialog({ ticketId, presets }: { ticketId: string; presets:
                 </SelectTrigger>
                 <SelectContent>
                   {presets.map((preset) => <SelectItem key={preset.id} value={preset.id} label={`${preset.name} · ₹${preset.rate}`}>{preset.name} · ₹{preset.rate}</SelectItem>)}
-                  <SelectItem value="custom">Custom charge</SelectItem>
                 </SelectContent>
               </Select>
             </div>
-            {presetId === "custom" ? <div className="space-y-2"><Label htmlFor="charge-category">Category</Label><Select value={category} onValueChange={(v) => setCategory(String(v))}><SelectTrigger id="charge-category" className="w-full"><SelectValue /></SelectTrigger><SelectContent>{["doctor","ward","room","bed","treatment","test","other"].map((value) => <SelectItem key={value} value={value}>{value}</SelectItem>)}</SelectContent></Select></div> : null}
             <div className="space-y-2">
               <Label htmlFor="item">Item</Label>
-              <Input id="item" name="item" value={item} onChange={(event) => setItem(event.target.value)} readOnly={presetId !== "custom"} required />
+              <Input id="item" name="item" value={item} readOnly required />
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-2">
@@ -264,12 +264,12 @@ export function ChargeDialog({ ticketId, presets }: { ticketId: string; presets:
               </div>
               <div className="space-y-2">
                 <Label htmlFor="rate">Rate</Label>
-                <Input id="rate" name="rate" inputMode="decimal" value={rate} onChange={(event) => setRate(event.target.value)} readOnly={presetId !== "custom"} required />
+                <Input id="rate" name="rate" inputMode="decimal" value={rate} readOnly required />
               </div>
             </div>
           </div>
           <DialogFooter showCloseButton>
-            <Button disabled={pending} type="submit">
+            <Button disabled={pending || !presetId} type="submit">
               {pending ? <LoaderCircle className="animate-spin" /> : <Plus />}{" "}
               Add Charge
             </Button>

@@ -18,6 +18,16 @@ describe("HospitalLetterhead", () => {
     expect(screen.getByText("Hospital")).toBeInTheDocument();
   });
 
+  it("puts the identity block before the contact block", () => {
+    const { container } = render(<HospitalLetterhead identity={HOSPITAL_IDENTITY_FALLBACK} />);
+    // Logo, name and motto on the left; address, phone and email on the right.
+    const text = container.textContent ?? "";
+    expect(text.indexOf("Meenakshi")).toBeLessThan(text.indexOf(HOSPITAL_IDENTITY_FALLBACK.address!));
+    expect(text.indexOf("Care • Healing • Hope.")).toBeLessThan(
+      text.indexOf(HOSPITAL_IDENTITY_FALLBACK.phone!),
+    );
+  });
+
   it("keeps a renamed hospital on one line and drops missing contact lines", () => {
     render(
       <HospitalLetterhead

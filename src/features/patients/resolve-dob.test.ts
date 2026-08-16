@@ -1,16 +1,10 @@
 import { describe, expect, it } from "vitest";
+import { resolveDob } from "./patient-input";
 
 /**
- * Mirrors resolveDob() in features/patients/actions.ts. Rural patients often
- * know their age but not their birth date, so an age becomes 1 January of the
- * birth year and is flagged approximate.
+ * Rural patients often know their age but not their birth date, so an age
+ * becomes 1 January of the birth year and is flagged approximate.
  */
-function resolveDob(dob?: string, age?: string) {
-  if (dob) return { dob, approximate: false };
-  const years = age ? Number(age) : Number.NaN;
-  if (!Number.isFinite(years) || years < 0 || years > 120) return { dob: null, approximate: false };
-  return { dob: `${new Date().getFullYear() - Math.floor(years)}-01-01`, approximate: true };
-}
 
 describe("resolveDob", () => {
   it("prefers an explicit date of birth and marks it exact", () => {

@@ -111,7 +111,7 @@ export function EditPatientDialog({
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="edit-patient-phone">Phone Patient ID</Label>
+                <Label htmlFor="edit-patient-phone">Mobile number</Label>
                 <Input
                   id="edit-patient-phone"
                   name="phone"

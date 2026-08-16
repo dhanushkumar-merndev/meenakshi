@@ -158,16 +158,17 @@ export async function saveMedicine(_: ActionState, formData: FormData): Promise<
 }
 
 const batchSchema = z.object({
-  batchId: databaseIdSchema.optional().or(z.literal("")), medicineId: databaseIdSchema, batchNumber: z.string().trim().min(1).max(100), expiryDate: z.string().date(), quantityDelta: z.coerce.number().int(), purchasePrice: z.string(), sellingPrice: z.string(), lowStockThreshold: z.coerce.number().int().nonnegative(), active: z.string().optional(), reason: z.string().trim().min(2).max(200), idempotencyKey: databaseIdSchema,
+  batchId: databaseIdSchema.optional().or(z.literal("")), medicineId: databaseIdSchema, batchNumber: z.string().trim().min(1).max(100), expiryDate: z.string().date(), quantityDelta: z.coerce.number().int(), purchasePrice: z.string(), sellingPrice: z.string(), lowStockThreshold: z.coerce.number().int().nonnegative(), unitsPerPack: z.coerce.number().int().min(1).max(10_000).default(1), active: z.string().optional(), reason: z.string().trim().min(2).max(200), idempotencyKey: databaseIdSchema,
 });
 export async function saveMedicineBatch(_: ActionState, formData: FormData): Promise<ActionState> {
   await requirePermission("manageMedicine");
   const parsed = batchSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) return { ok: false, fieldErrors: parsed.error.flatten().fieldErrors };
+  // Both prices are per PACK; the piece price is derived from units_per_pack.
   let purchase: number, selling: number;
   try { purchase = rupeesToPaise(parsed.data.purchasePrice || "0"); selling = rupeesToPaise(parsed.data.sellingPrice); } catch (error) { return { ok: false, message: (error as Error).message }; }
   const supabase = await createSupabaseServerClient();
-  const { error } = await supabase.rpc("save_medicine_batch", { p_batch_id: parsed.data.batchId || null, p_medicine_id: parsed.data.medicineId, p_batch_number: parsed.data.batchNumber, p_expiry_date: parsed.data.expiryDate, p_quantity_delta: parsed.data.quantityDelta, p_purchase_price_paise: purchase, p_selling_price_paise: selling, p_low_stock_threshold: parsed.data.lowStockThreshold, p_active: parsed.data.active === "on", p_reason: parsed.data.reason, p_idempotency_key: parsed.data.idempotencyKey });
+  const { error } = await supabase.rpc("save_medicine_batch", { p_batch_id: parsed.data.batchId || null, p_medicine_id: parsed.data.medicineId, p_batch_number: parsed.data.batchNumber, p_expiry_date: parsed.data.expiryDate, p_quantity_delta: parsed.data.quantityDelta, p_purchase_price_paise: purchase, p_selling_price_paise: selling, p_low_stock_threshold: parsed.data.lowStockThreshold, p_active: parsed.data.active === "on", p_reason: parsed.data.reason, p_idempotency_key: parsed.data.idempotencyKey, p_units_per_pack: parsed.data.unitsPerPack });
   if (error) return { ok: false, message: error.message.includes("negative") ? "This adjustment would make stock negative." : error.message.includes("duplicate") ? "This batch already exists." : "Batch and stock could not be saved." };
   revalidatePath("/pharmacy/stock"); revalidatePath("/pharmacy/medicines"); revalidatePath("/dashboard");
   return { ok: true, message: "Batch and stock saved." };

@@ -4,23 +4,27 @@ import type { HospitalIdentity } from "@/lib/print/hospital-identity";
 import { cn } from "@/lib/utils";
 
 /**
- * The printed letterhead: mark, wordmark, motto and contact block, matching the
- * hospital's stationery. Every printed document (token, prescription, IP bill,
- * discharge summary) opens with this so a patient can identify and contact the
- * hospital from the paper alone.
+ * The printed letterhead, identical on every document the hospital hands out —
+ * token, prescription, receipt, IP bill, discharge summary.
  *
- * `align` follows the document: the prescription puts the doctor on the left
- * and the hospital on the right (AGENTS.md 24), the token is centred, and the
- * IP documents keep the hospital on the left with document details opposite.
+ * One fixed layout, matching the hospital's own stationery:
+ *
+ *     [ logo ]                                    address
+ *     NAME                                        phone
+ *     motto                                       email
+ *
+ * It used to vary per document (centred on the token, right-aligned on the
+ * prescription), which meant a patient holding two pages from the same hospital
+ * saw two different headers. Everything that identifies the hospital now sits on
+ * the left, everything needed to contact it on the right, and the document's own
+ * details go underneath.
  */
 export function HospitalLetterhead({
   identity,
-  align = "left",
-  logoSize = 54,
+  logoSize = 56,
   className,
 }: {
   identity: HospitalIdentity;
-  align?: "left" | "right" | "center";
   logoSize?: number;
   className?: string;
 }) {
@@ -34,17 +38,10 @@ export function HospitalLetterhead({
       : { top: name, bottom: null };
 
   return (
-    <div
-      className={cn(
-        "flex items-center gap-3",
-        align === "right" && "flex-row-reverse text-right",
-        align === "center" && "flex-col gap-2 text-center",
-        className,
-      )}
-    >
-      <HospitalLogo size={logoSize} className="shrink-0" />
-      <div className={cn("min-w-0", align === "center" && "w-full")}>
-        <p className="text-lg leading-tight font-bold tracking-wide text-primary uppercase">
+    <div className={cn("flex w-full items-start justify-between gap-6", className)}>
+      <div className="shrink-0">
+        <HospitalLogo size={logoSize} className="shrink-0" />
+        <p className="mt-1.5 text-lg leading-tight font-bold tracking-wide text-primary uppercase">
           {lockup.top}
         </p>
         {lockup.bottom ? (
@@ -53,23 +50,19 @@ export function HospitalLetterhead({
           </p>
         ) : null}
         {identity.tagline ? (
-          <p className="mt-0.5 text-[10px] leading-tight font-medium text-primary/80">
+          // The motto is one phrase; on a narrow token slip it would otherwise
+          // break after every bullet.
+          <p className="mt-0.5 text-[10px] leading-tight font-medium whitespace-nowrap text-primary/80">
             {identity.tagline}
           </p>
         ) : null}
-        <ContactBlock identity={identity} align={align} />
       </div>
+      <ContactBlock identity={identity} />
     </div>
   );
 }
 
-function ContactBlock({
-  identity,
-  align,
-}: {
-  identity: HospitalIdentity;
-  align: "left" | "right" | "center";
-}) {
+function ContactBlock({ identity }: { identity: HospitalIdentity }) {
   const lines: Array<[React.ComponentType<{ className?: string }>, string]> = [];
   if (identity.address) lines.push([MapPin, identity.address]);
   if (identity.phone) lines.push([Phone, identity.phone]);
@@ -77,23 +70,13 @@ function ContactBlock({
   if (!lines.length) return null;
 
   return (
-    <div
-      className={cn(
-        "mt-1.5 space-y-0.5 text-[9.5px] leading-snug",
-        align === "center" && "flex flex-col items-center",
-      )}
-    >
+    <div className="min-w-0 space-y-0.5 text-[9.5px] leading-snug">
       {lines.map(([Icon, value]) => (
-        <p
-          className={cn(
-            "flex max-w-[62mm] items-start gap-1",
-            align === "right" && "flex-row-reverse",
-            align === "center" && "max-w-full justify-center",
-          )}
-          key={value}
-        >
-          <Icon className="mt-px size-2.5 shrink-0 text-primary" />
-          <span>{value}</span>
+        // The icon is inline rather than a flex sibling: a wrapping address
+        // otherwise left the pin stranded on its own at the far left.
+        <p className="max-w-[62mm] text-right" key={value}>
+          <Icon className="mr-1 inline size-2.5 align-[-1.5px] text-primary" />
+          {value}
         </p>
       ))}
     </div>

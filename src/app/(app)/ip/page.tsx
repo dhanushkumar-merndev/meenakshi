@@ -95,6 +95,11 @@ export default async function IpPage({ searchParams }: { searchParams: Promise<{
   }));
   const referrals = (referralResult.data ?? []) as unknown as Referral[];
   const occupied = new Set(tickets.filter((ticket)=>["admitted","discharge_pending"].includes(ticket.status)).map((ticket)=>ticket.room_bed_id));
+  // Shared by the page-level New Admission button and by each referral row.
+  const doctorOptions = (doctorsResult.data ?? []).map((d) => ({ id: d.id, label: d.display_name }));
+  const roomOptions = (roomsResult.data ?? [])
+    .filter((room) => !occupied.has(room.id))
+    .map((room) => ({ id: room.id, label: `Floor ${room.floor} · Room ${room.room_number} · Bed ${room.bed_number}` }));
   return (
     <div>
       <PageHeader
@@ -102,13 +107,7 @@ export default async function IpPage({ searchParams }: { searchParams: Promise<{
         description={view === "grid" ? "Live grid of available and occupied hospital rooms and beds" : "One ticket holds every charge, payment, note, and discharge record"}
         actions={
           profile.role === "admin" || profile.role === "ip" ? (
-            <AdmissionDialog
-              doctors={(doctorsResult.data ?? []).map((d) => ({
-                id: d.id,
-                label: d.display_name,
-              }))}
-              rooms={(roomsResult.data ?? []).filter((room)=>!occupied.has(room.id)).map((room)=>({id:room.id,label:`Floor ${room.floor} · Room ${room.room_number} · Bed ${room.bed_number}`}))}
-            />
+            <AdmissionDialog doctors={doctorOptions} rooms={roomOptions} />
           ) : undefined
         }
       />
@@ -145,6 +144,7 @@ export default async function IpPage({ searchParams }: { searchParams: Promise<{
                     <TableHead>Admission Reason</TableHead>
                     <TableHead>Diagnosis</TableHead>
                     <TableHead>Recommended</TableHead>
+                    <TableHead className="text-right">Action</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -168,6 +168,26 @@ export default async function IpPage({ searchParams }: { searchParams: Promise<{
                       </TableCell>
                       <TableCell className="whitespace-nowrap">
                         {formatHospitalDate(referral.recommended_at, true)}
+                      </TableCell>
+                      {/* Admitting from the referral row is what carries the
+                          source visit onto the ticket, and the source visit is
+                          what removes the referral from this queue. Admitting
+                          through the generic New Admission button leaves the
+                          referral sitting here for ever. */}
+                      <TableCell className="text-right">
+                        <AdmissionDialog
+                          triggerLabel="Admit"
+                          doctors={doctorOptions}
+                          rooms={roomOptions}
+                          initialPatient={{
+                            id: referral.patient_id,
+                            label: `${referral.patient_name} · ${referral.patient_phone}`,
+                          }}
+                          initialDoctorId={
+                            doctorOptions.find((option) => option.label === referral.doctor_name)?.id ?? ""
+                          }
+                          sourceVisitId={referral.visit_id}
+                        />
                       </TableCell>
                     </TableRow>
                   ))}

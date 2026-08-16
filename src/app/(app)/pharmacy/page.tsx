@@ -47,6 +47,7 @@ type Batch = {
   expiry_date: string;
   quantity: number;
   selling_price_paise: number;
+  units_per_pack: number;
 };
 export default async function PharmacyPage({
   searchParams,
@@ -82,6 +83,7 @@ export default async function PharmacyPage({
     expiry: b.expiry_date,
     quantity: b.quantity,
     pricePaise: b.selling_price_paise,
+    unitsPerPack: b.units_per_pack ?? 1,
   }));
   return (
     <div>

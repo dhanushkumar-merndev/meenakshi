@@ -8,53 +8,18 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { databaseIdSchema } from "@/lib/validation/database-id";
 import type { ActionState } from "@/types/hospital";
 import { isIdempotentReplay } from "@/lib/domain/idempotency";
-
-const visitSchema = z.object({
-  patientId: databaseIdSchema, doctorId: databaseIdSchema, visitType: z.enum(["op", "follow_up"]),
-  previousVisitId: databaseIdSchema.optional().or(z.literal("")), notes: z.string().max(500).optional(), idempotencyKey: databaseIdSchema, consultants: z.string().max(20_000).optional(),
-});
-
-// Registration captures no money. The consulting doctor sets the fee when the
-// consultation is completed; reception or pharmacy collects it afterwards.
-const NO_FEE_AT_REGISTRATION = 0;
-const NO_PAYMENT_MODE = "cash" as const;
+import { issueVisit, visitSchema } from "./issue-visit";
 
 export async function createVisit(_: ActionState, formData: FormData): Promise<ActionState> {
   await requirePermission("createVisit");
   const parsed = visitSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) return { ok: false, fieldErrors: parsed.error.flatten().fieldErrors };
-  if (parsed.data.visitType === "follow_up" && !parsed.data.previousVisitId) return { ok: false, fieldErrors: { previousVisitId: ["Select the related previous visit."] } };
+  const { patientId, ...fields } = parsed.data;
   const supabase = await createSupabaseServerClient();
-  let consultants: Array<{ doctor_id: string; collected_paise: number }> = [];
-  if (parsed.data.consultants) {
-    try {
-      const raw = JSON.parse(parsed.data.consultants) as Array<{ doctorId?: string }>;
-      consultants = raw.map((item) => ({ doctor_id: databaseIdSchema.parse(item.doctorId), collected_paise: NO_FEE_AT_REGISTRATION }));
-      if (!consultants.length || new Set(consultants.map((item) => item.doctor_id)).size !== consultants.length) return { ok: false, message: "Select each consultant only once." };
-    } catch { return { ok: false, message: "Consultant details are invalid." }; }
-  }
-  if (consultants.length > 1) {
-    const { data, error } = await supabase.rpc("create_multi_consultant_visit", { p_patient_id: parsed.data.patientId, p_visit_type: parsed.data.visitType, p_payment_mode: NO_PAYMENT_MODE, p_previous_visit_id: parsed.data.previousVisitId || null, p_notes: parsed.data.notes || null, p_idempotency_key: parsed.data.idempotencyKey, p_consultants: consultants });
-    // Each consultant issues from their own daily series, so this returns one
-    // row (and one token) per doctor rather than a single shared number.
-    const rows = (Array.isArray(data) ? data : data ? [data] : []) as Array<{ visit_id: string; token_number: number; doctor_name: string }>;
-    if (error || !rows.length) return { ok: false, message: error?.message.includes("duplicate") ? "Select each consultant only once." : "Multi-doctor visit could not be created." };
-    revalidatePath(`/patients/${parsed.data.patientId}`); revalidatePath("/reception"); revalidatePath("/op"); revalidatePath("/dashboard");
-    return {
-      ok: true,
-      message: `Visit created. ${rows.map((row) => `${row.doctor_name}: token #${row.token_number}`).join(", ")}`,
-      data: { visitId: rows[0].visit_id, token: rows[0].token_number },
-    };
-  }
-  const { data, error } = await supabase.rpc("create_visit_with_token", {
-    p_patient_id: parsed.data.patientId, p_doctor_id: parsed.data.doctorId, p_visit_type: parsed.data.visitType,
-    p_fee_paise: NO_FEE_AT_REGISTRATION, p_collected_paise: NO_FEE_AT_REGISTRATION, p_payment_mode: NO_PAYMENT_MODE,
-    p_previous_visit_id: parsed.data.previousVisitId || null, p_notes: parsed.data.notes || null, p_idempotency_key: parsed.data.idempotencyKey,
-  });
-  const result = Array.isArray(data) ? data[0] : data;
-  if (error || !result) return { ok: false, message: "Visit could not be created. Please retry with the same form." };
-  revalidatePath(`/patients/${parsed.data.patientId}`); revalidatePath("/reception"); revalidatePath("/dashboard");
-  return { ok: true, message: "Visit created.", data: { visitId: result.visit_id, token: result.token_number } };
+  const result = await issueVisit(supabase, patientId, fields);
+  if (!result.ok) return result;
+  revalidatePath(`/patients/${patientId}`); revalidatePath("/reception"); revalidatePath("/op"); revalidatePath("/dashboard");
+  return result;
 }
 
 const reassignSchema=z.object({visitId:databaseIdSchema,doctorId:databaseIdSchema,reason:z.string().trim().min(3,"Enter a short reason.").max(500)});

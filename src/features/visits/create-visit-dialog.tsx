@@ -165,11 +165,17 @@ export function CreateVisitDialog({
                   onValueChange={(value) => updateVisitType(String(value))}
                 >
                   <SelectTrigger id="visit-type" className="w-full">
-                    <SelectValue />
+                    {/* Without a render function the trigger shows the stored
+                        value ("op") rather than the label staff chose. */}
+                    <SelectValue>{() => (visitType === "op" ? "OP" : "Follow-up")}</SelectValue>
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="op">OP</SelectItem>
-                    <SelectItem value="follow_up">Follow-up</SelectItem>
+                    <SelectItem value="op" label="OP">
+                      OP
+                    </SelectItem>
+                    <SelectItem value="follow_up" label="Follow-up">
+                      Follow-up
+                    </SelectItem>
                   </SelectContent>
                 </Select>
               </div>

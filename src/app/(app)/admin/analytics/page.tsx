@@ -1,11 +1,20 @@
 import { requireRoute } from "@/lib/auth/dal";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { formatHospitalDate } from "@/lib/domain/date";
 import { formatInr } from "@/lib/domain/money";
 import { BarChart, RankedBarChart, RoseChart, TrendChart, ValueVolumeChart } from "@/features/analytics/analytics-charts";
 import { PageHeader } from "@/components/shared/page-header";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 type Analytics = {
@@ -25,6 +34,66 @@ type Analytics = {
   patients_by_day: Array<{ date: string; new_patients: number; returning_patients: number }>;
 };
 
+type StaffActivity = {
+  profile_id: string;
+  full_name: string;
+  role: string;
+  status: string;
+  last_action_at: string | null;
+  [metric: string]: string | number | null;
+};
+type StaffColumn = { key: string; label: string; money?: boolean };
+
+/**
+ * What each role is actually measured on.
+ *
+ * One table per role rather than one twenty-column table for everyone: a
+ * pharmacist has no vitals count and a doctor has no dispensing figure, so a
+ * shared table would be mostly empty cells. These are counts of work recorded,
+ * never a quality or revenue score for a clinician (AGENTS.md 40).
+ */
+const STAFF_COLUMNS: Record<string, StaffColumn[]> = {
+  reception: [
+    { key: "patients_registered", label: "Patients registered" },
+    { key: "visits_created", label: "Visits created" },
+    { key: "op_payments_count", label: "Payments taken" },
+    { key: "op_payments_paise", label: "Collected", money: true },
+    { key: "reports_uploaded", label: "Reports uploaded" },
+  ],
+  op: [
+    { key: "vitals_recorded", label: "Vitals recorded" },
+    { key: "reports_uploaded", label: "Reports uploaded" },
+    { key: "patients_registered", label: "Patients registered" },
+  ],
+  doctor: [
+    { key: "consultations_completed", label: "Consultations" },
+    { key: "prescriptions_written", label: "Prescriptions" },
+    { key: "tests_ordered", label: "Tests ordered" },
+    { key: "progress_notes", label: "IP progress notes" },
+  ],
+  ip: [
+    { key: "ip_admissions", label: "Admissions" },
+    { key: "ip_discharges", label: "Discharges" },
+    { key: "ip_charges_added", label: "Charges added" },
+    { key: "ip_charges_paise", label: "Charge value", money: true },
+    { key: "ip_payments_count", label: "Payments taken" },
+    { key: "ip_payments_paise", label: "Collected", money: true },
+  ],
+  pharmacy: [
+    { key: "dispenses", label: "Dispenses" },
+    { key: "dispensed_paise", label: "Value dispensed", money: true },
+    { key: "stock_movements", label: "Stock movements" },
+  ],
+  admin: [
+    { key: "patients_registered", label: "Patients registered" },
+    { key: "visits_created", label: "Visits created" },
+    { key: "ip_admissions", label: "Admissions" },
+    { key: "dispenses", label: "Dispenses" },
+  ],
+};
+
+const ROLE_ORDER = ["reception", "op", "doctor", "ip", "pharmacy", "admin"];
+
 function dateValue(date: Date) { return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata" }).format(date); }
 function titleCase(value: string) { return value.replace(/_/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase()); }
 function hourLabel(hour: number) { const suffix = hour < 12 ? "AM" : "PM"; const display = hour % 12 === 0 ? 12 : hour % 12; return `${display} ${suffix}`; }
@@ -40,9 +109,24 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Pr
   const from = /^\d{4}-\d{2}-\d{2}$/.test(params.from ?? "") ? params.from! : dateValue(start);
   const to = /^\d{4}-\d{2}-\d{2}$/.test(params.to ?? "") ? params.to! : dateValue(today);
   const supabase = await createSupabaseServerClient();
-  const { data, error } = await supabase.rpc("report_admin_overview", { p_from: from, p_to: to });
+  // Two independent aggregates, so they go out together rather than in sequence.
+  const [{ data, error }, staffResult] = await Promise.all([
+    supabase.rpc("report_admin_overview", { p_from: from, p_to: to }),
+    supabase.rpc("report_staff_activity", { p_from: from, p_to: to }),
+  ]);
   if (error) throw new Error("Analytics could not be loaded.");
   const report = data as unknown as Analytics;
+  const staff: Array<StaffActivity & { total: number }> = (
+    (staffResult.data ?? []) as unknown as StaffActivity[]
+  ).map((row) => ({
+    ...row,
+    // Everything this person did that the system records, used to sort each
+    // role's table so the busiest desk is at the top.
+    total: STAFF_COLUMNS[row.role]?.reduce(
+      (sum, column) => sum + (column.money ? 0 : Number(row[column.key] ?? 0)),
+      0,
+    ) ?? Number(row.audited_actions ?? 0),
+  }));
 
   const metrics: Array<[string, number, boolean]> = [["Total Visits", report.total_visits, false], ["Unique Patients", report.unique_patients, false], ["New Patients", report.new_patients, false], ["OP Collected", report.op_collected_paise, true], ["IP Collected", report.ip_collected_paise, true], ["Pharmacy Collected", report.pharmacy_collected_paise, true], ["Outstanding", report.outstanding_paise, true], ["Current IP", report.current_ip, false]];
   const collectionDays = report.collections_by_day.map((row) => row.date);
@@ -75,6 +159,7 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Pr
           <TabsTrigger value="pharmacy">Pharmacy</TabsTrigger>
           <TabsTrigger value="collections">Collections</TabsTrigger>
           <TabsTrigger value="patients">Patients</TabsTrigger>
+          <TabsTrigger value="staff">Staff</TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview">
@@ -142,6 +227,96 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Pr
           <ChartCard title="New against returning patients" description="Patients attending each day, split by whether they registered that day">
             <BarChart stacked dateAxis categories={patientDays} label="New and returning patients per day" series={[{ name: "New", values: report.patients_by_day.map((row) => row.new_patients) }, { name: "Returning", values: report.patients_by_day.map((row) => row.returning_patients) }]} />
           </ChartCard>
+        </TabsContent>
+
+        <TabsContent value="staff">
+          <div className="grid gap-4">
+            <ChartCard
+              title="Recorded actions by staff member"
+              description="Every action the system logged for each person in this range — a workload measure, not a performance score"
+            >
+              <RankedBarChart
+                data={staff
+                  .filter((row) => Number(row.audited_actions) > 0)
+                  .sort((a, b) => Number(b.audited_actions) - Number(a.audited_actions))
+                  .slice(0, 15)
+                  .map((row) => ({
+                    name: `${row.full_name} · ${titleCase(row.role)}`,
+                    value: Number(row.audited_actions),
+                  }))}
+                label="Recorded actions by staff member"
+              />
+            </ChartCard>
+
+            {ROLE_ORDER.filter((role) => staff.some((row) => row.role === role)).map((role) => {
+              const columns = STAFF_COLUMNS[role] ?? [];
+              const rows = staff
+                .filter((row) => row.role === role)
+                .sort((a, b) => b.total - a.total || a.full_name.localeCompare(b.full_name));
+              return (
+                <Card key={role}>
+                  <CardHeader>
+                    <CardTitle className="text-base">{titleCase(role)} staff</CardTitle>
+                    <CardDescription>
+                      {rows.length} account{rows.length === 1 ? "" : "s"} · work recorded between{" "}
+                      {from} and {to}
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="p-0">
+                    <div className="overflow-x-auto">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead className="min-w-44">Staff</TableHead>
+                            {columns.map((column) => (
+                              <TableHead className="text-right" key={column.key}>
+                                {column.label}
+                              </TableHead>
+                            ))}
+                            <TableHead className="text-right">Total actions</TableHead>
+                            <TableHead className="text-right">Last active</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {rows.map((row) => (
+                            <TableRow key={row.profile_id}>
+                              <TableCell className="font-medium">
+                                {row.full_name}
+                                {row.status !== "active" ? (
+                                  <span className="ml-2 text-xs text-muted-foreground">
+                                    (inactive)
+                                  </span>
+                                ) : null}
+                              </TableCell>
+                              {columns.map((column) => (
+                                <TableCell className="text-right tabular-nums" key={column.key}>
+                                  {column.money
+                                    ? formatInr(Number(row[column.key] ?? 0))
+                                    : new Intl.NumberFormat("en-IN").format(
+                                        Number(row[column.key] ?? 0),
+                                      )}
+                                </TableCell>
+                              ))}
+                              <TableCell className="text-right tabular-nums">
+                                {new Intl.NumberFormat("en-IN").format(
+                                  Number(row.audited_actions ?? 0),
+                                )}
+                              </TableCell>
+                              <TableCell className="whitespace-nowrap text-right text-muted-foreground">
+                                {row.last_action_at
+                                  ? formatHospitalDate(row.last_action_at, true)
+                                  : "No activity"}
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
         </TabsContent>
       </Tabs>
     </div>

@@ -102,15 +102,14 @@ test.describe("multi-consultant visit", () => {
       names.push(name);
       await page.getByRole("button", { name: "Find or Add Patient" }).click();
       await expect(page.getByRole("heading", { name: "Find or add patient" })).toBeVisible();
-      await page.getByPlaceholder("Phone or patient name").fill(`9${stamp}`);
+      await page.getByPlaceholder("UHID, mobile number or patient name").fill(`9${stamp}`);
       await page.getByRole("button", { name: "Add new patient" }).click();
       await page.getByLabel("Patient name *").fill(name);
-      await page.getByLabel("Phone / Patient ID *").fill(`9${stamp}`);
-      await page.getByRole("button", { name: "Create & continue" }).click();
-      // The visit step must show the patient just registered, not the previous one.
-      await expect(page.getByText(name, { exact: false })).toBeVisible({ timeout: 30_000 });
-      await page.getByRole("button", { name: "Create Visit" }).click();
+      await page.getByLabel("Mobile number *").fill(`9${stamp}`);
+      await page.getByRole("button", { name: "Register & Create Visit" }).click();
+      // The token must belong to the patient just registered, not the previous one.
       await expect(page.getByRole("heading", { name: "Visit created" })).toBeVisible({ timeout: 30_000 });
+      await expect(page.getByText(`${name} has been added to the doctor queue.`)).toBeVisible();
       await page.keyboard.press("Escape");
     }
 
@@ -129,14 +128,12 @@ test.describe("multi-consultant visit", () => {
     await signIn(page, "reception");
     await page.goto("/reception");
     await page.getByRole("button", { name: "Find or Add Patient" }).click();
-    await page.getByPlaceholder("Phone or patient name").fill(`9${stamp}`);
+    await page.getByPlaceholder("UHID, mobile number or patient name").fill(`9${stamp}`);
     await page.getByRole("button", { name: "Add new patient" }).click();
     await page.getByLabel("Patient name *").fill(patientName);
-    await page.getByLabel("Phone / Patient ID *").fill(`9${stamp}`);
-    await page.getByRole("button", { name: "Create & continue" }).click();
-
+    await page.getByLabel("Mobile number *").fill(`9${stamp}`);
     await page.getByRole("button", { name: "Add another doctor" }).click();
-    await page.getByRole("button", { name: "Create Visit" }).click();
+    await page.getByRole("button", { name: "Register & Create Visit" }).click();
     await expect(page.getByRole("heading", { name: "Visit created" })).toBeVisible({ timeout: 30_000 });
 
     await page.getByRole("button", { name: /Print Token/ }).click();

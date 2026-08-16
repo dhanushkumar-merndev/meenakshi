@@ -14,13 +14,19 @@ test.describe("printed documents", () => {
   test("prescription prints the letterhead and the clinical content", async ({ page }, testInfo) => {
     test.skip(testInfo.project.name !== "desktop", "Print layout is checked on A4 width.");
     test.setTimeout(120_000);
-    await signIn(page, "doctor");
-    await page.goto("/doctor?status=completed");
-    const row = page.getByRole("row").filter({ hasText: /#\d+/ }).first();
-    await row.waitFor({ timeout: 30_000 });
-    await row.getByRole("button", { name: /Open|Consult|View/ }).first().click();
+    // Admin rather than the doctor account: the completed visit that exists on
+    // any given day may belong to another consultant, and the doctor queue only
+    // ever shows their own patients.
+    await signIn(page, "admin");
+    await page.goto("/reception");
+    // A prescription only exists once the consultation is completed, so the row
+    // is picked by its status rather than by position in the queue.
+    const completed = page.getByRole("row").filter({ hasText: /Completed/i }).first();
+    await completed.waitFor({ timeout: 30_000 });
+    await completed.getByRole("button", { name: /Open|View/ }).first().click();
+    await page.waitForURL(/\/visits\/[0-9a-f-]{36}/, { timeout: 30_000 });
 
-    const prescriptionLink = page.getByRole("button", { name: /Print Prescription|Prescription/ }).first();
+    const prescriptionLink = page.getByRole("button", { name: /^Prescription$/ }).first();
     await prescriptionLink.waitFor({ timeout: 30_000 });
     await prescriptionLink.click();
     await expect(page).toHaveURL(/print\/prescription/);
@@ -59,8 +65,10 @@ test.describe("printed documents", () => {
     await signIn(page, "reception");
     await page.goto("/reception");
     const row = page.getByRole("row").filter({ hasText: /#\d+/ }).first();
-    const hasVisit = await row.count();
-    test.skip(!hasVisit, "No visit today to print a token for.");
+    // Without waiting first, the count runs before the table renders and the
+    // test skipped itself instead of checking anything.
+    await row.waitFor({ timeout: 30_000 }).catch(() => {});
+    test.skip(!(await row.count()), "No visit today to print a token for.");
     await row.getByRole("button", { name: "Open" }).first().click();
     await page.getByRole("button", { name: /Print Token|Token/ }).first().click();
     await expect(page).toHaveURL(/print\/token/);

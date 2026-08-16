@@ -1,4 +1,5 @@
 import { requireRoute } from "@/lib/auth/dal";
+import { hasPermission } from "@/lib/auth/permissions";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { formatHospitalDate, isHospitalToday } from "@/lib/domain/date";
 import { containsSearchPattern, EMPTY_UUID } from "@/lib/domain/search";
@@ -24,10 +25,10 @@ type Report = {
   report_date: string;
   display_name: string;
   status: string;
-  patients: { name: string; phone_normalized: string } | null;
+  patients: { name: string; uhid: string | null; phone_normalized: string } | null;
   report_categories: { name: string } | null;
 };
-type PendingOrder={id:string;patient_id:string;visit_id:string|null;ip_ticket_id:string|null;test_name:string;created_at:string;patients:{name:string;phone_normalized:string}|null;doctors:{display_name:string}|null};
+type PendingOrder={id:string;patient_id:string;visit_id:string|null;ip_ticket_id:string|null;test_name:string;created_at:string;patients:{name:string;uhid:string|null;phone_normalized:string}|null;doctors:{display_name:string}|null};
 export default async function ReportsPage({ searchParams }: { searchParams: Promise<{ page?: string; q?: string }> }) {
   const profile = await requireRoute("/reports");
   const params = await searchParams; const page = Math.max(1, Number(params.page) || 1); const size = 50; const q = params.q?.trim() ?? "";
@@ -36,7 +37,7 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
   let reportsQuery = supabase
     .from("patient_reports")
     .select(
-      "id,report_name,report_date,display_name,status,patients(name,phone_normalized),report_categories(name)",
+      "id,report_name,report_date,display_name,status,patients(name,uhid,phone_normalized),report_categories(name)",
       { count: "exact" },
     )
     .order("created_at", { ascending: false })
@@ -57,17 +58,20 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
         .select("id,name")
         .eq("active", true)
         .order("name"),
-      supabase.from("test_orders").select("id,patient_id,visit_id,ip_ticket_id,test_name,created_at,patients(name,phone_normalized),doctors(display_name)").in("status", ["ordered", "report_pending"]).order("created_at", { ascending: false }).limit(100),
+      supabase.from("test_orders").select("id,patient_id,visit_id,ip_ticket_id,test_name,created_at,patients(name,uhid,phone_normalized),doctors(display_name)").in("status", ["ordered", "report_pending"]).order("created_at", { ascending: false }).limit(100),
     ]);
   const rows = (data ?? []) as unknown as Report[];
   const pendingOrders=(testOrders??[]) as unknown as PendingOrder[];
+  // Doctors read this page to review results they ordered; uploading is
+  // still the desk's job, so the upload table is hidden from them.
+  const canUpload = hasPermission(profile.role, "uploadReport");
   return (
     <div>
       <PageHeader
         title="Patient Reports"
         description="Private report metadata and report-ready follow-up workflow"
         actions={
-          ["admin", "reception", "op", "ip"].includes(profile.role) ? (
+          canUpload ? (
             <UploadReportDialog
               categories={categories ?? []}
               testOrders={(testOrders ?? []).map((item) => {
@@ -91,7 +95,7 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
         }
       />
       <DebouncedSearchInput className="mb-4 max-w-md" initialValue={q} placeholder="Search patient, phone or report name" ariaLabel="Search patient reports" />
-      {pendingOrders.length?<Card className="mb-4"><CardContent className="p-0"><div className="border-b p-4"><h2 className="font-semibold">Pending report uploads</h2><p className="text-sm text-muted-foreground">Tests requested by doctors that are waiting for a file.</p></div><div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Requested</TableHead><TableHead>Patient</TableHead><TableHead>Patient ID</TableHead><TableHead>Test / report</TableHead><TableHead>Doctor</TableHead><TableHead>Source</TableHead><TableHead className="text-right">Action</TableHead></TableRow></TableHeader><TableBody>{pendingOrders.map(order=>{const option={id:order.id,patientId:order.patient_id,patientLabel:`${order.patients?.name??"Patient"} · ${order.patients?.phone_normalized??""}`,visitId:order.visit_id,ipTicketId:order.ip_ticket_id,label:`${order.test_name} · ${order.patients?.name??"Patient"}`};return <TableRow key={order.id}><TableCell>{formatHospitalDate(order.created_at)}</TableCell><TableCell className="font-medium">{order.patients?.name}</TableCell><TableCell>{order.patients?.phone_normalized}</TableCell><TableCell>{order.test_name}</TableCell><TableCell>{order.doctors?.display_name}</TableCell><TableCell>{order.ip_ticket_id?"IP":"OP"}</TableCell><TableCell className="text-right"><UploadReportDialog categories={categories??[]} testOrders={[option]} initialTestOrderId={order.id} initialPatient={{id:order.patient_id,label:option.patientLabel}} lockPatient/></TableCell></TableRow>})}</TableBody></Table></div></CardContent></Card>:null}
+      {pendingOrders.length > 0 && canUpload?<Card className="mb-4"><CardContent className="p-0"><div className="border-b p-4"><h2 className="font-semibold">Pending report uploads</h2><p className="text-sm text-muted-foreground">Tests requested by doctors that are waiting for a file.</p></div><div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Requested</TableHead><TableHead>Patient</TableHead><TableHead>Patient ID</TableHead><TableHead>Test / report</TableHead><TableHead>Doctor</TableHead><TableHead>Source</TableHead><TableHead className="text-right">Action</TableHead></TableRow></TableHeader><TableBody>{pendingOrders.map(order=>{const option={id:order.id,patientId:order.patient_id,patientLabel:`${order.patients?.name??"Patient"} · ${order.patients?.phone_normalized??""}`,visitId:order.visit_id,ipTicketId:order.ip_ticket_id,label:`${order.test_name} · ${order.patients?.name??"Patient"}`};return <TableRow key={order.id}><TableCell>{formatHospitalDate(order.created_at)}</TableCell><TableCell className="font-medium">{order.patients?.name}</TableCell><TableCell className="font-mono text-xs">{order.patients?.uhid ?? "—"}</TableCell><TableCell>{order.test_name}</TableCell><TableCell>{order.doctors?.display_name}</TableCell><TableCell>{order.ip_ticket_id?"IP":"OP"}</TableCell><TableCell className="text-right"><UploadReportDialog categories={categories??[]} testOrders={[option]} initialTestOrderId={order.id} initialPatient={{id:order.patient_id,label:option.patientLabel}} lockPatient/></TableCell></TableRow>})}</TableBody></Table></div></CardContent></Card>:null}
       <Card>
         <CardContent className="p-0">
           <div className="overflow-x-auto">
@@ -115,7 +119,9 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
                         {formatHospitalDate(report.report_date)}
                       </TableCell>
                       <TableCell>{report.patients?.name}</TableCell>
-                      <TableCell>{report.patients?.phone_normalized}</TableCell>
+                      <TableCell className="font-mono text-xs">
+                        {report.patients?.uhid ?? "—"}
+                      </TableCell>
                       <TableCell className="font-medium">
                         {report.report_name}
                       </TableCell>

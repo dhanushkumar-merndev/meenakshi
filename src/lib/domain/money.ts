@@ -20,3 +20,33 @@ export function paymentSummary(totalDuePaise: number, payments: readonly number[
   const status = totalCollectedPaise === 0 ? "unpaid" : balancePaise === 0 ? "paid" : "partially_paid";
   return { totalDuePaise, totalCollectedPaise, balancePaise, status } as const;
 }
+
+/**
+ * Medicine is stocked in pieces but priced by the pack, so both figures are
+ * derived from the pack price rather than stored separately.
+ *
+ * The line amount is rounded ONCE from the pack price, never by multiplying a
+ * rounded piece price: a strip of 30 at ₹35 is 116.67 paise a tablet, and
+ * 30 × 117 would bill ₹35.10 — ten paise of invented money on every strip.
+ * These mirror the arithmetic in dispense_prescription, which is authoritative.
+ */
+export function piecePricePaise(packPricePaise: number, unitsPerPack: number) {
+  return Math.round(packPricePaise / Math.max(unitsPerPack, 1));
+}
+
+export function lineAmountPaise(
+  quantityPieces: number,
+  packPricePaise: number,
+  unitsPerPack: number,
+) {
+  return Math.round((quantityPieces * packPricePaise) / Math.max(unitsPerPack, 1));
+}
+
+/** "13 × 30 + 10" — how the pharmacist counts the shelf. */
+export function packBreakdown(quantityPieces: number, unitsPerPack: number) {
+  const pack = Math.max(unitsPerPack, 1);
+  if (pack === 1) return null;
+  const packs = Math.floor(quantityPieces / pack);
+  const loose = quantityPieces % pack;
+  return { packs, loose, label: `${packs} × ${pack}${loose ? ` + ${loose}` : ""}` };
+}

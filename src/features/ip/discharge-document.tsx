@@ -22,21 +22,27 @@ export function DischargeDocument({
 
   return (
     <article className="min-h-[270mm] border border-black/20 p-7">
-      <header className="flex items-start justify-between gap-6 border-b-2 border-primary pb-4">
+      {/* Hospital banner first, then the document title and the treating
+          doctor's identity block beneath it. */}
+      <header className="border-b-2 border-primary pb-3">
         <HospitalLetterhead identity={identity} />
-        <div className="text-right text-xs">
-          <h1 className="text-base font-bold tracking-wide uppercase">
-            Discharge Summary
-          </h1>
-          <p className="font-bold">{ticket.ticket_number}</p>
-          <p>{ticket.doctors?.display_name}</p>
-          <p>{ticket.doctors?.qualification}</p>
-          <p>Registration: {ticket.doctors?.registration_number ?? "—"}</p>
+        <div className="mt-3 flex items-start justify-between gap-4 border-t pt-2 text-xs">
+          <div>
+            <h1 className="text-base font-bold tracking-wide uppercase">
+              Discharge Summary
+            </h1>
+            <p className="font-mono font-bold">{ticket.ticket_number}</p>
+          </div>
+          <div className="text-right">
+            <p className="font-bold">{ticket.doctors?.display_name}</p>
+            <p>{ticket.doctors?.qualification}</p>
+            <p>Registration: {ticket.doctors?.registration_number ?? "—"}</p>
+          </div>
         </div>
       </header>
       <section className="my-4 grid grid-cols-2 gap-2 rounded border p-3 text-sm sm:grid-cols-4">
         <p><b>Patient:</b> {ticket.patients?.name}</p>
-        <p><b>Patient ID:</b> {ticket.patients?.phone_normalized}</p>
+        <p><b>Patient ID:</b> {ticket.patients?.uhid ?? "—"}</p>
         <p>
           <b>Age/Gender:</b>{" "}
           {ticket.patients?.dob ? calculateAge(ticket.patients.dob) : "—"} /{" "}

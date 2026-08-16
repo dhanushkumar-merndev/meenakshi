@@ -8,6 +8,7 @@ import { calculateAge, formatHospitalDate } from "@/lib/domain/date";
 import { formatInr, paymentSummary } from "@/lib/domain/money";
 import { formatPrescriptionNumber } from "@/lib/domain/prescription";
 import { ConsultationEditor } from "@/features/clinical/consultation-editor";
+import { AllergyDialog } from "@/features/patients/allergy-dialog";
 import { VitalsDialog } from "@/features/op/vitals-dialog";
 import { UploadReportDialog } from "@/features/reports/upload-report-dialog";
 import { AdmissionDialog } from "@/features/ip/ip-dialogs";
@@ -38,6 +39,7 @@ type VisitDetail = {
   doctor_id: string;
   patients: {
     name: string;
+    uhid: string | null;
     phone_normalized: string;
     dob: string | null;
     gender: string;
@@ -95,6 +97,7 @@ type VisitDetail = {
   test_orders: Array<{
     id: string;
     test_name: string;
+    category: string | null;
     notes: string | null;
     status: string;
   }>;
@@ -119,17 +122,21 @@ export default async function VisitPage({
 }) {
   const profile = await requireRoute("/visits");
   const finance = hasPermission(profile.role, "viewVisitFinance");
+  // The OP desk sends the patient onward after the consultation -- to the
+  // pharmacy when medicines were prescribed, to billing when only the fee is
+  // outstanding -- so they see the balance, and nothing else financial.
+  const seesBalance = finance || profile.role === "op";
   const { id } = await params;
   const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase
     .from("visits")
-    .select(`id,token_number,created_at,visit_date,visit_type,status,patient_id,doctor_id,patients(name,phone_normalized,dob,gender,allergies,blood_group),doctors(display_name,qualification,registration_number,op_fee_paise,follow_up_fee_paise),departments(name),vitals(weight_kg,height_cm,temperature_c,bp_systolic,bp_diastolic,pulse,spo2,respiratory_rate,notes),consultations(symptoms,history,examination,assessment,advice,follow_up_type,follow_up_date,follow_up_days,status,admission_recommended,admission_ward_type,admission_reason),prescriptions(id,prescription_number,status,prescription_items(medicine_id,medicine_name,dose,frequency,duration,route,notes,requested_quantity)),test_orders(id,test_name,notes,status)${finance ? ",visit_payments(amount_paise,mode,created_at)" : ""}`)
+    .select(`id,token_number,created_at,visit_date,visit_type,status,patient_id,doctor_id,patients(name,uhid,phone_normalized,dob,gender,allergies,blood_group),doctors(display_name,qualification,registration_number,op_fee_paise,follow_up_fee_paise),departments(name),vitals(weight_kg,height_cm,temperature_c,bp_systolic,bp_diastolic,pulse,spo2,respiratory_rate,notes),consultations(symptoms,history,examination,assessment,advice,follow_up_type,follow_up_date,follow_up_days,status,admission_recommended,admission_ward_type,admission_reason),prescriptions(id,prescription_number,status,prescription_items(medicine_id,medicine_name,dose,frequency,duration,route,notes,requested_quantity)),test_orders(id,test_name,category,notes,status)${finance ? ",visit_payments(amount_paise,mode,created_at)" : ""}`)
     .eq("id", id)
     .single();
   if (error || !data) notFound();
   const visit = data as unknown as VisitDetail;
   const [financialResult, reportsResult, categoriesResult] = await Promise.all([
-    finance
+    seesBalance
       ? supabase.rpc("get_visit_financial_summaries", { p_visit_ids: [id] })
       : Promise.resolve({ data: [] }),
     supabase
@@ -139,7 +146,10 @@ export default async function VisitPage({
       )
       .eq("visit_id", id)
       .order("created_at", { ascending: false }),
-    hasPermission(profile.role, "uploadReport")
+    // Doctors need these too: they pick the kind of investigation they are
+    // ordering, which is the same list an uploaded report is filed under.
+    hasPermission(profile.role, "uploadReport") ||
+    hasPermission(profile.role, "writeConsultation")
       ? supabase
           .from("report_categories")
           .select("id,name")
@@ -147,9 +157,11 @@ export default async function VisitPage({
           .order("name")
       : Promise.resolve({ data: [] }),
   ]);
-  const financialRows = financialResult.data;
+  const summary = financialResult.data?.[0] as
+    | { fee_paise?: number; collected_paise?: number }
+    | undefined;
   const patientReports = (reportsResult.data ?? []) as unknown as VisitReport[];
-  visit.fee_paise = Number((financialRows?.[0] as { fee_paise?: number } | undefined)?.fee_paise ?? 0);
+  visit.fee_paise = Number(summary?.fee_paise ?? 0);
   visit.visit_payments = visit.visit_payments ?? [];
   const patient = visit.patients;
   if (!patient) notFound();
@@ -157,10 +169,11 @@ export default async function VisitPage({
   const consultation = visit.consultations;
   const consultationCompleted = consultation?.status === "completed";
   const prescription = visit.prescriptions;
-  const money = paymentSummary(
-    visit.fee_paise,
-    visit.visit_payments?.map((p) => p.amount_paise) ?? [],
-  );
+  // Collected comes from the summary RPC, not the payment rows: OP staff have
+  // no read access to visit_payments, only to the totals.
+  const money = paymentSummary(visit.fee_paise, [
+    Number(summary?.collected_paise ?? 0),
+  ]);
   // visits.fee_paise is column-revoked from authenticated, so the doctor cannot
   // read it back. Prefill from their own configured fee; they can override it.
   const configuredFeePaise =
@@ -190,6 +203,9 @@ export default async function VisitPage({
       }
     : undefined;
   const canConvertToIp=(profile.role==="doctor"||profile.role==="admin")&&(profile.role==="admin"||profile.doctorId===visit.doctor_id);
+  const canRecordAllergies = ["admin", "doctor", "reception", "ip", "op"].includes(profile.role);
+  const testCategories = ((categoriesResult.data ?? []) as Array<{ name: string }>)
+    .map((row) => row.name);
   // These three are independent of each other; running them in one Promise.all
   // removes a round-trip from the critical path.
   const [{data:availableRooms},{data:existingAdmission},occupiedResult]=canConvertToIp?await Promise.all([supabase.from("room_beds").select("id,room_number,bed_number,floor").eq("active",true).order("floor").order("room_number"),supabase.from("ip_tickets").select("id").eq("source_visit_id",visit.id).in("status",["admitted","discharge_pending"]).maybeSingle(),supabase.from("ip_tickets").select("room_bed_id").in("status",["admitted","discharge_pending"]).not("room_bed_id","is",null)]):[{data:[]},{data:null},{data:[]}];
@@ -198,7 +214,7 @@ export default async function VisitPage({
     <div>
       <PageHeader
         title={`Token #${visit.token_number} · ${patient.name}`}
-        description={`${formatHospitalDate(visit.created_at, true)} · Patient ID ${patient.phone_normalized}`}
+        description={`${formatHospitalDate(visit.created_at, true)} · Patient ID ${patient.uhid ?? "—"} · ${patient.phone_normalized}`}
         actions={
           <>
             <Button
@@ -233,6 +249,16 @@ export default async function VisitPage({
         {patient.allergies ? (
           <Badge variant="destructive">Allergies: {patient.allergies}</Badge>
         ) : null}
+        {/* The doctor is usually the one who finds out about an allergy, so it
+            is recorded here rather than only from Edit Patient. */}
+        {canRecordAllergies ? (
+          <AllergyDialog
+            patientId={visit.patient_id}
+            patientName={patient.name}
+            allergies={patient.allergies}
+            triggerLabel="Add allergies"
+          />
+        ) : null}
       </div>
       {finance ? (
         <Card className="mb-4">
@@ -253,6 +279,21 @@ export default async function VisitPage({
             </div>
           </CardContent>
         </Card>
+      ) : seesBalance ? (
+        <Alert className="mb-4" variant={money.balancePaise > 0 ? "destructive" : "default"}>
+          <AlertTitle>
+            {money.balancePaise > 0
+              ? `Pending balance ${formatInr(money.balancePaise)}`
+              : "No pending balance"}
+          </AlertTitle>
+          <AlertDescription>
+            {money.balancePaise > 0
+              ? prescription
+                ? "Send the patient to the pharmacy counter: the medicines and this fee are collected together."
+                : "No medicines were prescribed — send the patient to the billing counter to settle this."
+              : "Nothing to collect for this visit."}
+          </AlertDescription>
+        </Alert>
       ) : null}
       <Card className="mb-4">
         <CardHeader className="flex-row items-center justify-between">
@@ -326,7 +367,38 @@ export default async function VisitPage({
             />
           ) : null}
         </CardHeader>
-        <CardContent className="p-0">
+        <CardContent className="space-y-4 p-0">
+          {/* What the doctor ordered, whether or not a file has come back yet.
+              Without this the tests were invisible until someone uploaded a
+              result, so nobody could tell what was still awaited. */}
+          {visit.test_orders.length ? (
+            <div className="overflow-x-auto border-b">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Investigation ordered</TableHead>
+                    <TableHead>Type</TableHead>
+                    <TableHead>Notes</TableHead>
+                    <TableHead>Status</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {visit.test_orders.map((order) => (
+                    <TableRow key={order.id}>
+                      <TableCell className="font-medium">{order.test_name}</TableCell>
+                      <TableCell>{order.category || "—"}</TableCell>
+                      <TableCell className="text-muted-foreground">
+                        {order.notes || "—"}
+                      </TableCell>
+                      <TableCell>
+                        <StatusBadge status={order.status} />
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          ) : null}
           <div className="overflow-x-auto">
             <Table>
               <TableHeader>
@@ -404,8 +476,10 @@ export default async function VisitPage({
           )}
           initialTests={(visit.test_orders ?? []).map((item) => ({
             test_name: item.test_name,
+            category: item.category ?? "",
             notes: item.notes ?? "",
           }))}
+          testCategories={testCategories}
           defaultFee={defaultFeeRupees}
         />
       ) : consultation ? (
@@ -437,6 +511,55 @@ export default async function VisitPage({
                 ))}
             </CardContent>
           </Card>
+          {/* The prescription and the investigations are the two things staff
+              look up after a consultation closes; the clinical notes above are
+              no use to the pharmacy or the desk on their own. */}
+          {prescription?.prescription_items?.length ? (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">
+                  Prescription{" "}
+                  <span className="font-mono text-sm font-normal text-muted-foreground">
+                    {formatPrescriptionNumber(prescription.prescription_number)}
+                  </span>
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-0">
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Medicine</TableHead>
+                        <TableHead>Dose</TableHead>
+                        <TableHead>Frequency</TableHead>
+                        <TableHead>Duration</TableHead>
+                        <TableHead>Route</TableHead>
+                        <TableHead>Notes</TableHead>
+                        <TableHead>Qty</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {prescription.prescription_items.map((item, index) => (
+                        <TableRow key={`${item.medicine_name}-${index}`}>
+                          <TableCell className="font-medium">
+                            {item.medicine_name}
+                          </TableCell>
+                          <TableCell>{item.dose || "—"}</TableCell>
+                          <TableCell>{item.frequency || "—"}</TableCell>
+                          <TableCell>{item.duration || "—"}</TableCell>
+                          <TableCell>{item.route || "—"}</TableCell>
+                          <TableCell>{item.notes || "—"}</TableCell>
+                          <TableCell className="tabular-nums">
+                            {item.requested_quantity}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              </CardContent>
+            </Card>
+          ) : null}
         </div>
       ) : (
         <Alert>
