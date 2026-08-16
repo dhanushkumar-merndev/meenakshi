@@ -8,7 +8,12 @@ export async function GET() {
   const profile = await getCurrentProfile();
   const supabase = await createSupabaseServerClient();
   void profile;
-  const { data } = await supabase.rpc("operational_data_signature");
+  const { data, error } = await supabase.rpc("operational_data_signature");
+  if (error)
+    return NextResponse.json(
+      { error: "Live updates unavailable" },
+      { status: 503, headers: { "Cache-Control": "private, no-store" } },
+    );
   return NextResponse.json(
     { signature: data ?? "" },
     { headers: { "Cache-Control": "private, no-store" } },

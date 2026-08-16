@@ -1,7 +1,8 @@
 import { notFound } from "next/navigation";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { PrintButton } from "@/components/shared/print-button";
-import { HospitalLogo } from "@/components/shared/hospital-logo";
+import { HospitalLetterhead } from "@/components/shared/hospital-letterhead";
+import { getHospitalIdentity } from "@/lib/print/hospital-identity.server";
 
 export default async function TokenPrintPage({
   params,
@@ -27,16 +28,26 @@ export default async function TokenPrintPage({
     doctors: { display_name: string } | null;
     departments: { name: string } | null;
   };
+  // Every consultant the patient is registered with today. They are NOT matched
+  // on token number: since each doctor issues from their own daily series, two
+  // consultants in the same registration hold different numbers, and matching on
+  // the number found only the doctor whose slip was being printed.
   const { data: consultantRows } = await supabase
     .from("visits")
-    .select("doctors(display_name),departments(name)")
+    .select("id,token_number,doctors(display_name),departments(name)")
     .eq("patient_id", visit.patient_id)
     .eq("visit_date", visit.visit_date)
-    .eq("token_number", visit.token_number)
     .order("created_at");
-  const consultants = (consultantRows ?? []) as unknown as Array<{ doctors: { display_name: string } | null; departments: { name: string } | null }>;
-  const doctorNames = [...new Set(consultants.map((item) => item.doctors?.display_name).filter(Boolean))].join(", ") || visit.doctors?.display_name;
-  const departmentNames = [...new Set(consultants.map((item) => item.departments?.name).filter(Boolean))].join(", ") || visit.departments?.name || "—";
+  const identity = await getHospitalIdentity();
+  const consultants = (consultantRows ?? []) as unknown as Array<{
+    id: string;
+    token_number: number;
+    doctors: { display_name: string } | null;
+    departments: { name: string } | null;
+  }>;
+  const multiple = consultants.length > 1;
+  const doctorNames = visit.doctors?.display_name ?? "—";
+  const departmentNames = visit.departments?.name ?? "—";
   const at = new Date(visit.created_at);
   return (
     <main className="mx-auto min-h-screen max-w-sm bg-white p-5 text-black">
@@ -44,13 +55,29 @@ export default async function TokenPrintPage({
         <PrintButton label="Print Token" />
       </div>
       <article className="border border-black p-6 text-center font-sans">
-        <HospitalLogo size={56} className="mx-auto mb-2" />
-        <h1 className="text-lg font-bold uppercase tracking-wide">
-          Meenakshi Hospital
-        </h1>
+        <HospitalLetterhead align="center" identity={identity} logoSize={56} />
         <div className="my-5 border-y border-black py-4">
           <p className="text-xs font-semibold uppercase">Token No</p>
           <p className="text-6xl font-bold">{visit.token_number}</p>
+          {/* One patient, several consultants: each doctor runs their own daily
+              series, so every token is listed rather than assuming one shared
+              number. */}
+          {multiple ? (
+            <div className="mt-4 border-t border-black/30 pt-3">
+              <p className="text-xs font-semibold uppercase">All consultants today</p>
+              <ul className="mt-2 space-y-1">
+                {consultants.map((row) => (
+                  <li className="flex items-baseline justify-between gap-3 text-sm" key={row.id}>
+                    <span className="text-left">
+                      {row.doctors?.display_name ?? "—"}
+                      <span className="block text-xs">{row.departments?.name ?? "—"}</span>
+                    </span>
+                    <span className="text-lg font-bold">#{row.token_number}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
         </div>
         <dl className="grid grid-cols-[6rem_1fr] gap-y-3 text-left text-sm">
           <dt className="font-semibold">Patient</dt>
@@ -58,9 +85,9 @@ export default async function TokenPrintPage({
           <dt className="font-semibold">Patient ID</dt>
           <dd>{visit.patients?.phone_normalized}</dd>
           <dt className="font-semibold">Doctor</dt>
-          <dd>{doctorNames}</dd>
+          <dd>{multiple ? `${consultants.length} consultants (listed above)` : doctorNames}</dd>
           <dt className="font-semibold">Department</dt>
-          <dd>{departmentNames}</dd>
+          <dd>{multiple ? "See list above" : departmentNames}</dd>
           <dt className="font-semibold">Date</dt>
           <dd>
             {at.toLocaleDateString("en-IN", {

@@ -2,12 +2,16 @@ import { NextResponse } from "next/server";
 import { getCurrentProfile } from "@/lib/auth/dal";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { databaseIdSchema } from "@/lib/validation/database-id";
 export async function GET(
   _: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
   const profile = await getCurrentProfile();
-  const { id } = await params;
+  const parsedId = databaseIdSchema.safeParse((await params).id);
+  if (!parsedId.success)
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  const id = parsedId.data;
   const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase
     .from("patient_reports")

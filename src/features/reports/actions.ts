@@ -8,9 +8,9 @@ import { databaseIdSchema } from "@/lib/validation/database-id";
 import type { ActionState } from "@/types/hospital";
 const schema = z.object({
   patientId: databaseIdSchema,
-  visitId: z.string().optional(),
-  ipTicketId: z.string().optional(),
-  testOrderId: z.string().optional(),
+  visitId: databaseIdSchema.optional().or(z.literal("")),
+  ipTicketId: databaseIdSchema.optional().or(z.literal("")),
+  testOrderId: databaseIdSchema.optional().or(z.literal("")),
   categoryId: databaseIdSchema,
   reportName: z.string().min(2).max(150),
   reportDate: z.string().date(),

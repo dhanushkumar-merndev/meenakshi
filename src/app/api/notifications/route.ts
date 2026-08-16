@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { getCurrentProfile } from "@/lib/auth/dal";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
@@ -38,7 +38,14 @@ function notification(
   };
 }
 
-export async function GET() {
+function positiveInteger(value: string | null, fallback: number, maximum: number) {
+  const parsed = Number.parseInt(value ?? "", 10);
+  return Number.isFinite(parsed) && parsed > 0
+    ? Math.min(parsed, maximum)
+    : fallback;
+}
+
+export async function GET(request: NextRequest) {
   const profile = await getCurrentProfile();
   const supabase = await createSupabaseServerClient();
   const summaryPromise = supabase.rpc("dashboard_summary");
@@ -224,9 +231,19 @@ export async function GET() {
     ...item,
     read: readKeys.has(item.id),
   }));
+  const unreadCount = items.filter((item) => !item.read).length;
+  const scope = request.nextUrl.searchParams.get("scope") === "unread" ? "unread" : "all";
+  const pageSize = positiveInteger(request.nextUrl.searchParams.get("pageSize"), 10, 20);
+  const requestedPage = positiveInteger(request.nextUrl.searchParams.get("page"), 1, 10_000);
+  const scopedItems = scope === "unread" ? items.filter((item) => !item.read) : items;
+  const totalItems = scopedItems.length;
+  const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
+  const page = Math.min(requestedPage, totalPages);
+  const offset = (page - 1) * pageSize;
   const response: NotificationResponse = {
-    items,
-    unreadCount: items.filter((item) => !item.read).length,
+    items: scopedItems.slice(offset, offset + pageSize),
+    unreadCount,
+    pagination: { page, pageSize, totalItems, totalPages },
   };
   return NextResponse.json(response, {
     headers: { "Cache-Control": "private, no-store" },

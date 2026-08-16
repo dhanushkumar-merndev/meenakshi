@@ -4,7 +4,8 @@ import { calculateAge, formatHospitalDate } from "@/lib/domain/date";
 import { formatPrescriptionNumber } from "@/lib/domain/prescription";
 import { formatInr } from "@/lib/domain/money";
 import { PrintButton } from "@/components/shared/print-button";
-import { HospitalLogo } from "@/components/shared/hospital-logo";
+import { HospitalLetterhead } from "@/components/shared/hospital-letterhead";
+import { getHospitalIdentity } from "@/lib/print/hospital-identity.server";
 
 type Rx = {
   created_at: string;
@@ -70,11 +71,14 @@ export default async function PrescriptionPrintPage({
   // Money is kept off the prescription unless the hospital explicitly opts in
   // (AGENTS.md 24). The fee itself lives on visits, which is column-restricted,
   // so it is read through the finance RPC only when the setting is on.
-  const { data: printSettings } = await supabase
-    .from("hospital_settings")
-    .select("print_fee_on_prescription")
-    .eq("id", true)
-    .single();
+  const [{ data: printSettings }, identity] = await Promise.all([
+    supabase
+      .from("hospital_settings")
+      .select("print_fee_on_prescription")
+      .eq("id", true)
+      .maybeSingle(),
+    getHospitalIdentity(),
+  ]);
   let feePaise: number | null = null;
   if (printSettings?.print_fee_on_prescription) {
     const { data: finance } = await supabase.rpc("get_visit_financial_summaries", { p_visit_ids: [id] });
@@ -102,15 +106,7 @@ export default async function PrescriptionPrintPage({
             <p>{doctor.specialization ?? rx.departments?.name}</p>
             <p>Registration: {doctor.registration_number ?? "—"}</p>
           </div>
-          <div className="flex items-center gap-3 text-right">
-            <div>
-              <h2 className="text-xl font-bold text-primary">
-                Meenakshi Hospital
-              </h2>
-              <p>Professional medical care</p>
-            </div>
-            <HospitalLogo size={56} />
-          </div>
+          <HospitalLetterhead align="right" identity={identity} logoSize={56} />
         </header>
         <div className="my-4 h-1 bg-primary" />
         <section className="grid grid-cols-2 gap-x-8 gap-y-1 border-b pb-3 sm:grid-cols-4">
@@ -241,8 +237,16 @@ export default async function PrescriptionPrintPage({
             </p>
           </section>
         ) : null}
-        <footer className="mt-12 flex justify-between border-t pt-3 text-[10px]">
-          <p>Meenakshi Hospital · Digital prescription</p>
+        <footer className="mt-12 flex justify-between gap-6 border-t pt-3 text-[10px]">
+          <div>
+            <p className="font-semibold">
+              {identity.name}
+              {identity.tagline ? ` · ${identity.tagline}` : ""}
+            </p>
+            {identity.address ? <p>{identity.address}</p> : null}
+            <p>{[identity.phone, identity.email].filter(Boolean).join(" · ")}</p>
+            <p className="mt-1">Digital prescription</p>
+          </div>
           <p className="text-right">
             {doctor.display_name}
             <br />

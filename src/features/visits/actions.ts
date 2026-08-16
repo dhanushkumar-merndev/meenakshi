@@ -7,10 +7,11 @@ import { rupeesToPaise } from "@/lib/domain/money";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { databaseIdSchema } from "@/lib/validation/database-id";
 import type { ActionState } from "@/types/hospital";
+import { isIdempotentReplay } from "@/lib/domain/idempotency";
 
 const visitSchema = z.object({
   patientId: databaseIdSchema, doctorId: databaseIdSchema, visitType: z.enum(["op", "follow_up"]),
-  previousVisitId: z.string().optional(), notes: z.string().max(500).optional(), idempotencyKey: databaseIdSchema, consultants: z.string().optional(),
+  previousVisitId: databaseIdSchema.optional().or(z.literal("")), notes: z.string().max(500).optional(), idempotencyKey: databaseIdSchema, consultants: z.string().max(20_000).optional(),
 });
 
 // Registration captures no money. The consulting doctor sets the fee when the
@@ -97,7 +98,7 @@ export async function addVisitPayment(_: ActionState, formData: FormData): Promi
   if (amount <= 0) return { ok: false, fieldErrors: { amount: ["Amount must be greater than zero."] } };
   const supabase = await createSupabaseServerClient();
   const { error } = await supabase.from("visit_payments").insert({ visit_id: parsed.data.visitId, amount_paise: amount, mode: parsed.data.mode, reference: parsed.data.reference || null, idempotency_key: parsed.data.idempotencyKey });
-  if (error?.code === "23505") return { ok: true, message: "Payment was already recorded." };
+  if (isIdempotentReplay(error)) return { ok: true, message: "Payment was already recorded." };
   if (error) return { ok: false, message: "Payment could not be recorded." };
   revalidatePath(`/patients/${parsed.data.patientId}`); return { ok: true, message: "Payment recorded." };
 }

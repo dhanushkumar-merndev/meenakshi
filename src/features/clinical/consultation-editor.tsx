@@ -1,7 +1,7 @@
 "use client";
-import { useActionState, useState } from "react";
+import { useActionState, useEffect, useState } from "react";
 import { FileCheck2, LoaderCircle, Plus, Save, Trash2 } from "lucide-react";
-import { saveConsultation } from "./actions";
+import { saveConsultation, startConsultation } from "./actions";
 import { MedicineCombobox } from "./medicine-combobox";
 import { DiagnosisPicker } from "./diagnosis-picker";
 import type { ActionState } from "@/types/hospital";
@@ -28,6 +28,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
+import { calculatePrescriptionQuantity } from "@/lib/domain/medicine-quantity";
 import {
   DURATION_PRESETS,
   FREQUENCY_PRESETS,
@@ -46,7 +47,9 @@ type MedicineLine = {
   route: string;
   notes: string;
   quantity: number;
+  quantityAuto: boolean;
 };
+type SavedMedicineLine = Omit<MedicineLine, "key" | "quantityAuto">;
 type TestLine = { key: string; test_name: string; notes: string };
 type InitialConsultation = {
   symptoms?: string | null;
@@ -71,6 +74,7 @@ const newMedicine = (): MedicineLine => ({
   route: "Oral",
   notes: "After food",
   quantity: 1,
+  quantityAuto: true,
 });
 
 export function ConsultationEditor({
@@ -82,7 +86,7 @@ export function ConsultationEditor({
 }: {
   visitId: string;
   initial?: InitialConsultation;
-  initialMedicines?: Omit<MedicineLine, "key">[];
+  initialMedicines?: SavedMedicineLine[];
   initialTests?: Omit<TestLine, "key">[];
   /** Doctor's configured fee in rupees, pre-filled but always editable. */
   defaultFee?: string;
@@ -91,8 +95,20 @@ export function ConsultationEditor({
     saveConsultation,
     initialState,
   );
+
+  // Opening the patient is what puts them "in consultation": the doctor is with
+  // them from this moment, and reception and the OP desk need to see that
+  // without waiting for a draft to be saved. The RPC ignores a visit that is
+  // already in progress, completed or cancelled, so this is safe to re-run.
+  useEffect(() => {
+    void startConsultation(visitId);
+  }, [visitId]);
   const [medicines, setMedicines] = useState<MedicineLine[]>(
-    initialMedicines.map((line) => ({ ...line, key: crypto.randomUUID() })),
+    initialMedicines.map((line) => ({
+      ...line,
+      key: crypto.randomUUID(),
+      quantityAuto: false,
+    })),
   );
   const [tests, setTests] = useState<TestLine[]>(
     initialTests.map((line) => ({ ...line, key: crypto.randomUUID() })),
@@ -109,7 +125,18 @@ export function ConsultationEditor({
   );
   const updateMedicine = (key: string, patch: Partial<MedicineLine>) =>
     setMedicines((rows) =>
-      rows.map((row) => (row.key === key ? { ...row, ...patch } : row)),
+      rows.map((row) => {
+        if (row.key !== key) return row;
+        const next = { ...row, ...patch };
+        const dosageChanged = ["dose", "frequency", "duration"].some((field) =>
+          Object.prototype.hasOwnProperty.call(patch, field),
+        );
+        if (dosageChanged && row.quantityAuto) {
+          const suggested = calculatePrescriptionQuantity(next);
+          if (suggested !== null) next.quantity = suggested;
+        }
+        return next;
+      }),
     );
   if (state.data?.completed)
     return (
@@ -236,8 +263,10 @@ export function ConsultationEditor({
               </TableHeader>
               <TableBody>
                 {medicines.length ? (
-                  medicines.map((row) => (
-                    <TableRow key={row.key}>
+                  medicines.map((row) => {
+                    const suggestedQuantity = calculatePrescriptionQuantity(row);
+                    return (
+                      <TableRow key={row.key}>
                       <TableCell>
                         <MedicineCombobox
                           value={row}
@@ -289,7 +318,7 @@ export function ConsultationEditor({
                           onChange={(notes) => updateMedicine(row.key, { notes })}
                         />
                       </TableCell>
-                      <TableCell>
+                      <TableCell className="min-w-28">
                         <Input
                           className="w-20"
                           type="number"
@@ -298,9 +327,34 @@ export function ConsultationEditor({
                           onChange={(e) =>
                             updateMedicine(row.key, {
                               quantity: Math.max(1, Number(e.target.value)),
+                              quantityAuto: false,
                             })
                           }
                         />
+                        {suggestedQuantity === null ? (
+                          <p className="mt-1 text-[11px] text-muted-foreground">
+                            Enter manually
+                          </p>
+                        ) : row.quantityAuto && row.quantity === suggestedQuantity ? (
+                          <p className="mt-1 text-[11px] text-muted-foreground">
+                            Auto: {suggestedQuantity}
+                          </p>
+                        ) : (
+                          <Button
+                            type="button"
+                            size="xs"
+                            variant="link"
+                            className="mt-1 h-auto px-0 text-[11px]"
+                            onClick={() =>
+                              updateMedicine(row.key, {
+                                quantity: suggestedQuantity,
+                                quantityAuto: true,
+                              })
+                            }
+                          >
+                            Use suggested {suggestedQuantity}
+                          </Button>
+                        )}
                       </TableCell>
                       <TableCell>
                         <Button
@@ -317,8 +371,9 @@ export function ConsultationEditor({
                           <Trash2 />
                         </Button>
                       </TableCell>
-                    </TableRow>
-                  ))
+                      </TableRow>
+                    );
+                  })
                 ) : (
                   <TableRow>
                     <TableCell

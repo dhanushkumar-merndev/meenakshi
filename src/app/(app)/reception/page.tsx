@@ -52,7 +52,10 @@ export default async function ReceptionPage({
       "id,token_number,visit_type,status,created_at,patients(id,name,phone_normalized,dob,gender),doctors(id,display_name),visit_payments(amount_paise)",
     )
     .eq("visit_date", today)
-    .order("created_at", { ascending: true });
+    // Newest registration first: reception's job here is to confirm and print
+    // the visit they just created, not to work down a queue in call order --
+    // that ordering belongs to the OP and doctor screens.
+    .order("created_at", { ascending: false });
   if (q) {
     const filters = patientIds.length
       ? [`patient_id.in.(${patientIds.join(",")})`]
@@ -127,7 +130,7 @@ export default async function ReceptionPage({
                           <StatusBadge status={visit.status} />
                         </TableCell>
                         <TableCell className="text-right">
-                          <div className="flex justify-end gap-2">{visit.patients && (!visit.patients.dob || visit.patients.gender === "unknown") ? <Button size="sm" variant="ghost" render={<Link href={`/patients/${visit.patients.id}`} />}>Complete details</Button> : null}{visit.doctors&&["waiting","vitals_pending","ready"].includes(visit.status)?<ReassignConsultantDialog visitId={visit.id} token={visit.token_number} currentDoctorId={visit.doctors.id} currentDoctorName={visit.doctors.display_name} doctors={doctors.map(doctor=>({id:doctor.id,label:doctor.displayName}))}/>:null}<Button size="sm" variant="outline" render={<Link href={`/visits/${visit.id}`} />}>Open</Button></div>
+                          <div className="flex justify-end gap-2">{visit.patients && (!visit.patients.dob || visit.patients.gender === "unknown") ? <Button size="sm" variant="ghost" render={<Link href={`/patients/${visit.patients.id}?edit=1`} />}>Complete details</Button> : null}{visit.doctors&&["waiting","vitals_pending","ready"].includes(visit.status)?<ReassignConsultantDialog visitId={visit.id} token={visit.token_number} currentDoctorId={visit.doctors.id} currentDoctorName={visit.doctors.display_name} doctors={doctors.map(doctor=>({id:doctor.id,label:doctor.displayName}))}/>:null}<Button size="sm" variant="outline" render={<Link href={`/visits/${visit.id}`} />}>Open</Button></div>
                         </TableCell>
                       </TableRow>
                     );

@@ -5,6 +5,9 @@ import { z } from "zod";
 import { requirePermission } from "@/lib/auth/dal";
 import { rupeesToPaise } from "@/lib/domain/money";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { databaseIdSchema } from "@/lib/validation/database-id";
+import { validateClinicalImportRows } from "./clinical-import-schema";
 import type { ActionState } from "@/types/hospital";
 
 const optionalId = z.string().uuid().optional().or(z.literal(""));
@@ -112,12 +115,45 @@ export async function deleteMasterRecord(_: ActionState, formData: FormData): Pr
 }
 
 export async function saveHospitalSettings(_: ActionState, formData: FormData): Promise<ActionState> {
-  const parsed = z.object({ hospitalName: z.string().trim().min(2).max(150), address: z.string().trim().max(1000).optional(), phone: z.string().trim().max(30).optional(), email: z.string().trim().email().optional().or(z.literal("")), prescriptionFooter: z.string().trim().max(1000).optional(), tokenFooter: z.string().trim().max(500).optional(), digitalText: z.string().trim().max(1000).optional(), printFeeOnPrescription: z.string().optional() }).safeParse(Object.fromEntries(formData));
+  const parsed = z.object({ hospitalName: z.string().trim().min(2).max(150), tagline: z.string().trim().max(120).optional(), address: z.string().trim().max(1000).optional(), phone: z.string().trim().max(30).optional(), email: z.string().trim().email().optional().or(z.literal("")), prescriptionFooter: z.string().trim().max(1000).optional(), tokenFooter: z.string().trim().max(500).optional(), digitalText: z.string().trim().max(1000).optional(), printFeeOnPrescription: z.string().optional() }).safeParse(Object.fromEntries(formData));
   if (!parsed.success) return { ok: false, fieldErrors: parsed.error.flatten().fieldErrors };
   const { actor, admin } = await adminActor();
-  const { error } = await admin.from("hospital_settings").upsert({ id: true, hospital_name: parsed.data.hospitalName, address: parsed.data.address || null, phone: parsed.data.phone || null, email: parsed.data.email || null, prescription_footer: parsed.data.prescriptionFooter || null, token_footer: parsed.data.tokenFooter || null, digital_prescription_text: parsed.data.digitalText || null, print_fee_on_prescription: parsed.data.printFeeOnPrescription === "on" });
+  const { error } = await admin.from("hospital_settings").upsert({ id: true, hospital_name: parsed.data.hospitalName, tagline: parsed.data.tagline || null, address: parsed.data.address || null, phone: parsed.data.phone || null, email: parsed.data.email || null, prescription_footer: parsed.data.prescriptionFooter || null, token_footer: parsed.data.tokenFooter || null, digital_prescription_text: parsed.data.digitalText || null, print_fee_on_prescription: parsed.data.printFeeOnPrescription === "on" });
   if (error) return { ok: false, message: "Hospital settings could not be saved." };
   await admin.from("audit_logs").insert({ actor_user_id: actor.id, action: "SETTINGS_UPDATED", entity_type: "hospital_settings" });
   revalidatePath("/admin/settings");
   return { ok: true, message: "Hospital settings saved." };
+}
+
+
+/**
+ * One chunk of a clinical directory import. Re-validated server-side, then
+ * handed to a single transactional RPC. Admin only.
+ */
+export async function importClinicalTerms(
+  rows: unknown[],
+  fileName: string,
+  idempotencyKey: string,
+): Promise<{ ok: boolean; message?: string; data?: Record<string, unknown> }> {
+  // Permission check here, plus the RPC's own admin guard in the database.
+  await requirePermission("manageUsers");
+  const parsed = z
+    .object({ fileName: z.string().min(1).max(255), idempotencyKey: databaseIdSchema })
+    .safeParse({ fileName, idempotencyKey });
+  if (!parsed.success) return { ok: false, message: "Import payload is invalid." };
+
+  const checked = validateClinicalImportRows(rows);
+  if (checked.invalid.length || checked.valid.length === 0)
+    return { ok: false, message: "Resolve all validation errors before importing." };
+
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase.rpc("bulk_import_clinical_terms", {
+    p_rows: checked.valid,
+    p_file_name: fileName,
+    p_idempotency_key: idempotencyKey,
+  });
+  if (error) return { ok: false, message: "The transaction failed; no rows in this batch were saved." };
+
+  revalidatePath("/admin/clinical-directory");
+  return { ok: true, data: (data ?? {}) as Record<string, unknown> };
 }

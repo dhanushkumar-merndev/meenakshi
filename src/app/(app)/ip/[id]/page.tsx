@@ -102,7 +102,7 @@ export default async function IpTicketPage({
             {canDoctor && ["admitted","discharge_pending"].includes(ticket.status) ? <DischargeSummaryDialog ticketId={ticket.id} initialValues={{finalDiagnosis:ticket.final_diagnosis,hospitalCourse:ticket.hospital_course,treatmentSummary:ticket.treatment_summary,dischargeMedicines:ticket.discharge_medicines,dischargeAdvice:ticket.discharge_advice,followUp:ticket.follow_up}} /> : null}
             {canManage && ticket.status !== "discharged" ? <>
               <ChargeDialog ticketId={ticket.id} presets={chargePresets} />
-              <IpPaymentDialog ticketId={ticket.id} />
+              <IpPaymentDialog ticketId={ticket.id} totalPaise={total} paidPaise={paid} />
             </> : null}
             {canManage && ticket.status === "discharge_pending" && ticket.patient_id ? <CompleteDischargeDialog ticketId={ticket.id} balancePaise={balance} /> : null}
           </>

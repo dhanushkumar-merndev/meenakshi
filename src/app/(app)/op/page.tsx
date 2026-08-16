@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { requireRoute } from "@/lib/auth/dal";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import { calculateAge, minutesSince } from "@/lib/domain/date";
+import { calculateAge } from "@/lib/domain/date";
+import { ElapsedTime } from "@/components/shared/elapsed-time";
 import { EMPTY_UUID, searchDigits } from "@/lib/domain/search";
 import { findMatchingPatientIds } from "@/lib/search/patients";
 import { DebouncedSearchInput } from "@/components/shared/debounced-search-input";
@@ -101,7 +102,6 @@ export default async function OpQueuePage({
                 {rows.length ? (
                   rows.map((visit) => {
                     const vitals = visit.vitals?.[0];
-                    const waiting = minutesSince(visit.created_at);
                     const values = vitals
                       ? {
                           weight: vitals.weight_kg,
@@ -138,7 +138,7 @@ export default async function OpQueuePage({
                         <TableCell>
                           <StatusBadge status={visit.status} />
                         </TableCell>
-                        <TableCell>{waiting} min</TableCell>
+                        <TableCell><ElapsedTime since={visit.created_at} /></TableCell>
                         <TableCell className="text-right">
                           <div className="flex justify-end gap-2">
                             <Button

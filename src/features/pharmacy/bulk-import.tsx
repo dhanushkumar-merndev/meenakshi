@@ -1,5 +1,5 @@
 "use client";
-import { useActionState, useState } from "react";
+import { useState } from "react";
 import {
   AlertCircle,
   CheckCircle2,
@@ -15,7 +15,15 @@ import {
   type ImportErrorRow,
   type NormalizedMedicineImport,
 } from "./import-schema";
-import type { ActionState } from "@/types/hospital";
+import {
+  buildErrorCsv,
+  chunkKey,
+  chunkRows,
+  formatRowLimit,
+  IMPORT_CHUNK_SIZE,
+  MAX_IMPORT_ROWS,
+  parseSpreadsheet,
+} from "@/lib/domain/bulk-import";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
@@ -35,30 +43,73 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-const initial: ActionState = { ok: false };
-const csvCell = (value: unknown) =>
-  `"${String(value ?? "").replaceAll('"', '""')}"`;
 export function BulkMedicineImport() {
-  const [state, action, pending] = useActionState(importMedicines, initial);
+  const [result, setResult] = useState<{ ok: boolean; message: string } | null>(null);
+  const [pending, setPending] = useState(false);
+  // Chunk progress, so a 10,000-row file does not look frozen.
+  const [done, setDone] = useState(0);
   const [parsing, setParsing] = useState(false);
   const [fileName, setFileName] = useState("");
   const [rawRows, setRawRows] = useState<Record<string, unknown>[]>([]);
   const [valid, setValid] = useState<NormalizedMedicineImport[]>([]);
   const [invalid, setInvalid] = useState<ImportErrorRow[]>([]);
   const [key, setKey] = useState(() => crypto.randomUUID());
+
+  /**
+   * The file is validated in one pass locally, then sent up in chunks: a server
+   * action body cannot carry 10,000 rows. Each chunk is its own transaction
+   * with its own idempotency key, so a mid-upload failure leaves the earlier
+   * chunks committed and re-running skips them.
+   */
+  const runImport = async () => {
+    setPending(true);
+    setResult(null);
+    setDone(0);
+    // Chunks carry the raw spreadsheet rows: the server action re-validates and
+    // normalises them itself rather than trusting the browser's output.
+    const chunks = chunkRows(rawRows);
+    let created = 0;
+    let newBatches = 0;
+    let updatedBatches = 0;
+    try {
+      for (const [index, chunk] of chunks.entries()) {
+        const payload = new FormData();
+        payload.set(
+          "fileName",
+          chunks.length > 1 ? `${fileName} (part ${index + 1} of ${chunks.length})` : fileName,
+        );
+        payload.set("rows", JSON.stringify(chunk));
+        // Derive a per-chunk UUID from the file's key: same file re-uploaded
+        // after a failure produces the same keys, so committed chunks are
+        // recognised as replays instead of importing twice.
+        payload.set("idempotencyKey", chunkKey(key, index));
+        const response = await importMedicines({ ok: false }, payload);
+        if (!response.ok) {
+          setResult({
+            ok: false,
+            message: `${response.message ?? "Import failed."} ${index} of ${chunks.length} batches were committed before this failure.`,
+          });
+          return;
+        }
+        const data = (response.data ?? {}) as Record<string, number>;
+        created += Number(data.created_medicines ?? 0);
+        newBatches += Number(data.new_batches ?? 0);
+        updatedBatches += Number(data.updated_batches ?? 0);
+        setDone(Math.min(valid.length, (index + 1) * IMPORT_CHUNK_SIZE));
+      }
+      setResult({
+        ok: true,
+        message: `Imported ${valid.length} rows: ${created} new medicines, ${newBatches} new batches, ${updatedBatches} batches topped up.`,
+      });
+    } finally {
+      setPending(false);
+    }
+  };
   const parseFile = async (file?: File) => {
     if (!file) return;
     setParsing(true);
     try {
-      const XLSX = await import("xlsx");
-      const bytes = await file.arrayBuffer();
-      const workbook = XLSX.read(bytes, { type: "array", cellDates: true });
-      const sheet = workbook.Sheets[workbook.SheetNames[0]];
-      const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, {
-        defval: "",
-        raw: false,
-        dateNF: "yyyy-mm-dd",
-      });
+      const rows = await parseSpreadsheet(file);
       const checked = validateMedicineImportRows(rows);
       setFileName(file.name);
       setRawRows(rows);
@@ -83,19 +134,7 @@ export function BulkMedicineImport() {
     }
   };
   const downloadErrors = () => {
-    const header = [...MEDICINE_IMPORT_HEADERS, "row_number", "errors"];
-    const content = [
-      header.map(csvCell).join(","),
-      ...invalid.map((entry) =>
-        [
-          ...MEDICINE_IMPORT_HEADERS.map((key) => entry.data[key]),
-          entry.row,
-          entry.errors.join("; "),
-        ]
-          .map(csvCell)
-          .join(","),
-      ),
-    ].join("\n");
+    const content = buildErrorCsv(MEDICINE_IMPORT_HEADERS, invalid);
     const url = URL.createObjectURL(new Blob([content], { type: "text/csv" }));
     const anchor = document.createElement("a");
     anchor.href = url;
@@ -128,7 +167,7 @@ export function BulkMedicineImport() {
           <CardHeader>
             <CardTitle className="text-base">2. Upload Excel or CSV</CardTitle>
             <CardDescription>
-              Maximum 1,000 medicine and batch rows.
+              Up to {formatRowLimit(MAX_IMPORT_ROWS)} medicine and batch rows per file.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -260,31 +299,33 @@ export function BulkMedicineImport() {
                 </TableBody>
               </Table>
             </div>
-            {state.message ? (
-              <Alert variant={state.ok ? "default" : "destructive"}>
-                <AlertDescription>{state.message}</AlertDescription>
+            {result ? (
+              <Alert variant={result.ok ? "default" : "destructive"}>
+                <AlertDescription>{result.message}</AlertDescription>
               </Alert>
             ) : null}
-            <form action={action} className="flex justify-end">
-              <input type="hidden" name="fileName" value={fileName} />
-              <input
-                type="hidden"
-                name="rows"
-                value={JSON.stringify(rawRows)}
-              />
-              <input type="hidden" name="idempotencyKey" value={key} />
+            {pending && valid.length > IMPORT_CHUNK_SIZE ? (
+              <div className="space-y-1">
+                <Progress value={(done / valid.length) * 100} />
+                <p className="text-xs text-muted-foreground">
+                  Imported {done.toLocaleString("en-IN")} of {valid.length.toLocaleString("en-IN")} rows
+                </p>
+              </div>
+            ) : null}
+            <div className="flex justify-end">
               <Button
                 disabled={pending || invalid.length > 0 || valid.length === 0}
-                type="submit"
+                type="button"
+                onClick={runImport}
               >
                 {pending ? (
                   <LoaderCircle className="animate-spin" />
                 ) : (
                   <Upload />
                 )}{" "}
-                Import {valid.length} Valid Rows
+                Import {valid.length.toLocaleString("en-IN")} Valid Rows
               </Button>
-            </form>
+            </div>
           </CardContent>
         </Card>
       ) : null}

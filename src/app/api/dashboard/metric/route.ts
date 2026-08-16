@@ -5,11 +5,12 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 export async function GET(request: NextRequest) {
   await getCurrentProfile();
   const metric = request.nextUrl.searchParams.get("metric")?.trim();
-  if (!metric) return NextResponse.json({ error: "Metric required" }, { status: 400 });
+  if (!metric || metric.length > 80)
+    return NextResponse.json({ error: "Valid metric required" }, { status: 400 });
 
   const supabase = await createSupabaseServerClient();
   // The RPC enforces its own role guard, including a stricter one for money.
-  const { data, error } = await supabase.rpc("dashboard_metric_detail", {
+  const { data, error } = await supabase.rpc("dashboard_metric_detail_for_role", {
     p_metric: metric,
     p_limit: 25,
   });

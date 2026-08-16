@@ -7,6 +7,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requirePermission } from "@/lib/auth/dal";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { chunkRows } from "@/lib/domain/bulk-import";
 import type { ActionState } from "@/types/hospital";
 
 type Row = Record<string, unknown>;
@@ -25,7 +26,23 @@ async function zipEntries(entries: Array<{ name: string; content: string | Buffe
 }
 function ids(rows: Row[], key: string) { return [...new Set(rows.map((row) => row[key]).filter((value): value is string => typeof value === "string"))]; }
 async function inRows(admin: ReturnType<typeof createSupabaseAdminClient>, table: string, select: string, column: string, values: string[]) {
-  if (!values.length) return [] as Row[]; const { data, error } = await admin.from(table).select(select).in(column, values); if (error) throw error; return (data ?? []) as unknown as Row[];
+  if (!values.length) return [] as Row[];
+  const chunks = chunkRows(values, 200);
+  const rows: Row[] = [];
+  // Keep PostgREST URLs bounded and avoid opening hundreds of simultaneous
+  // requests during a busy monthly export.
+  for (let index = 0; index < chunks.length; index += 4) {
+    const results = await Promise.all(
+      chunks.slice(index, index + 4).map((idsChunk) =>
+        admin.from(table).select(select).in(column, idsChunk),
+      ),
+    );
+    for (const result of results) {
+      if (result.error) throw result.error;
+      rows.push(...((result.data ?? []) as unknown as Row[]));
+    }
+  }
+  return rows;
 }
 async function collectExport(month: string, includeDocuments: boolean) {
   const admin = createSupabaseAdminClient(); const start = `${month}-01`; const startDate = new Date(`${start}T00:00:00+05:30`); const endDate = new Date(startDate); endDate.setUTCMonth(endDate.getUTCMonth() + 1); const endDay = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata" }).format(endDate); const from = startDate.toISOString(); const to = endDate.toISOString();
@@ -58,7 +75,28 @@ async function collectExport(month: string, includeDocuments: boolean) {
   const patients = await inRows(admin, "patients", "id,phone_normalized,name,dob,gender,address,blood_group,allergies,notes,status,created_at,updated_at", "id", patientIds);
   const datasets: Record<string, Row[]> = { patients, visits, visit_payments: visitPayments, vitals, consultations, prescriptions, prescription_items: prescriptionItems, test_orders: testOrders, reports, pharmacy_sales: sales, pharmacy_sale_items: saleItems, medicine_batches_snapshot: (batchesR.data ?? []) as Row[], ip_tickets: ipTickets, ip_progress_notes: progressNotes, ip_charges: ipCharges, ip_payments: ipPayments, audit_log: (auditR.data ?? []) as Row[], hospital_settings: (settingsR.data ?? []) as Row[] };
   const entries: Array<{ name: string; content: string | Buffer }> = Object.entries(datasets).map(([name, rows]) => ({ name: `${name}.csv`, content: csv(rows) })); let documentCount = 0;
-  if (includeDocuments) for (const report of reports) { const path = String(report.object_path); const { data } = await admin.storage.from("patient-documents").download(path); if (data) { entries.push({ name: `documents/${path}`, content: Buffer.from(await data.arrayBuffer()) }); documentCount += 1; } }
+  if (includeDocuments) {
+    for (const reportChunk of chunkRows(reports, 4)) {
+      const documents = await Promise.all(
+        reportChunk.map(async (report) => {
+          const path = String(report.object_path);
+          const { data, error } = await admin.storage
+            .from("patient-documents")
+            .download(path);
+          if (error || !data) return null;
+          return {
+            name: `documents/${path}`,
+            content: Buffer.from(await data.arrayBuffer()),
+          };
+        }),
+      );
+      for (const document of documents) {
+        if (!document) continue;
+        entries.push(document);
+        documentCount += 1;
+      }
+    }
+  }
   const counts = Object.fromEntries(Object.entries(datasets).map(([name, rows]) => [name, rows.length]));
   const manifest = { hospital: (settingsR.data?.[0] as Row | undefined)?.hospital_name ?? "Meenakshi Hospital", export_month: month, generated_at: new Date().toISOString(), schema_version: 1, app_version: "0.1.0", export_type: includeDocuments ? "data_and_documents" : "data_only", record_counts: counts, included_files: entries.map((entry) => entry.name), document_count: documentCount };
   entries.unshift({ name: "manifest.json", content: JSON.stringify(manifest, null, 2) }); return { entries, counts, documentCount };

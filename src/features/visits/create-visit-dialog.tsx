@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useActionState, useMemo, useState } from "react";
-import { LoaderCircle, Plus, Printer } from "lucide-react";
+import { LoaderCircle, Plus, Printer, X } from "lucide-react";
 import { createVisit } from "./actions";
 import type { ActionState } from "@/types/hospital";
 import { Button } from "@/components/ui/button";
@@ -51,7 +51,17 @@ export function CreateVisitDialog({
   const [doctorId, setDoctorId] = useState(doctors[0]?.id ?? "");
   const [visitType, setVisitType] = useState("op");
   const [previousVisitId, setPreviousVisitId] = useState("");
-  const [idempotencyKey] = useState(() => crypto.randomUUID());
+  // A patient may see more than one consultant in the same sitting. Each gets a
+  // token from their own daily series (AGENTS.md 15), which the server handles;
+  // this just collects who they are.
+  const [additionalDoctors, setAdditionalDoctors] = useState<Array<{ key: string; doctorId: string }>>([]);
+  // Regenerated after every completed visit: create_visit_with_token treats a
+  // repeated key as a replay and hands back the FIRST visit, so a second
+  // registration would silently reuse the first token.
+  const [idempotencyKey, setIdempotencyKey] = useState(() => crypto.randomUUID());
+  // useActionState keeps the last result forever, which left the dialog stuck on
+  // the success panel; acknowledging it on close brings the form back.
+  const [acknowledged, setAcknowledged] = useState<string | null>(null);
   const [state, action, pending] = useActionState(createVisit, initial);
   const doctor = useMemo(
     () => doctors.find((item) => item.id === doctorId),
@@ -68,13 +78,28 @@ export function CreateVisitDialog({
     setDoctorId(nextDoctorId);
   }
 
+  const showSuccess = state.ok && state.data?.visitId !== acknowledged;
+  const consultants = [{ doctorId }, ...additionalDoctors.map((entry) => ({ doctorId: entry.doctorId }))];
+  const departmentOf = (id: string) => doctors.find((item) => item.id === id)?.department ?? "—";
+  const unusedDoctor = () => doctors.find((item) => !consultants.some((entry) => entry.doctorId === item.id));
+
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog
+      open={open}
+      onOpenChange={(next) => {
+        setOpen(next);
+        if (!next) {
+          setAcknowledged((state.data?.visitId as string | undefined) ?? null);
+          setIdempotencyKey(crypto.randomUUID());
+          setAdditionalDoctors([]);
+        }
+      }}
+    >
       <DialogTrigger render={<Button />}>
         <Plus /> Create Visit
       </DialogTrigger>
       <DialogContent className="sm:max-w-lg">
-        {state.ok ? (
+        {showSuccess ? (
           <>
             <DialogHeader>
               <DialogTitle>Visit created</DialogTitle>
@@ -89,6 +114,12 @@ export function CreateVisitDialog({
               <p className="mt-1 text-5xl font-bold text-primary">
                 {state.data?.token}
               </p>
+              {/* With more than one consultant every doctor issues their own
+                  token, so the full list matters -- the big number above is
+                  only the first. */}
+              {state.message && state.message.includes("token #") ? (
+                <p className="mt-2 text-sm text-muted-foreground">{state.message}</p>
+              ) : null}
             </div>
             <DialogFooter>
               <Button
@@ -107,8 +138,9 @@ export function CreateVisitDialog({
             <DialogHeader>
               <DialogTitle>Create visit</DialogTitle>
               <DialogDescription>
-                Token generation and the first offline payment are saved
-                atomically.
+                Token generation is atomic. The consultant sets the fee during
+                the consultation; it is collected afterwards at the pharmacy or
+                billing counter.
               </DialogDescription>
             </DialogHeader>
             {state.message ? (
@@ -120,6 +152,7 @@ export function CreateVisitDialog({
             <input type="hidden" name="idempotencyKey" value={idempotencyKey} />
             <input type="hidden" name="doctorId" value={doctorId} />
             <input type="hidden" name="visitType" value={visitType} />
+            <input type="hidden" name="consultants" value={JSON.stringify(consultants)} />
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2 sm:col-span-2">
                 <Label>Patient</Label>
@@ -166,11 +199,97 @@ export function CreateVisitDialog({
               </div>
               <div className="space-y-2">
                 <Label htmlFor="visit-department">Department</Label>
+                {/* Filled from the doctor: the department is a property of the
+                    consultant, never chosen separately. */}
                 <Input
                   id="visit-department"
                   value={doctor?.department ?? "—"}
                   readOnly
                 />
+              </div>
+              {additionalDoctors.map((entry, index) => (
+                <div
+                  className="grid gap-4 rounded-lg border p-3 sm:col-span-2 sm:grid-cols-2"
+                  key={entry.key}
+                >
+                  <div className="flex items-center justify-between sm:col-span-2">
+                    <p className="font-medium">Additional doctor {index + 2}</p>
+                    <Button
+                      type="button"
+                      size="icon-sm"
+                      variant="ghost"
+                      aria-label={`Remove additional doctor ${index + 2}`}
+                      onClick={() =>
+                        setAdditionalDoctors((rows) => rows.filter((row) => row.key !== entry.key))
+                      }
+                    >
+                      <X />
+                    </Button>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor={`visit-doctor-${entry.key}`}>Doctor</Label>
+                    <Select
+                      value={entry.doctorId}
+                      onValueChange={(value) =>
+                        setAdditionalDoctors((rows) =>
+                          rows.map((row) =>
+                            row.key === entry.key ? { ...row, doctorId: String(value) } : row,
+                          ),
+                        )
+                      }
+                    >
+                      <SelectTrigger id={`visit-doctor-${entry.key}`} className="w-full">
+                        <SelectValue placeholder="Select doctor">
+                          {() =>
+                            doctors.find((item) => item.id === entry.doctorId)?.displayName ??
+                            "Select doctor"
+                          }
+                        </SelectValue>
+                      </SelectTrigger>
+                      <SelectContent>
+                        {doctors
+                          .filter(
+                            (item) =>
+                              item.id === entry.doctorId ||
+                              !consultants.some((consultant) => consultant.doctorId === item.id),
+                          )
+                          .map((item) => (
+                            <SelectItem key={item.id} value={item.id} label={item.displayName}>
+                              {item.displayName}
+                            </SelectItem>
+                          ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor={`visit-department-${entry.key}`}>Department</Label>
+                    <Input
+                      id={`visit-department-${entry.key}`}
+                      value={departmentOf(entry.doctorId)}
+                      readOnly
+                    />
+                  </div>
+                </div>
+              ))}
+              <div className="sm:col-span-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={consultants.length >= doctors.length}
+                  onClick={() => {
+                    const next = unusedDoctor();
+                    if (!next) return;
+                    setAdditionalDoctors((rows) => [
+                      ...rows,
+                      { key: crypto.randomUUID(), doctorId: next.id },
+                    ]);
+                  }}
+                >
+                  <Plus /> Add another doctor
+                </Button>
+                <p className="mt-1.5 text-xs text-muted-foreground">
+                  Each consultant issues a token from their own series for today.
+                </p>
               </div>
               {visitType === "follow_up" ? (
                 <div className="space-y-2 sm:col-span-2">

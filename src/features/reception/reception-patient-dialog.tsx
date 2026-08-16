@@ -14,7 +14,12 @@ import {
 import { createPatient } from "@/features/patients/actions";
 import { createVisit } from "@/features/visits/actions";
 import type { ActionState } from "@/types/hospital";
+import { AllergyTagInput } from "@/features/patients/allergy-tag-input";
+import { calculateAge } from "@/lib/domain/date";
+import { DatePickerField } from "@/components/shared/date-picker-field";
+import { LocationAutocomplete } from "@/components/shared/location-autocomplete";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -61,6 +66,11 @@ export function ReceptionPatientDialog({ doctors }: { doctors: Doctor[] }) {
   const [selected, setSelected] = useState<Patient | null>(null);
   const [newName, setNewName] = useState("");
   const [newPhone, setNewPhone] = useState("");
+  const [fullDetails, setFullDetails] = useState(false);
+  const [newDob, setNewDob] = useState("");
+  const [newAge, setNewAge] = useState("");
+  const [newGender, setNewGender] = useState("unknown");
+  const [newBloodGroup, setNewBloodGroup] = useState("");
   const [patientState, patientAction, patientPending] = useActionState(
     createPatient,
     initial,
@@ -71,21 +81,18 @@ export function ReceptionPatientDialog({ doctors }: { doctors: Doctor[] }) {
   );
   const [doctorId, setDoctorId] = useState(doctors[0]?.id ?? "");
   const [visitType, setVisitType] = useState("op");
-  const [mode, setMode] = useState("cash");
-  const [collected, setCollected] = useState(
-    String((doctors[0]?.opFeePaise ?? 0) / 100),
-  );
-  const [additionalDoctors, setAdditionalDoctors] = useState<Array<{ key: string; doctorId: string; collected: string }>>([]);
-  const [idempotencyKey] = useState(() => crypto.randomUUID());
+  const [additionalDoctors, setAdditionalDoctors] = useState<Array<{ key: string; doctorId: string }>>([]);
+  // A repeated idempotency key makes create_visit_with_token return the first
+  // visit again, so registering the next patient would show a token that
+  // belongs to the previous one. Fresh key per registration.
+  const [idempotencyKey, setIdempotencyKey] = useState(() => crypto.randomUUID());
+  const [acknowledged, setAcknowledged] = useState<string | null>(null);
+  const [handledPatientId, setHandledPatientId] = useState<string | null>(null);
   const doctor = useMemo(
     () => doctors.find((item) => item.id === doctorId),
     [doctorId, doctors],
   );
-  const fee =
-    ((visitType === "follow_up"
-      ? doctor?.followUpFeePaise
-      : doctor?.opFeePaise) ?? 0) / 100;
-  const consultants = [{ doctorId, collected }, ...additionalDoctors.map(({ doctorId: id, collected: amount }) => ({ doctorId: id, collected: amount }))];
+  const consultants = [{ doctorId }, ...additionalDoctors.map(({ doctorId: id }) => ({ doctorId: id }))];
 
   useEffect(() => {
     if (!open || step !== "search" || query.trim().length < 2) return;
@@ -115,9 +122,15 @@ export function ReceptionPatientDialog({ doctors }: { doctors: Doctor[] }) {
 
   useEffect(() => {
     const patientId = patientState.data?.patientId;
-    if (patientState.ok && typeof patientId === "string") {
+    // useActionState holds the last result indefinitely, and this effect also
+    // depends on the typed name and phone. Without the handled check, starting a
+    // SECOND quick registration re-fired the previous success and jumped to the
+    // visit step still carrying the FIRST patient's id -- the new visit would
+    // have been booked against the wrong patient.
+    if (patientState.ok && typeof patientId === "string" && patientId !== handledPatientId) {
       // The server action result is the external event that advances this workflow.
       // eslint-disable-next-line react-hooks/set-state-in-effect
+      setHandledPatientId(patientId);
       setSelected({
         id: patientId,
         name: newName.trim(),
@@ -127,7 +140,7 @@ export function ReceptionPatientDialog({ doctors }: { doctors: Doctor[] }) {
       });
       setStep("visit");
     }
-  }, [patientState, newName, newPhone]);
+  }, [patientState, newName, newPhone, handledPatientId]);
 
   function choosePatient(patient: Patient) {
     setSelected(patient);
@@ -135,32 +148,21 @@ export function ReceptionPatientDialog({ doctors }: { doctors: Doctor[] }) {
   }
   function updateDoctor(value: string) {
     setDoctorId(value);
-    const next = doctors.find((item) => item.id === value);
-    setCollected(
-      String(
-        ((visitType === "follow_up"
-          ? next?.followUpFeePaise
-          : next?.opFeePaise) ?? 0) / 100,
-      ),
-    );
   }
   function updateVisitType(value: string) {
     setVisitType(value);
-    setCollected(
-      String(
-        ((value === "follow_up"
-          ? doctor?.followUpFeePaise
-          : doctor?.opFeePaise) ?? 0) / 100,
-      ),
-    );
   }
   function reset() {
+    setAcknowledged((visitState.data?.visitId as string | undefined) ?? null);
+    setIdempotencyKey(crypto.randomUUID());
     setStep("search");
     setSelected(null);
     setQuery("");
     setAdditionalDoctors([]);
     setResults([]);
   }
+
+  const showVisitSuccess = visitState.ok && visitState.data?.visitId !== acknowledged;
 
   return (
     <Dialog
@@ -174,7 +176,7 @@ export function ReceptionPatientDialog({ doctors }: { doctors: Doctor[] }) {
         <UserPlus /> Find or Add Patient
       </DialogTrigger>
       <DialogContent className="flex h-[min(680px,calc(100dvh-2rem))] flex-col overflow-hidden sm:max-w-2xl">
-        {visitState.ok ? (
+        {showVisitSuccess ? (
           <>
             <DialogHeader>
               <DialogTitle>Visit created</DialogTitle>
@@ -229,7 +231,7 @@ export function ReceptionPatientDialog({ doctors }: { doctors: Doctor[] }) {
                 <LoaderCircle className="absolute right-3 top-1/2 size-4 -translate-y-1/2 animate-spin text-muted-foreground" />
               ) : null}
             </div>
-            <div className="min-h-0 flex-1 overflow-y-auto rounded-md border">
+            <div className="min-h-0 flex-1 overflow-y-auto rounded-md border p-1">
               {results.length ? (
                 results.map((patient) => (
                   <button
@@ -286,13 +288,12 @@ export function ReceptionPatientDialog({ doctors }: { doctors: Doctor[] }) {
                 pending.
               </DialogDescription>
             </DialogHeader>
-            <input type="hidden" name="gender" value="unknown" />
             {patientState.message && !patientState.ok ? (
               <p className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">
                 {patientState.message}
               </p>
             ) : null}
-            <div className="flex-1 space-y-4">
+            <div className="dialog-scroll space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="quick-name">Patient name *</Label>
                 <Input
@@ -322,13 +323,112 @@ export function ReceptionPatientDialog({ doctors }: { doctors: Doctor[] }) {
                   {patientState.fieldErrors?.phone?.[0]}
                 </p>
               </div>
-              <div className="rounded-md border bg-muted/50 p-3 text-sm">
-                <Badge variant="outline">Details pending</Badge>
-                <p className="mt-2 text-muted-foreground">
-                  Reception can complete the remaining patient details from the
-                  pending row after the visit is created.
-                </p>
-              </div>
+              {/* Registration is deliberately two fields long so a queue keeps
+                  moving, but when the patient is standing there with time to
+                  spare the rest can be captured now instead of being chased
+                  later from the pending row. */}
+              <label className="flex items-start gap-3 rounded-md border p-3">
+                <Checkbox
+                  checked={fullDetails}
+                  onCheckedChange={(checked) => setFullDetails(checked === true)}
+                />
+                <span className="text-sm">
+                  <span className="font-medium">Fill the full details now</span>
+                  <span className="mt-1 block text-muted-foreground">
+                    Date of birth, gender, blood group, address and allergies. Leave it
+                    unticked to register in two fields and complete the rest later.
+                  </span>
+                </span>
+              </label>
+
+              {fullDetails ? (
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="quick-dob">Date of birth</Label>
+                    <DatePickerField
+                      id="quick-dob"
+                      name="dob"
+                      value={newDob}
+                      onValueChange={(value) => {
+                        setNewDob(value);
+                        setNewAge(value ? String(calculateAge(value)) : "");
+                      }}
+                      placeholder="Select date of birth"
+                      disableFuture
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="quick-age">Age</Label>
+                    <Input
+                      id="quick-age"
+                      name="age"
+                      inputMode="numeric"
+                      placeholder="32"
+                      value={newAge}
+                      onChange={(event) => {
+                        setNewAge(event.target.value);
+                        if (event.target.value.trim()) setNewDob("");
+                      }}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="quick-gender">Gender</Label>
+                    <Select value={newGender} onValueChange={(value) => setNewGender(String(value))}>
+                      <SelectTrigger id="quick-gender" className="w-full">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="unknown">Not specified</SelectItem>
+                        <SelectItem value="male">Male</SelectItem>
+                        <SelectItem value="female">Female</SelectItem>
+                        <SelectItem value="other">Other</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="quick-blood">Blood group</Label>
+                    <Select value={newBloodGroup} onValueChange={(value) => setNewBloodGroup(String(value))}>
+                      <SelectTrigger id="quick-blood" className="w-full">
+                        <SelectValue placeholder="Not known" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="">Not known</SelectItem>
+                        {["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"].map((group) => (
+                          <SelectItem key={group} value={group}>
+                            {group}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2 sm:col-span-2">
+                    <Label htmlFor="quick-address">Place / Address</Label>
+                    <LocationAutocomplete id="quick-address" name="address" rows={2} />
+                  </div>
+                  <div className="space-y-2 sm:col-span-2">
+                    <Label htmlFor="quick-allergies">Allergic history</Label>
+                    <AllergyTagInput id="quick-allergies" />
+                  </div>
+                  <div className="space-y-2 sm:col-span-2">
+                    <Label htmlFor="quick-reference">Reference detail</Label>
+                    <Input
+                      id="quick-reference"
+                      name="referenceDetail"
+                      placeholder="Referred by Dr Kumar / health camp / walk-in"
+                    />
+                  </div>
+                </div>
+              ) : (
+                <div className="rounded-md border bg-muted/50 p-3 text-sm">
+                  <Badge variant="outline">Details pending</Badge>
+                  <p className="mt-2 text-muted-foreground">
+                    Reception can complete the remaining patient details from the
+                    pending row after the visit is created.
+                  </p>
+                </div>
+              )}
+              <input type="hidden" name="gender" value={fullDetails ? newGender : "unknown"} />
+              <input type="hidden" name="bloodGroup" value={fullDetails ? newBloodGroup : ""} />
             </div>
             <DialogFooter>
               <Button
@@ -353,22 +453,22 @@ export function ReceptionPatientDialog({ doctors }: { doctors: Doctor[] }) {
             <DialogHeader>
               <DialogTitle>Create visit</DialogTitle>
               <DialogDescription>
-                Token generation and the first offline payment are saved
-                atomically.
+                Token generation is atomic. The consultant sets the fee during
+                the consultation; it is collected afterwards at the pharmacy or
+                billing counter.
               </DialogDescription>
             </DialogHeader>
             <input type="hidden" name="patientId" value={selected?.id ?? ""} />
             <input type="hidden" name="idempotencyKey" value={idempotencyKey} />
             <input type="hidden" name="doctorId" value={doctorId} />
             <input type="hidden" name="visitType" value={visitType} />
-        <input type="hidden" name="paymentMode" value={mode} />
         <input type="hidden" name="consultants" value={JSON.stringify(consultants)} />
             {visitState.message ? (
               <p className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">
                 {visitState.message}
               </p>
             ) : null}
-            <div className="min-h-0 flex-1 overflow-y-auto pr-1">
+            <div className="dialog-scroll">
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-2 sm:col-span-2">
                   <Label>Patient</Label>
@@ -382,12 +482,12 @@ export function ReceptionPatientDialog({ doctors }: { doctors: Doctor[] }) {
                   </div>
                 </div>
                 <div className="space-y-2">
-                  <Label>Visit type</Label>
+                  <Label htmlFor="reception-visit-type">Visit type</Label>
                   <Select
                     value={visitType}
                     onValueChange={(v) => updateVisitType(String(v))}
                   >
-                    <SelectTrigger className="w-full">
+                    <SelectTrigger id="reception-visit-type" className="w-full">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -399,12 +499,12 @@ export function ReceptionPatientDialog({ doctors }: { doctors: Doctor[] }) {
                   </Select>
                 </div>
                 <div className="space-y-2">
-                  <Label>Doctor</Label>
+                  <Label htmlFor="reception-doctor">Doctor</Label>
                   <Select
                     value={doctorId}
                     onValueChange={(v) => updateDoctor(String(v))}
                   >
-                    <SelectTrigger className="w-full">
+                    <SelectTrigger id="reception-doctor" className="w-full">
                       <SelectValue>
                         {() => doctor?.displayName ?? "Select doctor"}
                       </SelectValue>
@@ -423,61 +523,26 @@ export function ReceptionPatientDialog({ doctors }: { doctors: Doctor[] }) {
                   </Select>
                 </div>
                 <div className="space-y-2">
-                  <Label>Department</Label>
-                  <Input value={doctor?.department ?? "—"} readOnly />
+                  <Label htmlFor="reception-department">Department</Label>
+                  <Input id="reception-department" value={doctor?.department ?? "—"} readOnly />
                 </div>
-                <div className="space-y-2">
-                  <Label>Consultation fee</Label>
-                  <Input name="fee" value={fee} readOnly />
-                </div>
-              <div className="space-y-2">
-                <Label>Amount collected offline</Label>
-                  <Input
-                    name="collected"
-                    inputMode="decimal"
-                    value={collected}
-                    onChange={(e) => setCollected(e.target.value)}
-                  />
-                  <p className="text-xs text-destructive">
-                    {visitState.fieldErrors?.collected?.[0]}
-                </p>
-              </div>
               {additionalDoctors.map((entry, index) => {
                 const selectedDoctor = doctors.find((item) => item.id === entry.doctorId);
-                const selectedFee = ((visitType === "follow_up" ? selectedDoctor?.followUpFeePaise : selectedDoctor?.opFeePaise) ?? 0) / 100;
                 return <div className="grid gap-4 rounded-lg border p-3 sm:col-span-2 sm:grid-cols-2" key={entry.key}>
                   <div className="flex items-center justify-between sm:col-span-2"><p className="font-medium">Additional doctor {index + 2}</p><Button type="button" size="icon-sm" variant="ghost" aria-label="Remove doctor" onClick={() => setAdditionalDoctors((rows) => rows.filter((row) => row.key !== entry.key))}><X /></Button></div>
-                  <div className="space-y-2"><Label>Doctor</Label><Select value={entry.doctorId} onValueChange={(value) => { const id = String(value); const next = doctors.find((item) => item.id === id); const nextFee = ((visitType === "follow_up" ? next?.followUpFeePaise : next?.opFeePaise) ?? 0) / 100; setAdditionalDoctors((rows) => rows.map((row) => row.key === entry.key ? { ...row, doctorId: id, collected: String(nextFee) } : row)); }}><SelectTrigger className="w-full"><SelectValue placeholder="Select doctor">{() => selectedDoctor?.displayName ?? "Select doctor"}</SelectValue></SelectTrigger><SelectContent>{doctors.filter((item) => item.id === entry.doctorId || !consultants.some((consultant) => consultant.doctorId === item.id)).map((item) => <SelectItem key={item.id} value={item.id} label={item.displayName}>{item.displayName}</SelectItem>)}</SelectContent></Select></div>
+                  <div className="space-y-2"><Label>Doctor</Label><Select value={entry.doctorId} onValueChange={(value) => { const id = String(value); setAdditionalDoctors((rows) => rows.map((row) => row.key === entry.key ? { ...row, doctorId: id } : row)); }}><SelectTrigger className="w-full"><SelectValue placeholder="Select doctor">{() => selectedDoctor?.displayName ?? "Select doctor"}</SelectValue></SelectTrigger><SelectContent>{doctors.filter((item) => item.id === entry.doctorId || !consultants.some((consultant) => consultant.doctorId === item.id)).map((item) => <SelectItem key={item.id} value={item.id} label={item.displayName}>{item.displayName}</SelectItem>)}</SelectContent></Select></div>
                   <div className="space-y-2"><Label>Department</Label><Input value={selectedDoctor?.department ?? "—"} readOnly /></div>
-                  <div className="space-y-2"><Label>Consultation fee</Label><Input value={selectedFee} readOnly /></div>
-                  <div className="space-y-2"><Label>Amount collected offline</Label><Input inputMode="decimal" value={entry.collected} onChange={(event) => setAdditionalDoctors((rows) => rows.map((row) => row.key === entry.key ? { ...row, collected: event.target.value } : row))} /></div>
                 </div>;
               })}
-              <div className="sm:col-span-2"><Button type="button" variant="outline" disabled={consultants.length >= doctors.length} onClick={() => { const next = doctors.find((item) => !consultants.some((consultant) => consultant.doctorId === item.id)); if (!next) return; const nextFee = ((visitType === "follow_up" ? next.followUpFeePaise : next.opFeePaise) ?? 0) / 100; setAdditionalDoctors((rows) => [...rows, { key: crypto.randomUUID(), doctorId: next.id, collected: String(nextFee) }]); }}><Plus /> Add another doctor</Button></div>
-                <div className="space-y-2">
-                  <Label>Payment mode</Label>
-                  <Select
-                    value={mode}
-                    onValueChange={(v) => setMode(String(v))}
-                  >
-                    <SelectTrigger className="w-full">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {[
-                        ["cash", "Cash"],
-                        ["upi", "UPI"],
-                        ["card", "Card"],
-                        ["bank_transfer", "Bank Transfer"],
-                        ["other", "Other"],
-                      ].map(([value, label]) => (
-                        <SelectItem key={value} value={value}>
-                          {label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
+              <div className="sm:col-span-2"><Button type="button" variant="outline" disabled={consultants.length >= doctors.length} onClick={() => { const next = doctors.find((item) => !consultants.some((consultant) => consultant.doctorId === item.id)); if (!next) return; setAdditionalDoctors((rows) => [...rows, { key: crypto.randomUUID(), doctorId: next.id }]); }}><Plus /> Add another doctor</Button></div>
+                {/* No money is captured at registration: each consultant sets
+                    their own fee, collected later at the pharmacy or billing
+                    counter. Each consultant gets a token from their own series. */}
+                <p className="rounded-md bg-muted p-3 text-xs text-muted-foreground sm:col-span-2">
+                  No payment is taken here. Each consultant sets their fee during the
+                  consultation, and it is collected afterwards at the pharmacy or billing
+                  counter — see Fees &amp; Payments.
+                </p>
                 <div className="space-y-2 sm:col-span-2">
                   <Label>Notes</Label>
                   <Textarea name="notes" rows={2} />

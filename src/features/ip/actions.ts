@@ -6,6 +6,7 @@ import { rupeesToPaise } from "@/lib/domain/money";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { databaseIdSchema } from "@/lib/validation/database-id";
 import type { ActionState } from "@/types/hospital";
+import { isIdempotentReplay } from "@/lib/domain/idempotency";
 const admission = z.object({
   patientId: databaseIdSchema.optional().or(z.literal("")),
   isEmergency: z.enum(["true", "false"]),
@@ -165,7 +166,7 @@ export async function addIpCharge(
       rate_paise: rate,
       idempotency_key: parsed.data.idempotencyKey,
     });
-  if (error?.code === "23505")
+  if (isIdempotentReplay(error))
     return { ok: true, message: "Charge already recorded." };
   if (error) return { ok: false, message: "Charge could not be added." };
   revalidatePath(`/ip/${parsed.data.ticketId}`);
@@ -202,7 +203,7 @@ export async function addIpPayment(
       reference: parsed.data.reference || null,
       idempotency_key: parsed.data.idempotencyKey,
     });
-  if (error?.code === "23505")
+  if (isIdempotentReplay(error))
     return { ok: true, message: "Payment already recorded." };
   if (error) return { ok: false, message: "Payment could not be added." };
   revalidatePath(`/ip/${parsed.data.ticketId}`);

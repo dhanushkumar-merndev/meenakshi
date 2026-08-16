@@ -6,7 +6,9 @@ import { LoaderCircle, Pencil, Save } from "lucide-react";
 import { toast } from "sonner";
 import { updatePatient } from "./actions";
 import type { ActionState } from "@/types/hospital";
+import { AllergyTagInput } from "./allergy-tag-input";
 import { DatePickerField } from "@/components/shared/date-picker-field";
+import { LocationAutocomplete } from "@/components/shared/location-autocomplete";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -26,7 +28,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Textarea } from "@/components/ui/textarea";
 
 type EditablePatient = {
   id: string;
@@ -40,8 +41,14 @@ type EditablePatient = {
   status: string;
 };
 
-export function EditPatientDialog({ patient }: { patient: EditablePatient }) {
-  const [open, setOpen] = useState(false);
+export function EditPatientDialog({
+  patient,
+  defaultOpen = false,
+}: {
+  patient: EditablePatient;
+  defaultOpen?: boolean;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
   const [state, action, pending] = useActionState(updatePatient, {
     ok: false,
   } as ActionState);
@@ -73,7 +80,8 @@ export function EditPatientDialog({ patient }: { patient: EditablePatient }) {
       <DialogTrigger render={<Button variant="outline" />}>
         <Pencil /> Edit Patient
       </DialogTrigger>
-      <DialogContent className="max-h-[calc(100vh-2rem)] overflow-y-auto sm:max-w-xl">
+      {/* Matches Add patient: capped at 70% of the viewport, only the fields scroll. */}
+      <DialogContent className="flex max-h-[70dvh] flex-col overflow-hidden sm:max-w-xl">
         <form action={action} className="contents">
           <DialogHeader>
             <DialogTitle>Edit patient</DialogTitle>
@@ -90,101 +98,103 @@ export function EditPatientDialog({ patient }: { patient: EditablePatient }) {
               {state.message}
             </p>
           ) : null}
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="space-y-2">
-              <Label htmlFor="edit-patient-name">Name</Label>
-              <Input
-                id="edit-patient-name"
-                name="name"
-                value={fields.name}
-                onChange={(event) => updateField("name", event.target.value)}
-                required
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="edit-patient-phone">Phone Patient ID</Label>
-              <Input
-                id="edit-patient-phone"
-                name="phone"
-                inputMode="tel"
-                value={fields.phone}
-                onChange={(event) => updateField("phone", event.target.value)}
-                required
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="edit-patient-dob">Date of birth</Label>
-              <DatePickerField
-                id="edit-patient-dob"
-                name="dob"
-                value={fields.dob}
-                onValueChange={(value) => updateField("dob", value)}
-                placeholder="Select date of birth"
-                disableFuture
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Gender</Label>
-              <Select
-                value={fields.gender}
-                onValueChange={(value) => updateField("gender", String(value))}
-              >
-                <SelectTrigger className="w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="male">Male</SelectItem>
-                  <SelectItem value="female">Female</SelectItem>
-                  <SelectItem value="other">Other</SelectItem>
-                  <SelectItem value="unknown">Not specified</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="edit-blood-group">Blood group</Label>
-              <Input
-                id="edit-blood-group"
-                name="bloodGroup"
-                value={fields.bloodGroup}
-                onChange={(event) =>
-                  updateField("bloodGroup", event.target.value)
-                }
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Status</Label>
-              <Select
-                value={fields.status}
-                onValueChange={(value) => updateField("status", String(value))}
-              >
-                <SelectTrigger className="w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="active">Active</SelectItem>
-                  <SelectItem value="archived">Archived</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2 sm:col-span-2">
-              <Label htmlFor="edit-patient-address">Address</Label>
-              <Textarea
-                id="edit-patient-address"
-                name="address"
-                value={fields.address}
-                onChange={(event) => updateField("address", event.target.value)}
-              />
-            </div>
-            <div className="space-y-2 sm:col-span-2">
-              <Label htmlFor="edit-patient-allergies">Allergies</Label>
-              <Textarea
-                id="edit-patient-allergies"
-                name="allergies"
-                value={fields.allergies}
-                onChange={(event) =>
-                  updateField("allergies", event.target.value)
-                }
-              />
+          <div className="dialog-scroll">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="edit-patient-name">Name</Label>
+                <Input
+                  id="edit-patient-name"
+                  name="name"
+                  value={fields.name}
+                  onChange={(event) => updateField("name", event.target.value)}
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-patient-phone">Phone Patient ID</Label>
+                <Input
+                  id="edit-patient-phone"
+                  name="phone"
+                  inputMode="tel"
+                  value={fields.phone}
+                  onChange={(event) => updateField("phone", event.target.value)}
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-patient-dob">Date of birth</Label>
+                <DatePickerField
+                  id="edit-patient-dob"
+                  name="dob"
+                  value={fields.dob}
+                  onValueChange={(value) => updateField("dob", value)}
+                  placeholder="Select date of birth"
+                  disableFuture
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Gender</Label>
+                <Select
+                  value={fields.gender}
+                  onValueChange={(value) =>
+                    updateField("gender", String(value))
+                  }
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="male">Male</SelectItem>
+                    <SelectItem value="female">Female</SelectItem>
+                    <SelectItem value="other">Other</SelectItem>
+                    <SelectItem value="unknown">Not specified</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-blood-group">Blood group</Label>
+                <Input
+                  id="edit-blood-group"
+                  name="bloodGroup"
+                  value={fields.bloodGroup}
+                  onChange={(event) =>
+                    updateField("bloodGroup", event.target.value)
+                  }
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Status</Label>
+                <Select
+                  value={fields.status}
+                  onValueChange={(value) =>
+                    updateField("status", String(value))
+                  }
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="active">Active</SelectItem>
+                    <SelectItem value="archived">Archived</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2 sm:col-span-2">
+                <Label htmlFor="edit-patient-address">Address</Label>
+                <LocationAutocomplete
+                  id="edit-patient-address"
+                  name="address"
+                  value={fields.address}
+                  onChange={(address) => updateField("address", address)}
+                />
+              </div>
+              <div className="space-y-2 sm:col-span-2">
+                <Label htmlFor="edit-patient-allergies">Allergies</Label>
+                <AllergyTagInput
+                  id="edit-patient-allergies"
+                  initialValue={patient.allergies ?? ""}
+                />
+              </div>
             </div>
           </div>
           <DialogFooter showCloseButton>

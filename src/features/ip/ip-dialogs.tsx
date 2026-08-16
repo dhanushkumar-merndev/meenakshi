@@ -25,6 +25,7 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { useAutoCloseDialog } from "@/hooks/use-auto-close-dialog";
+import { formatInr } from "@/lib/domain/money";
 import {
   PatientCombobox,
   type PatientOption,
@@ -127,12 +128,12 @@ export function AdmissionDialog({
               </p>
             </div>
             <div className="space-y-2 sm:col-span-2">
-              <Label>Doctor</Label>
+              <Label htmlFor="admission-doctor">Doctor</Label>
               <Select
                 value={doctor}
                 onValueChange={(v) => setDoctor(v as string)}
               >
-                <SelectTrigger className="w-full">
+                <SelectTrigger id="admission-doctor" className="w-full">
                   <SelectValue placeholder="Select doctor">{() => doctors.find((item) => item.id === doctor)?.label ?? "Select doctor"}</SelectValue>
                 </SelectTrigger>
                 <SelectContent>
@@ -145,8 +146,8 @@ export function AdmissionDialog({
               </Select>
             </div>
             <div className="space-y-2 sm:col-span-2">
-              <Label>Available room / bed</Label>
-              <Select value={roomBedId} onValueChange={(v)=>setRoomBedId(String(v))}><SelectTrigger className="w-full"><SelectValue placeholder="Select available room / bed">{() => rooms.find((room) => room.id === roomBedId)?.label ?? "Select available room / bed"}</SelectValue></SelectTrigger><SelectContent>{rooms.map(room=><SelectItem key={room.id} value={room.id} label={room.label}>{room.label}</SelectItem>)}</SelectContent></Select>
+              <Label htmlFor="admission-room-bed">Available room / bed</Label>
+              <Select value={roomBedId} onValueChange={(v)=>setRoomBedId(String(v))}><SelectTrigger id="admission-room-bed" className="w-full"><SelectValue placeholder="Select available room / bed">{() => rooms.find((room) => room.id === roomBedId)?.label ?? "Select available room / bed"}</SelectValue></SelectTrigger><SelectContent>{rooms.map(room=><SelectItem key={room.id} value={room.id} label={room.label}>{room.label}</SelectItem>)}</SelectContent></Select>
               <p className="text-xs text-muted-foreground">Only active, currently free beds are shown.</p>
             </div>
             <div className="space-y-2 sm:col-span-2">
@@ -163,9 +164,9 @@ export function AdmissionDialog({
               />
             </div>
             <div className="space-y-2">
-              <Label>Mode</Label>
+              <Label htmlFor="payment-mode">Mode</Label>
               <Select value={mode} onValueChange={(v) => setMode(v as string)}>
-                <SelectTrigger className="w-full">
+                <SelectTrigger id="payment-mode" className="w-full">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -222,7 +223,7 @@ export function ChargeDialog({ ticketId, presets }: { ticketId: string; presets:
           {state.message && !state.ok ? <p className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">{state.message}</p> : null}
           <div className="space-y-4">
             <div className="space-y-2">
-              <Label>Charge preset</Label>
+              <Label htmlFor="charge-preset">Charge preset</Label>
               <Select
                 value={presetId}
                 onValueChange={(value) => {
@@ -236,7 +237,7 @@ export function ChargeDialog({ ticketId, presets }: { ticketId: string; presets:
                   }
                 }}
               >
-                <SelectTrigger className="w-full">
+                <SelectTrigger id="charge-preset" className="w-full">
                   <SelectValue placeholder="Select configured charge" />
                 </SelectTrigger>
                 <SelectContent>
@@ -245,7 +246,7 @@ export function ChargeDialog({ ticketId, presets }: { ticketId: string; presets:
                 </SelectContent>
               </Select>
             </div>
-            {presetId === "custom" ? <div className="space-y-2"><Label>Category</Label><Select value={category} onValueChange={(v) => setCategory(String(v))}><SelectTrigger className="w-full"><SelectValue /></SelectTrigger><SelectContent>{["doctor","ward","room","bed","treatment","test","other"].map((value) => <SelectItem key={value} value={value}>{value}</SelectItem>)}</SelectContent></Select></div> : null}
+            {presetId === "custom" ? <div className="space-y-2"><Label htmlFor="charge-category">Category</Label><Select value={category} onValueChange={(v) => setCategory(String(v))}><SelectTrigger id="charge-category" className="w-full"><SelectValue /></SelectTrigger><SelectContent>{["doctor","ward","room","bed","treatment","test","other"].map((value) => <SelectItem key={value} value={value}>{value}</SelectItem>)}</SelectContent></Select></div> : null}
             <div className="space-y-2">
               <Label htmlFor="item">Item</Label>
               <Input id="item" name="item" value={item} onChange={(event) => setItem(event.target.value)} readOnly={presetId !== "custom"} required />
@@ -278,10 +279,22 @@ export function ChargeDialog({ ticketId, presets }: { ticketId: string; presets:
     </Dialog>
   );
 }
-export function IpPaymentDialog({ ticketId }: { ticketId: string }) {
+export function IpPaymentDialog({
+  ticketId,
+  totalPaise = 0,
+  paidPaise = 0,
+}: {
+  ticketId: string;
+  totalPaise?: number;
+  paidPaise?: number;
+}) {
   const [state, action, pending] = useActionState(addIpPayment, initial);
   const [mode, setMode] = useState("cash");
   const [key] = useState(() => crypto.randomUUID());
+  const balance = Math.max(0, totalPaise - paidPaise);
+  // Pre-filled with what is outstanding, which is what is collected most of the
+  // time; a part payment is just typed over it.
+  const [amount, setAmount] = useState(() => (balance > 0 ? (balance / 100).toFixed(2) : ""));
   const { open, setOpen } = useAutoCloseDialog(state, "IP payment recorded.");
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -301,9 +314,39 @@ export function IpPaymentDialog({ ticketId }: { ticketId: string }) {
           <input type="hidden" name="idempotencyKey" value={key} />
           {state.message && !state.ok ? <p className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">{state.message}</p> : null}
           <div className="space-y-4">
+            {/* Whoever is taking the money needs to see what is still owed
+                without leaving the dialog to read the summary behind it. */}
+            <div className="grid grid-cols-3 gap-2 rounded-lg border p-3 text-sm">
+              <div>
+                <p className="text-xs text-muted-foreground">Total charges</p>
+                <p className="font-medium tabular-nums">{formatInr(totalPaise)}</p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">Collected</p>
+                <p className="font-medium tabular-nums">{formatInr(paidPaise)}</p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">Balance</p>
+                <p className={`font-semibold tabular-nums ${balance > 0 ? "text-destructive" : ""}`}>
+                  {formatInr(balance)}
+                </p>
+              </div>
+            </div>
             <div className="space-y-2">
               <Label htmlFor="amount">Amount</Label>
-              <Input id="amount" name="amount" inputMode="decimal" required />
+              <Input
+                id="amount"
+                name="amount"
+                inputMode="decimal"
+                value={amount}
+                onChange={(event) => setAmount(event.target.value)}
+                required
+              />
+              <p className="text-xs text-muted-foreground">
+                {balance > 0
+                  ? `${formatInr(balance)} is still pending. Type a smaller amount for a part payment.`
+                  : "This ticket is fully settled; any amount recorded here is an extra payment."}
+              </p>
             </div>
             <div className="space-y-2">
               <Label>Mode</Label>

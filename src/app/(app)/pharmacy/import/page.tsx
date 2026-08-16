@@ -7,7 +7,7 @@ export default async function BulkImportPage() {
     <div>
       <PageHeader
         title="Bulk Medicine Import"
-        description="Validate, preview, and transactionally import up to 1,000 Excel or CSV rows"
+        description="Validate, preview, and transactionally import up to 10,000 Excel or CSV rows"
       />
       <BulkMedicineImport />
     </div>

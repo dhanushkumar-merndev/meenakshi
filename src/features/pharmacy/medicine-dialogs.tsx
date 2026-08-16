@@ -26,6 +26,7 @@ import {
 } from "@/components/ui/select";
 import { useAutoCloseDialog } from "@/hooks/use-auto-close-dialog";
 import { DeleteMasterButton } from "@/features/admin/delete-master-button";
+import { calculateStockUnits } from "@/lib/domain/medicine-quantity";
 
 const initial: ActionState = { ok: false };
 export function MedicineDialog({
@@ -131,6 +132,15 @@ export function BatchDialog({
     item?.medicineId ?? medicines[0]?.id ?? "",
   );
   const [key] = useState(() => crypto.randomUUID());
+  const [unitsPerPack, setUnitsPerPack] = useState(1);
+  const [packCount, setPackCount] = useState(0);
+  const [looseUnits, setLooseUnits] = useState(0);
+  const [quantityAdjustment, setQuantityAdjustment] = useState(0);
+  const openingUnits = calculateStockUnits(
+    unitsPerPack,
+    packCount,
+    looseUnits,
+  ) ?? 0;
   const { open, setOpen } = useAutoCloseDialog(state, "Medicine batch saved.");
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -159,6 +169,9 @@ export function BatchDialog({
           <input type="hidden" name="batchId" value={item?.id ?? ""} />
           <input type="hidden" name="medicineId" value={medicineId} />
           <input type="hidden" name="idempotencyKey" value={key} />
+          {!item ? (
+            <input type="hidden" name="quantityDelta" value={openingUnits} />
+          ) : null}
           {state.message && !state.ok ? (
             <p className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">
               {state.message}
@@ -205,27 +218,164 @@ export function BatchDialog({
                 String(item?.lowStockThreshold ?? 10),
                 "number",
               ],
-              [
-                "quantityDelta",
-                item ? "Stock adjustment (+/-)" : "Opening quantity",
-                "0",
-                "number",
-              ],
-              [
-                "reason",
-                "Adjustment reason",
-                item ? "Stock count adjustment" : "Opening stock",
-                "text",
-              ],
             ].map(([name, label, value, type]) => (
-              <div
-                className={`space-y-2 ${name === "reason" ? "sm:col-span-2" : ""}`}
-                key={name}
-              >
+              <div className="space-y-2" key={name}>
                 <Label>{label}</Label>
                 <Input name={name} type={type} defaultValue={value} required />
               </div>
             ))}
+            {item ? (
+              <div className="space-y-2">
+                <Label htmlFor="quantityDelta">
+                  Stock adjustment (individual units)
+                </Label>
+                <Input
+                  id="quantityDelta"
+                  name="quantityDelta"
+                  type="number"
+                  value={quantityAdjustment}
+                  onChange={(event) =>
+                    setQuantityAdjustment(Number(event.target.value))
+                  }
+                  required
+                />
+              </div>
+            ) : (
+              <>
+                <div className="space-y-2">
+                  <Label htmlFor="unitsPerPack">Units per pack</Label>
+                  <Input
+                    id="unitsPerPack"
+                    type="number"
+                    min={1}
+                    step={1}
+                    value={unitsPerPack}
+                    onChange={(event) =>
+                      setUnitsPerPack(Number(event.target.value))
+                    }
+                    required
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="packCount">Number of packs</Label>
+                  <Input
+                    id="packCount"
+                    type="number"
+                    min={0}
+                    step={1}
+                    value={packCount}
+                    onChange={(event) =>
+                      setPackCount(Number(event.target.value))
+                    }
+                    required
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="looseUnits">Loose units</Label>
+                  <Input
+                    id="looseUnits"
+                    type="number"
+                    min={0}
+                    step={1}
+                    value={looseUnits}
+                    onChange={(event) =>
+                      setLooseUnits(Number(event.target.value))
+                    }
+                    required
+                  />
+                </div>
+                <div className="rounded-lg bg-muted p-3 text-sm">
+                  <span className="block text-muted-foreground">Opening stock</span>
+                  <strong className="text-lg tabular-nums">
+                    {openingUnits} individual units
+                  </strong>
+                  <span className="mt-1 block text-xs text-muted-foreground">
+                    {packCount} pack{packCount === 1 ? "" : "s"} × {unitsPerPack}
+                    {looseUnits ? ` + ${looseUnits} loose` : ""}
+                  </span>
+                </div>
+              </>
+            )}
+            {item ? (
+              <div className="space-y-3 rounded-lg border p-3 sm:col-span-2">
+                <div>
+                  <p className="font-medium">Pack calculator</p>
+                  <p className="text-xs text-muted-foreground">
+                    Optional helper for positive restocking. Corrections can
+                    still be entered directly above.
+                  </p>
+                </div>
+                <div className="grid gap-3 sm:grid-cols-3">
+                  <div className="space-y-2">
+                    <Label htmlFor="adjustUnitsPerPack">Units per pack</Label>
+                    <Input
+                      id="adjustUnitsPerPack"
+                      type="number"
+                      min={1}
+                      step={1}
+                      value={unitsPerPack}
+                      onChange={(event) =>
+                        setUnitsPerPack(Number(event.target.value))
+                      }
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="adjustPackCount">Packs to add</Label>
+                    <Input
+                      id="adjustPackCount"
+                      type="number"
+                      min={0}
+                      step={1}
+                      value={packCount}
+                      onChange={(event) =>
+                        setPackCount(Number(event.target.value))
+                      }
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="adjustLooseUnits">Loose units to add</Label>
+                    <Input
+                      id="adjustLooseUnits"
+                      type="number"
+                      min={0}
+                      step={1}
+                      value={looseUnits}
+                      onChange={(event) =>
+                        setLooseUnits(Number(event.target.value))
+                      }
+                    />
+                  </div>
+                </div>
+                <div className="flex flex-col gap-2 rounded-md bg-muted p-3 sm:flex-row sm:items-center sm:justify-between">
+                  <span className="text-sm">
+                    Calculated adjustment:{" "}
+                    <strong className="tabular-nums">+{openingUnits} units</strong>
+                  </span>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    disabled={openingUnits <= 0}
+                    onClick={() => setQuantityAdjustment(openingUnits)}
+                  >
+                    Use +{openingUnits}
+                  </Button>
+                </div>
+              </div>
+            ) : null}
+            <div className="space-y-2 sm:col-span-2">
+              <Label htmlFor="reason">Adjustment reason</Label>
+              <Input
+                id="reason"
+                name="reason"
+                defaultValue={item ? "Stock count adjustment" : "Opening stock"}
+                required
+              />
+              <p className="text-xs text-muted-foreground">
+                Stock and prices are recorded per individual tablet, capsule,
+                or other dispensing unit.
+              </p>
+            </div>
             <label className="flex items-center gap-2 text-sm">
               <Checkbox name="active" defaultChecked={item?.active ?? true} />{" "}
               Active

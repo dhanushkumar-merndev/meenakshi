@@ -61,12 +61,17 @@ type ReportRow = {
 
 export default async function PatientProfilePage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ edit?: string }>;
 }) {
   const profile = await requireRoute("/patients");
   const canFinance = hasPermission(profile.role, "viewVisitFinance");
   const { id } = await params;
+  // "Complete details" on the reception queue links here with ?edit=1 so the
+  // edit form is already open instead of making staff hunt for the button.
+  const openEditor = (await searchParams).edit === "1";
   const supabase = await createSupabaseServerClient();
   const [patientResult, visitsResult, doctorsResult, ipResult, reportsResult] =
     await Promise.all([
@@ -128,7 +133,7 @@ export default async function PatientProfilePage({
         description={`UHID: ${patient.uhid} · Phone: ${patient.phone_normalized}`}
         actions={
           <>
-            {hasPermission(profile.role, "createPatient") ? <EditPatientDialog patient={{ id: patient.id, name: patient.name, phone: patient.phone_normalized, dob: patient.dob, gender: patient.gender, bloodGroup: patient.blood_group, address: patient.address, allergies: patient.allergies, status: patient.status }} /> : null}
+            {hasPermission(profile.role, "createPatient") ? <EditPatientDialog defaultOpen={openEditor} patient={{ id: patient.id, name: patient.name, phone: patient.phone_normalized, dob: patient.dob, gender: patient.gender, bloodGroup: patient.blood_group, address: patient.address, allergies: patient.allergies, status: patient.status }} /> : null}
             {hasPermission(profile.role, "createVisit") ? (
               <CreateVisitDialog
                 patientId={patient.id}

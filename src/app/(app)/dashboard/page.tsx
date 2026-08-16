@@ -16,6 +16,10 @@ const metricSets = {
     ["visits_today", "OP Visits Today", UserRound],
     ["waiting", "Waiting", Clock3], ["current_ip", "Current IP", BedDouble],
     ["collected_today_paise", "Collected Today", IndianRupee], ["low_stock", "Low Stock", PackageX],
+    ["completed", "Completed Today", UserRound], ["admissions_today", "Admissions Today", BedDouble],
+    ["reports_pending", "Reports Pending", Activity],
+    ["pending_prescriptions", "Pending Prescriptions", ClipboardCheck],
+    ["discharges_today", "Discharges Today", ClipboardCheck],
   ],
   reception: [
     ["patients_today", "Registrations Today", Users], ["visits_today", "Visits Today", UserRound],

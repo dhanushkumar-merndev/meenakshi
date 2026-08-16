@@ -1,10 +1,13 @@
+import Link from "next/link";
 import { requireRoute } from "@/lib/auth/dal";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { FileSpreadsheet } from "lucide-react";
 import { PageHeader } from "@/components/shared/page-header";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { ClinicalTermDialog } from "@/features/admin/master-dialogs";
 import { DebouncedSearchInput } from "@/components/shared/debounced-search-input";
 import { containsSearchPattern } from "@/lib/domain/search";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
   Table,
@@ -32,7 +35,14 @@ export default async function ClinicalDirectoryPage({ searchParams }: { searchPa
       <PageHeader
         title="Clinical Directory"
         description="Local offline-ready terminology for doctor autocomplete"
-        actions={<ClinicalTermDialog />}
+        actions={
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" render={<Link href="/admin/clinical-directory/import" />}>
+              <FileSpreadsheet /> Bulk Import
+            </Button>
+            <ClinicalTermDialog />
+          </div>
+        }
       />
       <DebouncedSearchInput className="mb-4 max-w-md" initialValue={q} placeholder="Search clinical term, type or source" ariaLabel="Search clinical directory" />
       <Card>

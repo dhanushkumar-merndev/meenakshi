@@ -32,9 +32,10 @@ type Ticket = {
   is_emergency: boolean;
   patients: { name: string } | null;
   doctors: { display_name: string } | null;
-  ip_charges: Array<{ amount_paise: number }>;
-  ip_payments: Array<{ amount_paise: number }>;
+  total_paise: number;
+  paid_paise: number;
 };
+type TicketFinancial = { ticket_id: string; total_paise: number; paid_paise: number };
 export default async function IpPage({ searchParams }: { searchParams: Promise<{ status?: string; page?: string; q?: string; view?: string }> }) {
   const profile = await requireRoute("/ip");
   const params = await searchParams; const selectedStatus = params.status ?? "active"; const page = Math.max(1, Number(params.page) || 1); const size = 50; const q = params.q?.trim() ?? "";
@@ -48,10 +49,11 @@ export default async function IpPage({ searchParams }: { searchParams: Promise<{
       let query = supabase
       .from("ip_tickets")
       .select(
-        "id,ticket_number,admission_at,room,bed,room_bed_id,status,is_emergency,patients(name),doctors(display_name),ip_charges(amount_paise),ip_payments(amount_paise)",
+        "id,ticket_number,admission_at,room,bed,room_bed_id,status,is_emergency,patients(name),doctors(display_name)",
         { count: "exact" },
       )
-      .order("admission_at", { ascending: selectedStatus === "active" })
+      // Newest admission first on every tab.
+      .order("admission_at", { ascending: false })
       .range((page - 1) * size, page * size - 1);
       if (selectedStatus === "active") query = query.in("status", ["admitted", "discharge_pending"]);
       else if (["admitted", "discharge_pending", "discharged", "cancelled"].includes(selectedStatus)) query = query.eq("status", selectedStatus as "admitted");
@@ -76,10 +78,23 @@ export default async function IpPage({ searchParams }: { searchParams: Promise<{
       : Promise.resolve({ data: [] }),
     supabase.rpc("list_admission_referrals", { p_limit: 25 }),
   ]);
-  const referrals = (referralResult.data ?? []) as unknown as Referral[];
-  const tickets = (ticketsResult.data ?? []) as unknown as Ticket[];
-  const occupied = new Set(tickets.filter((ticket)=>["admitted","discharge_pending"].includes(ticket.status)).map((ticket)=>ticket.room_bed_id));
   const canFinance = profile.role === "admin" || profile.role === "ip";
+  const sourceTickets = (ticketsResult.data ?? []) as unknown as Omit<Ticket, "total_paise" | "paid_paise">[];
+  const { data: financialRows } = canFinance && sourceTickets.length
+    ? await supabase.rpc("get_ip_financial_summaries", {
+        p_ticket_ids: sourceTickets.map((ticket) => ticket.id),
+      })
+    : { data: [] };
+  const financeByTicket = new Map(
+    ((financialRows ?? []) as TicketFinancial[]).map((row) => [row.ticket_id, row]),
+  );
+  const tickets: Ticket[] = sourceTickets.map((ticket) => ({
+    ...ticket,
+    total_paise: Number(financeByTicket.get(ticket.id)?.total_paise ?? 0),
+    paid_paise: Number(financeByTicket.get(ticket.id)?.paid_paise ?? 0),
+  }));
+  const referrals = (referralResult.data ?? []) as unknown as Referral[];
+  const occupied = new Set(tickets.filter((ticket)=>["admitted","discharge_pending"].includes(ticket.status)).map((ticket)=>ticket.room_bed_id));
   return (
     <div>
       <PageHeader
@@ -203,14 +218,8 @@ export default async function IpPage({ searchParams }: { searchParams: Promise<{
               <TableBody>
                 {tickets.length ? (
                   tickets.map((ticket) => {
-                    const total = ticket.ip_charges.reduce(
-                      (s, c) => s + c.amount_paise,
-                      0,
-                    );
-                    const paid = ticket.ip_payments.reduce(
-                      (s, p) => s + p.amount_paise,
-                      0,
-                    );
+                    const total = ticket.total_paise;
+                    const paid = ticket.paid_paise;
                     return (
                       <TableRow key={ticket.id} historical={!isHospitalToday(ticket.admission_at)}>
                         <TableCell className="font-medium">

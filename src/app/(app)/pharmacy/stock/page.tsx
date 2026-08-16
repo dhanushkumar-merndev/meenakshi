@@ -104,8 +104,8 @@ export default async function StockPage({
                   <TableHead>Generic</TableHead>
                   <TableHead>Batch</TableHead>
                   <TableHead>Expiry</TableHead>
-                  <TableHead>Qty</TableHead>
-                  <TableHead>Selling Price</TableHead>
+                  <TableHead>Qty (individual units)</TableHead>
+                  <TableHead>Selling Price / Unit</TableHead>
                   <TableHead>Alert</TableHead>
                   <TableHead className="text-right">Action</TableHead>
                 </TableRow>

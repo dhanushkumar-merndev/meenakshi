@@ -1,4 +1,12 @@
 import { rupeesToPaise } from "@/lib/domain/money";
+import {
+  cellBoolean,
+  cellText,
+  formatRowLimit,
+  isIsoDate,
+  MAX_IMPORT_ROWS,
+  type ImportErrorRow,
+} from "@/lib/domain/bulk-import";
 
 export const MEDICINE_IMPORT_HEADERS = [
   "medicine_name",
@@ -28,24 +36,9 @@ export type NormalizedMedicineImport = {
   low_stock_threshold: number;
   active: boolean;
 };
-export type ImportErrorRow = {
-  row: number;
-  data: Record<string, unknown>;
-  errors: string[];
-};
-const text = (value: unknown) => String(value ?? "").trim();
-const booleanValue = (value: unknown) => {
-  if (typeof value === "boolean") return value;
-  const normalized = text(value).toLowerCase();
-  if (["true", "yes", "1", "active"].includes(normalized)) return true;
-  if (["false", "no", "0", "inactive"].includes(normalized)) return false;
-  throw new Error("active must be TRUE or FALSE");
-};
-const validDate = (value: string) => {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
-  const date = new Date(`${value}T00:00:00Z`);
-  return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
-};
+export type { ImportErrorRow };
+const text = cellText;
+const validDate = isIsoDate;
 export function validateMedicineImportRows(input: unknown[]): {
   valid: NormalizedMedicineImport[];
   invalid: ImportErrorRow[];
@@ -53,7 +46,7 @@ export function validateMedicineImportRows(input: unknown[]): {
   const valid: NormalizedMedicineImport[] = [];
   const invalid: ImportErrorRow[] = [];
   const identities = new Set<string>();
-  input.slice(0, 1000).forEach((source, index) => {
+  input.slice(0, MAX_IMPORT_ROWS).forEach((source, index) => {
     const data = (source && typeof source === "object" ? source : {}) as Record<
       string,
       unknown
@@ -93,9 +86,7 @@ export function validateMedicineImportRows(input: unknown[]): {
       }
     }
     try {
-      active = booleanValue(
-        data.active === "" || data.active == null ? true : data.active,
-      );
+      active = cellBoolean(data.active);
     } catch (error) {
       errors.push((error as Error).message);
     }
@@ -130,11 +121,11 @@ export function validateMedicineImportRows(input: unknown[]): {
       active,
     });
   });
-  if (input.length > 1000)
+  if (input.length > MAX_IMPORT_ROWS)
     invalid.push({
-      row: 1002,
+      row: MAX_IMPORT_ROWS + 2,
       data: {},
-      errors: ["Maximum 1,000 data rows per upload"],
+      errors: [`Maximum ${formatRowLimit()} data rows per upload`],
     });
   return { valid, invalid };
 }

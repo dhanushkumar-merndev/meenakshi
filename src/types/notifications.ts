@@ -11,4 +11,10 @@ export type HospitalNotification = {
 export type NotificationResponse = {
   items: HospitalNotification[];
   unreadCount: number;
+  pagination: {
+    page: number;
+    pageSize: number;
+    totalItems: number;
+    totalPages: number;
+  };
 };

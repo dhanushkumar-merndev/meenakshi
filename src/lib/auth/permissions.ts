@@ -29,6 +29,9 @@ export const ROUTE_ROLES: Record<string, readonly AppRole[]> = {
   "/admin": ["admin"],
   "/audit": ["admin"],
   "/patients": ["admin", "reception", "op", "doctor", "ip"],
+  // Bulk register import writes patient records, so it is narrower than the
+  // patient directory itself and matches the bulk_import_patients RPC guard.
+  "/patients/import": ["admin", "reception"],
   "/reception": ["admin", "reception"],
   "/op": ["admin", "op"],
   "/doctor": ["admin", "doctor"],

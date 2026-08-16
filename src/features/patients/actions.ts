@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requirePermission } from "@/lib/auth/dal";
+import { validatePatientImportRows } from "./import-schema";
 import { normalizeIndianPhone } from "@/lib/domain/phone";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
@@ -76,4 +77,41 @@ export async function updatePatient(_: ActionState, formData: FormData): Promise
   if (error) return { ok: false, message: error.code === "23505" ? "That UHID already belongs to another patient." : "Patient could not be updated." };
   await createSupabaseAdminClient().from("audit_logs").insert({ actor_user_id: actor.id, action: parsed.data.status === "archived" ? "PATIENT_ARCHIVED" : "PATIENT_UPDATED", entity_type: "patient", entity_id: parsed.data.patientId });
   revalidatePath(`/patients/${parsed.data.patientId}`); revalidatePath("/patients"); return { ok: true, message: "Patient updated." };
+}
+
+const patientImportSchema = z.object({
+  fileName: z.string().min(1).max(255),
+  rows: z.string(),
+  idempotencyKey: databaseIdSchema,
+});
+
+/**
+ * One chunk of a bulk patient import. The browser has already validated every
+ * row; this re-validates server-side (never trust the client) and hands the
+ * chunk to a single transactional RPC.
+ */
+export async function importPatients(
+  rows: unknown[],
+  fileName: string,
+  idempotencyKey: string,
+): Promise<{ ok: boolean; message?: string; data?: Record<string, unknown> }> {
+  await requirePermission("createPatient");
+  const parsed = patientImportSchema.safeParse({ fileName, rows: JSON.stringify(rows), idempotencyKey });
+  if (!parsed.success) return { ok: false, message: "Import payload is invalid." };
+
+  const checked = validatePatientImportRows(rows);
+  if (checked.invalid.length || checked.valid.length === 0)
+    return { ok: false, message: "Resolve all validation errors before importing." };
+
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase.rpc("bulk_import_patients", {
+    p_rows: checked.valid,
+    p_file_name: fileName,
+    p_idempotency_key: idempotencyKey,
+  });
+  if (error) return { ok: false, message: "The transaction failed; no rows in this batch were saved." };
+
+  revalidatePath("/patients");
+  revalidatePath("/dashboard");
+  return { ok: true, data: (data ?? {}) as Record<string, unknown> };
 }

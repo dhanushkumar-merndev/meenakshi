@@ -26,4 +26,8 @@ export function serviceRoleKey() {
   return key;
 }
 
+export function autocompleteApiKey() {
+  return process.env.AUTO_COMPLETE_API?.trim() || null;
+}
+
 export const APP_TIMEZONE = process.env.APP_TIMEZONE ?? "Asia/Kolkata";

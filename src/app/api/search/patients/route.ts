@@ -2,20 +2,41 @@ import { NextRequest, NextResponse } from "next/server";
 import { requirePermission } from "@/lib/auth/dal";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
+type PatientSearchRow = {
+  id: string;
+  name: string;
+  uhid: string;
+  phone_normalized: string;
+  dob: string | null;
+  gender: string;
+};
+
 export async function GET(request: NextRequest) {
   await requirePermission("viewPatients");
   const raw = request.nextUrl.searchParams.get("q")?.trim() ?? "";
   if (raw.length < 2) return NextResponse.json({ items: [] });
+  if (raw.length > 120)
+    return NextResponse.json({ error: "Search is too long" }, { status: 400 });
   const supabase = await createSupabaseServerClient();
-  const numeric = raw.replace(/\D/g, "");
-  let query = supabase.from("patients").select("id,name,uhid,phone_normalized,dob,gender").eq("status", "active").limit(15);
-  // UHID is the visible Patient ID, so it is searchable alongside phone and name.
-  query = numeric.length >= 2
-    ? query.or(`phone_normalized.like.${numeric}%,uhid.ilike.%${numeric}%`).order("phone_normalized")
-    : /^mh-?\d/i.test(raw)
-      ? query.ilike("uhid", `${raw.replace(/\s+/g, "")}%`).order("uhid")
-      : query.ilike("name_normalized", `${raw.toLowerCase().replace(/\s+/g, " ")}%`).order("name_normalized");
-  const { data, error } = await query;
+  const { data, error } = await supabase.rpc("list_patients", {
+    p_query: raw,
+    p_limit: 15,
+    p_offset: 0,
+    p_include_visit_count: false,
+    p_active_only: true,
+  });
   if (error) return NextResponse.json({ error: "Search unavailable" }, { status: 500 });
-  return NextResponse.json({ items: data ?? [] }, { headers: { "Cache-Control": "private, no-store" } });
+  return NextResponse.json(
+    {
+      items: ((data ?? []) as PatientSearchRow[]).map((patient) => ({
+        id: patient.id,
+        name: patient.name,
+        uhid: patient.uhid,
+        phone_normalized: patient.phone_normalized,
+        dob: patient.dob,
+        gender: patient.gender,
+      })),
+    },
+    { headers: { "Cache-Control": "private, no-store" } },
+  );
 }

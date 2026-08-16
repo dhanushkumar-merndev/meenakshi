@@ -15,6 +15,8 @@ export async function GET(request: NextRequest) {
 
   const q = request.nextUrl.searchParams.get("q")?.trim() ?? "";
   if (q.length < 2) return NextResponse.json({ items: [] });
+  if (q.length > 120)
+    return NextResponse.json({ error: "Search is too long" }, { status: 400 });
 
   const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase.rpc("search_clinical_terms", {

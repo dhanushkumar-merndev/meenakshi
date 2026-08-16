@@ -1,26 +1,23 @@
 import "server-only";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { prefixSearchPattern, searchDigits } from "@/lib/domain/search";
 import { EMPTY_UUID } from "@/lib/domain/search";
+import { searchDigits } from "@/lib/domain/search";
 
 export async function findMatchingPatientIds(
   supabase: SupabaseClient,
   value: string,
   limit = 50,
 ) {
-  const digits = searchDigits(value);
-  let query = supabase.from("patients").select("id").limit(limit);
-
-  query = digits.length >= 2
-    ? query.or(`phone_normalized.like.${digits.slice(-10)}%,uhid.ilike.%${digits}%`)
-    : /^mh-?\d/i.test(value.trim())
-      ? query.ilike("uhid", `${value.trim().replace(/\s+/g, "")}%`)
-      : query.ilike("name_normalized", prefixSearchPattern(value).toLowerCase());
-
-  const { data, error } = await query;
+  const { data, error } = await supabase.rpc("list_patients", {
+    p_query: value,
+    p_limit: Math.min(Math.max(limit, 1), 100),
+    p_offset: 0,
+    p_include_visit_count: false,
+    p_active_only: true,
+  });
   if (error) throw new Error("Patient search could not be completed.");
-  return (data ?? []).map((patient) => String(patient.id));
+  return ((data ?? []) as Array<{ id: string }>).map((patient) => String(patient.id));
 }
 
 export async function findMatchingVisitIds(

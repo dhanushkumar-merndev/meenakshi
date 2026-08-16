@@ -2,6 +2,7 @@ import Link from "next/link";
 import { requireRoute } from "@/lib/auth/dal";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { calculateAge, formatHospitalDate, isHospitalToday } from "@/lib/domain/date";
+import { FileSpreadsheet } from "lucide-react";
 import { PageHeader } from "@/components/shared/page-header";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { NewPatientDialog } from "@/features/patients/new-patient-dialog";
@@ -17,6 +18,19 @@ import {
   TableRow,
 } from "@/components/ui/table";
 
+type PatientDirectoryRow = {
+  id: string;
+  name: string;
+  uhid: string;
+  phone_normalized: string;
+  dob: string | null;
+  gender: string;
+  status: string;
+  created_at: string;
+  visit_count: number;
+  total_count: number;
+};
+
 export default async function PatientsPage({
   searchParams,
 }: {
@@ -31,39 +45,16 @@ export default async function PatientsPage({
   );
   const pageSize = 20;
   const supabase = await createSupabaseServerClient();
-  let query = supabase
-    .from("patients")
-    .select(
-      "id,name,uhid,phone_normalized,dob,gender,status,created_at",
-      { count: "exact" },
-    )
-    .order("created_at", { ascending: false })
-    .range((page - 1) * pageSize, page * pageSize - 1);
-  // UHID is the visible Patient ID, so it is searchable alongside phone and name.
-  if (q)
-    query = /^mh-?\d/i.test(q)
-      ? query.ilike("uhid", `${q.replace(/\s+/g, "")}%`)
-      : /^\d+$/.test(q.replace(/\D/g, ""))
-        ? query.or(`phone_normalized.like.${q.replace(/\D/g, "")}%,uhid.ilike.%${q.replace(/\D/g, "")}%`)
-        : query.ilike("name_normalized", `${q.toLowerCase()}%`);
-  const { data, count = 0, error } = await query;
+  const { data, error } = await supabase.rpc("list_patients", {
+    p_query: q || null,
+    p_limit: pageSize,
+    p_offset: (page - 1) * pageSize,
+    p_include_visit_count: true,
+    p_active_only: false,
+  });
   if (error) throw error;
-  const patients = data ?? [];
-  const patientIds = patients.map((patient) => patient.id);
-  const visitCounts = new Map<string, number>();
-  if (patientIds.length) {
-    const { data: visits, error: visitsError } = await supabase
-      .from("visits")
-      .select("patient_id")
-      .in("patient_id", patientIds);
-    if (visitsError) throw visitsError;
-    for (const visit of visits ?? []) {
-      visitCounts.set(
-        visit.patient_id,
-        (visitCounts.get(visit.patient_id) ?? 0) + 1,
-      );
-    }
-  }
+  const patients = (data ?? []) as PatientDirectoryRow[];
+  const count = Number(patients[0]?.total_count ?? 0);
   const pages = Math.max(1, Math.ceil((count ?? 0) / pageSize));
   return (
     <div>
@@ -74,7 +65,14 @@ export default async function PatientsPage({
           profile.role === "admin" ||
           profile.role === "reception" ||
           profile.role === "ip" ? (
-            <NewPatientDialog />
+            <div className="flex flex-wrap gap-2">
+              {profile.role === "admin" || profile.role === "reception" ? (
+                <Button variant="outline" render={<Link href="/patients/import" />}>
+                  <FileSpreadsheet /> Bulk Import
+                </Button>
+              ) : null}
+              <NewPatientDialog />
+            </div>
           ) : undefined
         }
       />
@@ -120,7 +118,7 @@ export default async function PatientsPage({
                         <TableCell className="capitalize">
                           {age === null ? "—" : `${age} yrs`} / {patient.gender}
                         </TableCell>
-                        <TableCell>{visitCounts.get(patient.id) ?? 0}</TableCell>
+                        <TableCell>{Number(patient.visit_count)}</TableCell>
                         <TableCell className="whitespace-nowrap">
                           {formatHospitalDate(patient.created_at)}
                         </TableCell>

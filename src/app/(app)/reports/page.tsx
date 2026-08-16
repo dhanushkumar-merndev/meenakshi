@@ -57,7 +57,7 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
         .select("id,name")
         .eq("active", true)
         .order("name"),
-      supabase.from("test_orders").select("id,patient_id,visit_id,ip_ticket_id,test_name,created_at,patients(name,phone_normalized),doctors(display_name)").in("status", ["ordered", "report_pending"]).order("created_at").limit(100),
+      supabase.from("test_orders").select("id,patient_id,visit_id,ip_ticket_id,test_name,created_at,patients(name,phone_normalized),doctors(display_name)").in("status", ["ordered", "report_pending"]).order("created_at", { ascending: false }).limit(100),
     ]);
   const rows = (data ?? []) as unknown as Report[];
   const pendingOrders=(testOrders??[]) as unknown as PendingOrder[];

@@ -1,13 +1,16 @@
 import { formatHospitalDate } from "@/lib/domain/date";
 import { formatInr } from "@/lib/domain/money";
-import { HospitalLogo } from "@/components/shared/hospital-logo";
+import { HospitalLetterhead } from "@/components/shared/hospital-letterhead";
+import type { HospitalIdentity } from "@/lib/print/hospital-identity";
 import type { IpPrintData } from "./print-data";
 
 export function IpBillDocument({
   ticket,
+  identity,
   final = false,
 }: {
   ticket: IpPrintData;
+  identity: HospitalIdentity;
   final?: boolean;
 }) {
   const total = ticket.ip_charges.reduce(
@@ -21,14 +24,8 @@ export function IpBillDocument({
 
   return (
     <article className="min-h-[270mm] border border-black/20 p-7">
-      <header className="flex items-start justify-between border-b-2 border-primary pb-4">
-        <div className="flex items-center gap-3">
-          <HospitalLogo size={52} />
-          <div>
-            <h1 className="text-xl font-bold text-primary">Meenakshi Hospital</h1>
-            <p>Hospital Management &amp; Patient Care</p>
-          </div>
-        </div>
+      <header className="flex items-start justify-between gap-6 border-b-2 border-primary pb-4">
+        <HospitalLetterhead identity={identity} />
         <div className="text-right">
           <h2 className="text-lg font-bold">
             {final ? "FINAL IP BILL" : "IP RUNNING BILL"}
@@ -111,9 +108,13 @@ export function IpBillDocument({
           </table>
         </section>
       ) : null}
-      <footer className="mt-12 flex justify-between border-t pt-3 text-[10px]">
+      <footer className="mt-12 flex justify-between gap-6 border-t pt-3 text-[10px]">
         <p>Computer-generated hospital document</p>
-        <p>Meenakshi Hospital</p>
+        <div className="text-right">
+          <p className="font-semibold">{identity.name}</p>
+          {identity.address ? <p>{identity.address}</p> : null}
+          <p>{[identity.phone, identity.email].filter(Boolean).join(" · ")}</p>
+        </div>
       </footer>
     </article>
   );

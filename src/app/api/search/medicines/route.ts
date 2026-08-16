@@ -17,6 +17,8 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   const q = request.nextUrl.searchParams.get("q")?.trim().toLowerCase() ?? "";
   if (q.length < 2) return NextResponse.json({ items: [] });
+  if (q.length > 120)
+    return NextResponse.json({ error: "Search is too long" }, { status: 400 });
   const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase.rpc("search_medicine_availability", { p_query: q, p_limit: 20 });
   if (error)
@@ -39,5 +41,8 @@ export async function GET(request: NextRequest) {
             : "in_stock",
     };
   });
-  return NextResponse.json({ items });
+  return NextResponse.json(
+    { items },
+    { headers: { "Cache-Control": "private, no-store" } },
+  );
 }

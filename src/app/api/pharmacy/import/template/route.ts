@@ -1,6 +1,7 @@
 import * as XLSX from "xlsx";
 import { getCurrentProfile } from "@/lib/auth/dal";
 import { MEDICINE_IMPORT_HEADERS } from "@/features/pharmacy/import-schema";
+import { formatRowLimit } from "@/lib/domain/bulk-import";
 export async function GET() {
   const profile = await getCurrentProfile();
   if (!["admin", "pharmacy"].includes(profile.role))
@@ -32,7 +33,7 @@ export async function GET() {
     ["opening_quantity", "Whole number >= 0"],
     ["prices", "INR decimal values"],
     ["active", "TRUE or FALSE"],
-    ["limit", "Maximum 1,000 data rows per import"],
+    ["limit", `Maximum ${formatRowLimit()} data rows per import`],
     ["existing batches", "Opening quantity is added only after confirmation"],
   ]);
   const workbook = XLSX.utils.book_new();

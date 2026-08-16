@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { Bell, CheckCheck, CircleAlert, Clock3 } from "lucide-react";
+import { ArrowRight, Bell, CheckCheck, CircleAlert, Clock3 } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { cn } from "@/lib/utils";
 import type { NotificationResponse } from "@/types/notifications";
@@ -37,7 +37,7 @@ export function NotificationMenu() {
   const { data, isLoading } = useQuery({
     queryKey,
     queryFn: async ({ signal }) => {
-      const response = await fetch("/api/notifications", {
+      const response = await fetch("/api/notifications?scope=unread&page=1&pageSize=10", {
         signal,
         cache: "no-store",
       });
@@ -56,12 +56,16 @@ export function NotificationMenu() {
     queryClient.setQueryData<NotificationResponse>(queryKey, (current) => {
       if (!current) return current;
       const selected = new Set(ids);
-      const items = current.items.map((item) =>
-        selected.has(item.id) ? { ...item, read: true } : item,
-      );
+      const items = current.items.filter((item) => !selected.has(item.id));
+      const removed = current.items.length - items.length;
       return {
+        ...current,
         items,
-        unreadCount: items.filter((item) => !item.read).length,
+        unreadCount: Math.max(0, current.unreadCount - removed),
+        pagination: {
+          ...current.pagination,
+          totalItems: Math.max(0, current.pagination.totalItems - removed),
+        },
       };
     });
     void markNotificationsRead(ids).finally(() =>
@@ -177,10 +181,20 @@ export function NotificationMenu() {
           ) : (
             <div className="p-8 text-center text-sm text-muted-foreground">
               <Bell className="mx-auto mb-2 size-5" />
-              No operational alerts right now.
+              You&apos;re all caught up. No unread alerts.
             </div>
           )}
         </ScrollArea>
+        <Separator />
+        <div className="p-3">
+          <Button
+            variant="outline"
+            className="w-full justify-between"
+            render={<Link href="/notifications" onClick={() => setOpen(false)} />}
+          >
+            View all notifications <ArrowRight />
+          </Button>
+        </div>
       </PopoverContent>
     </Popover>
   );

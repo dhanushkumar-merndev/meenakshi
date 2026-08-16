@@ -15,10 +15,10 @@ const schema = z.object({
   assessment: z.string().min(1, "Assessment/diagnosis is required.").max(5000),
   advice: z.string().max(5000).optional(),
   followUpType: z.enum(["none", "after_report", "specific_date", "after_days"]),
-  followUpDate: z.string().optional(),
-  followUpDays: z.string().optional(),
-  medicines: z.string(),
-  tests: z.string(),
+  followUpDate: z.string().date().optional().or(z.literal("")),
+  followUpDays: z.string().max(4).optional(),
+  medicines: z.string().max(100_000),
+  tests: z.string().max(50_000),
   fee: z.string().optional(),
   admissionRecommended: z.string().optional(),
   admissionWardType: z.enum(["general", "private", "icu"]).optional(),
@@ -28,20 +28,20 @@ const schema = z.object({
 const medicineSchema = z
   .array(
     z.object({
-      medicine_id: z.string().optional(),
-      medicine_name: z.string().min(1),
-      dose: z.string().optional(),
-      frequency: z.string().optional(),
-      duration: z.string().optional(),
-      route: z.string().optional(),
-      notes: z.string().optional(),
-      quantity: z.number().int().positive(),
+      medicine_id: databaseIdSchema.optional().or(z.literal("")),
+      medicine_name: z.string().trim().min(1).max(300),
+      dose: z.string().max(100).optional(),
+      frequency: z.string().max(100).optional(),
+      duration: z.string().max(100).optional(),
+      route: z.string().max(100).optional(),
+      notes: z.string().max(500).optional(),
+      quantity: z.number().int().positive().max(100_000),
     }),
   )
   .max(30);
 const testSchema = z
   .array(
-    z.object({ test_name: z.string().min(1), notes: z.string().optional() }),
+    z.object({ test_name: z.string().trim().min(1).max(300), notes: z.string().max(1000).optional() }),
   )
   .max(30);
 export async function saveConsultation(
@@ -63,10 +63,26 @@ export async function saveConsultation(
   const followUpDays = parsed.data.followUpDays
     ? Number(parsed.data.followUpDays)
     : null;
+  if (
+    parsed.data.followUpType === "after_days" &&
+    (!Number.isInteger(followUpDays) || (followUpDays ?? 0) < 1 || (followUpDays ?? 0) > 365)
+  )
+    return {
+      ok: false,
+      fieldErrors: { followUpDays: ["Enter a duration from 1 to 365 days."] },
+    };
   // The consulting doctor owns the fee; the pharmacy counter collects it.
   // 0 is a valid deliberate entry (free follow-up), blank is not.
   const rawFee = parsed.data.fee?.trim() ?? "";
-  const feePaise = rawFee === "" ? null : rupeesToPaise(rawFee);
+  let feePaise: number | null = null;
+  try {
+    feePaise = rawFee === "" ? null : rupeesToPaise(rawFee);
+  } catch (error) {
+    return {
+      ok: false,
+      fieldErrors: { fee: [(error as Error).message] },
+    };
+  }
   if (parsed.data.intent === "complete") {
     if (feePaise === null || Number.isNaN(feePaise))
       return {
@@ -124,4 +140,23 @@ export async function saveConsultation(
         : "Draft saved.",
     data: { completed: parsed.data.intent === "complete" },
   };
+}
+
+/**
+ * Marks the visit as in consultation when the doctor opens it, so reception and
+ * the OP desk can see who is actually inside the room. Safe to call repeatedly:
+ * the RPC only moves a visit out of waiting / vitals pending / ready, and never
+ * touches a completed or cancelled one.
+ */
+export async function startConsultation(visitId: string) {
+  await requirePermission("writeConsultation");
+  const parsed = databaseIdSchema.safeParse(visitId);
+  if (!parsed.success) return { ok: false };
+  const supabase = await createSupabaseServerClient();
+  const { error } = await supabase.rpc("start_visit_consultation", { p_visit_id: parsed.data });
+  if (error) return { ok: false };
+  revalidatePath("/op");
+  revalidatePath("/doctor");
+  revalidatePath("/reception");
+  return { ok: true };
 }
