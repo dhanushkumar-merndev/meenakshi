@@ -5,7 +5,8 @@ import { requireRoute } from "@/lib/auth/dal";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { formatHospitalDate } from "@/lib/domain/date";
 import { formatInr } from "@/lib/domain/money";
-import { AssignPatientDialog, ChargeDialog, IpPaymentDialog } from "@/features/ip/ip-dialogs";
+import { IP_CHARGE_MASTER_CATEGORIES } from "@/lib/domain/charge-categories";
+import { AssignPatientDialog, ChargeDialog, IpPaymentDialog, RequestInventoryDialog } from "@/features/ip/ip-dialogs";
 import { CompleteDischargeDialog, DischargeSummaryDialog, ProgressNoteDialog } from "@/features/ip/clinical-dialogs";
 import { PageHeader } from "@/components/shared/page-header";
 import { StatusBadge } from "@/components/shared/status-badge";
@@ -62,6 +63,20 @@ type Ticket = {
     note: string;
     doctors: { display_name: string } | null;
   }>;
+  ip_inventory_requests: Array<{
+    id: string;
+    notes: string | null;
+    status: string;
+    created_at: string;
+    ip_inventory_request_items: Array<{
+      id: string;
+      requested_name: string;
+      requested_quantity: number;
+      fulfilled_quantity: number;
+      unit_price_paise: number | null;
+      status: string;
+    }>;
+  }>;
 };
 export default async function IpTicketPage({
   params,
@@ -74,7 +89,7 @@ export default async function IpTicketPage({
   const { data, error } = await supabase
     .from("ip_tickets")
     .select(
-      "id,ticket_number,patient_id,is_emergency,admission_at,discharge_at,room,bed,admission_reason,status,final_diagnosis,hospital_course,treatment_summary,discharge_medicines,discharge_advice,follow_up,patients(name,uhid,phone_normalized),doctors(display_name,ip_visit_fee_paise),ip_charges(id,created_at,category,item,quantity,rate_paise,amount_paise),ip_payments(id,created_at,amount_paise,mode,reference),ip_progress_notes(id,created_at,note,doctors(display_name))",
+      "id,ticket_number,patient_id,is_emergency,admission_at,discharge_at,room,bed,admission_reason,status,final_diagnosis,hospital_course,treatment_summary,discharge_medicines,discharge_advice,follow_up,patients(name,uhid,phone_normalized),doctors(display_name,ip_visit_fee_paise),ip_charges(id,created_at,category,item,quantity,rate_paise,amount_paise),ip_payments(id,created_at,amount_paise,mode,reference),ip_progress_notes(id,created_at,note,doctors(display_name)),ip_inventory_requests(id,notes,status,created_at,ip_inventory_request_items(id,requested_name,requested_quantity,fulfilled_quantity,unit_price_paise,status))",
     )
     .eq("id", id)
     .single();
@@ -85,7 +100,7 @@ export default async function IpTicketPage({
   const canManage = profile.role === "admin" || profile.role === "ip";
   const canFinance = canManage;
   const canDoctor = profile.role === "admin" || profile.role === "doctor";
-  const { data: chargeRows } = canManage ? await supabase.from("charges").select("id,category,charge_name,amount_paise").eq("active", true).in("category", ["doctor","ward","room","bed","treatment","test","other"]).order("category").order("charge_name") : { data: [] };
+  const { data: chargeRows } = canManage ? await supabase.from("charges").select("id,category,charge_name,amount_paise").eq("active", true).in("category", IP_CHARGE_MASTER_CATEGORIES).order("category").order("charge_name") : { data: [] };
   const chargePresets = (chargeRows ?? []).map((charge) => ({ id: charge.id, category: charge.category, name: charge.charge_name, rate: (charge.amount_paise / 100).toFixed(2) }));
   const balance = Math.max(0, total - paid);
   return (
@@ -100,6 +115,9 @@ export default async function IpTicketPage({
             {ticket.status === "discharged" ? <>{canFinance ? <Button size="sm" variant="outline" render={<Link href={`/print/ip-bill/${ticket.id}`} />}><Printer /> Final Bill</Button> : null}<Button size="sm" render={<Link href={`/print/discharge/${ticket.id}`} />}><Printer /> Discharge Summary</Button></> : null}
             {canDoctor && ticket.status === "admitted" ? <ProgressNoteDialog ticketId={ticket.id} defaultFee={typeof ticket.doctors?.ip_visit_fee_paise === "number" ? (ticket.doctors.ip_visit_fee_paise / 100).toFixed(2) : undefined} /> : null}
             {canDoctor && ["admitted","discharge_pending"].includes(ticket.status) ? <DischargeSummaryDialog ticketId={ticket.id} initialValues={{finalDiagnosis:ticket.final_diagnosis,hospitalCourse:ticket.hospital_course,treatmentSummary:ticket.treatment_summary,dischargeMedicines:ticket.discharge_medicines,dischargeAdvice:ticket.discharge_advice,followUp:ticket.follow_up}} /> : null}
+            {(canManage || canDoctor) && ["admitted", "discharge_pending"].includes(ticket.status) ? (
+              <RequestInventoryDialog ticketId={ticket.id} />
+            ) : null}
             {canManage && ticket.status !== "discharged" ? <>
               <ChargeDialog ticketId={ticket.id} presets={chargePresets} />
               <IpPaymentDialog ticketId={ticket.id} totalPaise={total} paidPaise={paid} />
@@ -151,6 +169,9 @@ export default async function IpTicketPage({
           {canFinance ? <TabsTrigger value="charges">Charges</TabsTrigger> : null}
           {canFinance ? <TabsTrigger value="payments">Payments</TabsTrigger> : null}
           <TabsTrigger value="notes">Progress Notes</TabsTrigger>
+          {ticket.ip_inventory_requests.length ? (
+            <TabsTrigger value="requests">Pharmacy Requests</TabsTrigger>
+          ) : null}
         </TabsList>
         {canFinance ? <TabsContent value="charges">
           <Card>
@@ -234,6 +255,51 @@ export default async function IpTicketPage({
             </CardContent>
           </Card>
         </TabsContent>
+        {ticket.ip_inventory_requests.length ? (
+          <TabsContent value="requests" className="space-y-3">
+            {ticket.ip_inventory_requests.map((request) => (
+              <Card key={request.id}>
+                <CardHeader className="flex-row items-center justify-between">
+                  <div>
+                    <CardTitle className="text-base">
+                      {formatHospitalDate(request.created_at, true)}
+                    </CardTitle>
+                    {request.notes ? (
+                      <p className="mt-1 text-xs text-muted-foreground">{request.notes}</p>
+                    ) : null}
+                  </div>
+                  <StatusBadge status={request.status} />
+                </CardHeader>
+                <CardContent className="p-0">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Item</TableHead>
+                        <TableHead>Requested</TableHead>
+                        <TableHead>Fulfilled</TableHead>
+                        <TableHead>Status</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {request.ip_inventory_request_items.map((item) => (
+                        <TableRow key={item.id}>
+                          <TableCell className="font-medium">{item.requested_name}</TableCell>
+                          <TableCell>{item.requested_quantity}</TableCell>
+                          <TableCell>
+                            {item.status === "pending" ? "—" : item.fulfilled_quantity}
+                          </TableCell>
+                          <TableCell>
+                            <StatusBadge status={item.status} />
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </CardContent>
+              </Card>
+            ))}
+          </TabsContent>
+        ) : null}
       </Tabs>
     </div>
   );

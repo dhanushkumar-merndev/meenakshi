@@ -88,6 +88,7 @@ export const ROLE_NAVIGATION: Record<AppRole, NavigationItem[]> = {
   pharmacy: [
     shared.dashboard,
     { title: "Pending Prescriptions", href: "/pharmacy", icon: "clipboard-list" },
+    { title: "IP Item Requests", href: "/pharmacy/ip-requests", icon: "package-check" },
     { title: "Medicine Master", href: "/pharmacy/medicines", icon: "pill" },
     { title: "Stock & Batches", href: "/pharmacy/stock", icon: "package" },
     { title: "Inventory", href: "/pharmacy/inventory", icon: "boxes" },

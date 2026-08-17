@@ -12,11 +12,11 @@ test.describe("authenticated admin application", () => {
     // in parallel and competing for that compilation.
     test.setTimeout(300_000);
     const errors: string[] = []; page.on("console", (message) => { if (message.type() === "error") errors.push(message.text()); }); page.on("pageerror", (error) => errors.push(error.message));
-    await page.goto("/login"); await page.getByLabel("Email").fill(email!); await page.getByLabel("Password").fill(password!); await page.getByRole("button", { name: "Sign In" }).click(); await expect(page).toHaveURL(/dashboard/);
+    await page.goto("/login"); await page.getByLabel("Email").fill(email!); await page.getByLabel("Password", { exact: true }).fill(password!); await page.getByRole("button", { name: "Sign In" }).click(); await expect(page).toHaveURL(/dashboard/);
     for (const route of routes) { const response = await page.goto(route); expect(response?.status(), route).toBe(200); await expect(page.locator("h1").first(), route).toBeVisible(); }
     expect(errors).toEqual([]);
   });
   test("mobile dashboard has a reachable sidebar and no page overflow", async ({ page }, testInfo) => {
-    test.skip(testInfo.project.name !== "mobile", "Mobile project only"); await page.goto("/login"); await page.getByLabel("Email").fill(email!); await page.getByLabel("Password").fill(password!); await page.getByRole("button", { name: "Sign In" }).click(); await expect(page).toHaveURL(/dashboard/); await expect(page.getByRole("button", { name: /toggle sidebar/i })).toBeVisible(); const overflow = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth); expect(overflow).toBe(false);
+    test.skip(testInfo.project.name !== "mobile", "Mobile project only"); await page.goto("/login"); await page.getByLabel("Email").fill(email!); await page.getByLabel("Password", { exact: true }).fill(password!); await page.getByRole("button", { name: "Sign In" }).click(); await expect(page).toHaveURL(/dashboard/); await expect(page.getByRole("button", { name: /toggle sidebar/i })).toBeVisible(); const overflow = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth); expect(overflow).toBe(false);
   });
 });

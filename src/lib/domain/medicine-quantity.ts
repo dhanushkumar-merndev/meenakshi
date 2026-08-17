@@ -5,13 +5,18 @@ type PrescriptionQuantityInput = {
 };
 
 function parseDoseUnits(dose: string) {
-  const match = dose.match(
-    /^\s*(\d+(?:\.\d+)?|\d+\s*\/\s*\d+)\s*(?:tablet|tablets|tab|tabs|capsule|capsules|cap|caps)\b/i,
-  );
+  const trimmed = dose.trim();
+  // The leading number is always "pieces" in the medicine's own unit —
+  // tablets, capsules, ml, drops, units, whatever the dosage form is (stock
+  // itself is tracked the same way, see medicine_batches.units_per_pack). A
+  // bare "1" or "5 ml" is just as computable as "1 tablet"; the word after
+  // the number, if any, is only a label and does not change the math. A dose
+  // written as a range ("2-3 tablets") is left for the doctor to decide.
+  const match = trimmed.match(/^(\d+\s*\/\s*\d+|\d+\.\d+|\d+)(?=\s|[a-zA-Z]|$)/);
   if (!match) return null;
-  const [numerator, denominator] = match[1].split("/").map(Number);
+  const [numerator, denominator] = match[1].replace(/\s+/g, "").split("/").map(Number);
   const units = denominator ? numerator / denominator : numerator;
-  return Number.isFinite(units) && units > 0 && units <= 100 ? units : null;
+  return Number.isFinite(units) && units > 0 && units <= 1000 ? units : null;
 }
 
 function dosesPerDay(frequency: string) {
@@ -60,9 +65,13 @@ function durationDays(duration: string) {
 }
 
 /**
- * Suggests the number of individual tablets/capsules required. It deliberately
- * refuses SOS, weekly, liquid, topical and custom instructions: those remain a
+ * Suggests the total quantity required — tablets, capsules, ml of syrup,
+ * drops, whatever the medicine's own unit is — from the dose, frequency and
+ * duration the doctor already typed. It deliberately refuses SOS, weekly,
+ * dose ranges and other non-daily or ambiguous instructions: those remain a
  * doctor's manual quantity decision rather than a clinical interpretation.
+ * The doctor can always overwrite the suggestion; "Enter manually" replaces
+ * it the moment they type into the Qty field themselves.
  */
 export function calculatePrescriptionQuantity({
   dose,

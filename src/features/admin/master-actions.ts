@@ -7,6 +7,7 @@ import { rupeesToPaise } from "@/lib/domain/money";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { databaseIdSchema } from "@/lib/validation/database-id";
+import { CHARGE_MASTER_CATEGORIES } from "@/lib/domain/charge-categories";
 import { validateClinicalImportRows } from "./clinical-import-schema";
 import type { ActionState } from "@/types/hospital";
 
@@ -30,7 +31,7 @@ export async function saveDepartment(_: ActionState, formData: FormData): Promis
 }
 
 export async function saveCharge(_: ActionState, formData: FormData): Promise<ActionState> {
-  const parsed = z.object({ id: optionalId, category: z.string().trim().min(2).max(50), name: z.string().trim().min(2).max(120), amount: z.string(), active: z.string().optional() }).safeParse(Object.fromEntries(formData));
+  const parsed = z.object({ id: optionalId, category: z.enum(CHARGE_MASTER_CATEGORIES), name: z.string().trim().min(2).max(120), amount: z.string(), active: z.string().optional() }).safeParse(Object.fromEntries(formData));
   if (!parsed.success) return { ok: false, fieldErrors: parsed.error.flatten().fieldErrors };
   let amount: number;
   try { amount = rupeesToPaise(parsed.data.amount); } catch (error) { return { ok: false, message: (error as Error).message }; }

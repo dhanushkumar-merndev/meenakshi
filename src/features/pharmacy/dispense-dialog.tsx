@@ -106,6 +106,18 @@ export function DispenseDialog({
         })),
     [lines],
   );
+  // Mirrors the server's rounding (round(qty * pack price / units per pack))
+  // so what the pharmacist sees before confirming matches the receipt after.
+  const lineAmountPaise = (batchId: string, quantity: number) => {
+    const batch = batches.find((b) => b.id === batchId);
+    if (!batch || quantity <= 0) return 0;
+    return Math.round((quantity * batch.pricePaise) / Math.max(batch.unitsPerPack, 1));
+  };
+  const medicinesTotalPaise = useMemo(
+    () => lines.reduce((sum, line) => sum + lineAmountPaise(line.batchId, line.quantity), 0),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [lines, batches],
+  );
   // The pharmacy counter cannot close an OP prescription while the doctor's
   // consultation fee is still outstanding.
   const feeEntered = Number(feeCollected);
@@ -113,22 +125,41 @@ export function DispenseDialog({
     source === "op" &&
     outstanding > 0 &&
     (!feeCollected.trim() || Number.isNaN(feeEntered) || feeEntered <= 0);
+  // Consultation fee is only collected here for OP; IP fees go on the ticket.
+  const feeCollectedPaise =
+    source === "op" && feeCollected.trim() && !Number.isNaN(feeEntered) && feeEntered > 0
+      ? Math.round(feeEntered * 100)
+      : 0;
+  const totalToCollectPaise = medicinesTotalPaise + feeCollectedPaise;
   if (state.ok) {
     const completed = state.data?.prescriptionStatus === "dispensed";
+    const medicinesPaise = Number(state.data?.medicinesPaise ?? 0);
+    const consultationPaise = Number(state.data?.consultationPaise ?? 0);
     // The receipt is the point of the counter transaction: it covers the
     // medicines and, when it was taken here, the consultation fee.
     return (
-      <div className="flex justify-end gap-2">
-        <Button size="sm" variant="outline" disabled>
-          <CheckCircle2 />
-          {completed ? "Completed" : "Partially Dispensed"}
-        </Button>
-        <Button
-          size="sm"
-          render={<Link href={`/print/receipt/${state.data?.saleId}`} target="_blank" />}
-        >
-          <Printer /> Receipt
-        </Button>
+      <div className="flex flex-wrap items-center justify-end gap-3">
+        <p className="text-sm text-muted-foreground">
+          Medicines {formatInr(medicinesPaise)}
+          {consultationPaise > 0
+            ? ` + Doctor fee ${formatInr(consultationPaise)} = `
+            : " = "}
+          <span className="font-semibold text-foreground">
+            Total {formatInr(medicinesPaise + consultationPaise)} collected
+          </span>
+        </p>
+        <div className="flex gap-2">
+          <Button size="sm" variant="outline" disabled>
+            <CheckCircle2 />
+            {completed ? "Completed" : "Partially Dispensed"}
+          </Button>
+          <Button
+            size="sm"
+            render={<Link href={`/print/receipt/${state.data?.saleId}`} target="_blank" />}
+          >
+            <Printer /> Receipt
+          </Button>
+        </div>
       </div>
     );
   }
@@ -165,6 +196,7 @@ export function DispenseDialog({
                     Batch / Expiry / Stock
                   </TableHead>
                   <TableHead>Dispense Qty (pieces)</TableHead>
+                  <TableHead className="text-right">Amount</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -258,6 +290,9 @@ export function DispenseDialog({
                           );
                         })()}
                       </TableCell>
+                      <TableCell className="text-right tabular-nums">
+                        {formatInr(lineAmountPaise(lines[index]?.batchId, lines[index]?.quantity ?? 0))}
+                      </TableCell>
                     </TableRow>
                   );
                 })}
@@ -306,6 +341,26 @@ export function DispenseDialog({
               ) : null}
             </div>
           ) : null}
+          {/* What the pharmacist should actually collect at the counter,
+              known before confirming rather than only after on the receipt. */}
+          <div className="flex justify-end border-t pt-3 text-sm">
+            <dl className="space-y-1 text-right">
+              <div className="flex justify-between gap-6">
+                <dt className="text-muted-foreground">Medicines</dt>
+                <dd className="tabular-nums">{formatInr(medicinesTotalPaise)}</dd>
+              </div>
+              {feeCollectedPaise > 0 ? (
+                <div className="flex justify-between gap-6">
+                  <dt className="text-muted-foreground">Doctor fee</dt>
+                  <dd className="tabular-nums">{formatInr(feeCollectedPaise)}</dd>
+                </div>
+              ) : null}
+              <div className="flex justify-between gap-6 font-semibold">
+                <dt>Total to collect</dt>
+                <dd className="tabular-nums">{formatInr(totalToCollectPaise)}</dd>
+              </div>
+            </dl>
+          </div>
           <DialogFooter showCloseButton>
             <Button
               disabled={pending || payload.length === 0 || feeUnpaid}

@@ -69,11 +69,12 @@ export async function dispensePrescription(
             ? "That is more than the outstanding consultation fee. Nothing was dispensed or collected."
             : "Dispensing failed; no stock was changed.",
     };
-  const { data: prescription } = await supabase
-    .from("prescriptions")
-    .select("status")
-    .eq("id", parsed.data.prescriptionId)
-    .single();
+  const [{ data: prescription }, { data: sale }] = await Promise.all([
+    supabase.from("prescriptions").select("status").eq("id", parsed.data.prescriptionId).single(),
+    // The RPC computed this from the actual pack prices; re-deriving it here
+    // from batch prices in JS would drift from the rounding it already did.
+    supabase.from("pharmacy_sales").select("total_paise").eq("id", data).single(),
+  ]);
   const prescriptionStatus = prescription?.status ?? "partially_dispensed";
   revalidatePath("/pharmacy");
   revalidatePath("/pharmacy/stock");
@@ -84,7 +85,12 @@ export async function dispensePrescription(
       prescriptionStatus === "dispensed"
         ? "Prescription completed and exact batch stock updated."
         : "Selected quantities dispensed; the remaining quantities are still pending.",
-    data: { saleId: String(data), prescriptionStatus },
+    data: {
+      saleId: String(data),
+      prescriptionStatus,
+      medicinesPaise: Number(sale?.total_paise ?? 0),
+      consultationPaise: collectedPaise,
+    },
   };
 }
 

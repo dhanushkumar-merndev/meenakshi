@@ -1,7 +1,8 @@
 "use client";
 import { useActionState, useState } from "react";
-import { BedDouble, IndianRupee, LoaderCircle, Plus, UserRoundCheck } from "lucide-react";
+import { BedDouble, IndianRupee, LoaderCircle, Package, Plus, Trash2, UserRoundCheck } from "lucide-react";
 import { addIpCharge, addIpPayment, assignIpPatient, createAdmission } from "./actions";
+import { requestIpInventory } from "./inventory-request-actions";
 import type { ActionState } from "@/types/hospital";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -432,6 +433,103 @@ export function AssignPatientDialog({ ticketId }: { ticketId: string }) {
                 <UserRoundCheck />
               )}{" "}
               Assign Patient
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+type RequestLine = { key: string; name: string; quantity: number };
+const newRequestLine = (): RequestLine => ({ key: crypto.randomUUID(), name: "", quantity: 1 });
+
+/**
+ * IP staff or the treating doctor asking pharmacy for consumables. No
+ * inventory catalog access here on purpose -- the requester just describes
+ * what's needed; pharmacy matches it to real stock (or prices it manually)
+ * when they fulfil the request. Stock never changes from this dialog.
+ */
+export function RequestInventoryDialog({ ticketId }: { ticketId: string }) {
+  const [state, action, pending] = useActionState(requestIpInventory, initial);
+  const [lines, setLines] = useState<RequestLine[]>([newRequestLine()]);
+  const [notes, setNotes] = useState("");
+  const [key] = useState(() => crypto.randomUUID());
+  const { open, setOpen } = useAutoCloseDialog(state, "Item request sent to pharmacy.");
+  const payload = lines
+    .filter((line) => line.name.trim() && line.quantity > 0)
+    .map((line) => ({ name: line.name.trim(), quantity: line.quantity }));
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger render={<Button size="sm" variant="outline" />}>
+        <Package /> Request Items
+      </DialogTrigger>
+      <DialogContent>
+        <form action={action} className="contents">
+          <DialogHeader>
+            <DialogTitle>Request pharmacy items</DialogTitle>
+            <DialogDescription>
+              Describe what&apos;s needed; pharmacy sources it and bills the
+              ticket once fulfilled. Stock does not change here.
+            </DialogDescription>
+          </DialogHeader>
+          <input type="hidden" name="ticketId" value={ticketId} />
+          <input type="hidden" name="idempotencyKey" value={key} />
+          <input type="hidden" name="lines" value={JSON.stringify(payload)} />
+          {state.message && !state.ok ? (
+            <p className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">
+              {state.message}
+            </p>
+          ) : null}
+          <div className="space-y-2">
+            {lines.map((line, index) => (
+              <div className="flex gap-2" key={line.key}>
+                <Input
+                  className="flex-1"
+                  placeholder="e.g. IV cannula 20G"
+                  value={line.name}
+                  onChange={(event) =>
+                    setLines((rows) =>
+                      rows.map((row, i) => (i === index ? { ...row, name: event.target.value } : row)),
+                    )
+                  }
+                />
+                <Input
+                  className="w-20"
+                  type="number"
+                  min={1}
+                  value={line.quantity}
+                  onChange={(event) =>
+                    setLines((rows) =>
+                      rows.map((row, i) =>
+                        i === index ? { ...row, quantity: Math.max(1, Number(event.target.value)) } : row,
+                      ),
+                    )
+                  }
+                />
+                <Button
+                  type="button"
+                  size="icon-sm"
+                  variant="ghost"
+                  aria-label="Remove item"
+                  disabled={lines.length === 1}
+                  onClick={() => setLines((rows) => rows.filter((_, i) => i !== index))}
+                >
+                  <Trash2 />
+                </Button>
+              </div>
+            ))}
+            <Button type="button" size="sm" variant="outline" onClick={() => setLines((rows) => [...rows, newRequestLine()])}>
+              <Plus /> Add Item
+            </Button>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor={`request-notes-${ticketId}`}>Notes</Label>
+            <Textarea id={`request-notes-${ticketId}`} name="notes" value={notes} onChange={(event) => setNotes(event.target.value)} rows={2} />
+          </div>
+          <DialogFooter showCloseButton>
+            <Button disabled={pending || payload.length === 0} type="submit">
+              {pending ? <LoaderCircle className="animate-spin" /> : <Package />} Send Request
             </Button>
           </DialogFooter>
         </form>

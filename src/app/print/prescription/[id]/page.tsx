@@ -23,25 +23,28 @@ type Rx = {
     specialization: string | null;
   } | null;
   departments: { name: string } | null;
-  vitals: Array<{
+  // vitals/consultations/prescriptions each have a unique(visit_id) column,
+  // so PostgREST embeds a single object (or null) here, never an array --
+  // indexing with [0] silently discarded all three sections.
+  vitals: {
     weight_kg: number | null;
     temperature_c: number | null;
     bp_systolic: number | null;
     bp_diastolic: number | null;
-  }>;
-  consultations: Array<{
+  } | null;
+  consultations: {
     symptoms: string | null;
     history: string | null;
     examination: string | null;
     assessment: string | null;
     advice: string | null;
-  }>;
+  } | null;
   test_orders: Array<{
     test_name: string;
     notes: string | null;
     created_at: string;
   }>;
-  prescriptions: Array<{
+  prescriptions: {
     prescription_number: number;
     prescription_items: Array<{
       medicine_name: string;
@@ -51,7 +54,7 @@ type Rx = {
       route: string | null;
       notes: string | null;
     }>;
-  }>;
+  } | null;
 };
 export default async function PrescriptionPrintPage({
   params,
@@ -90,10 +93,10 @@ export default async function PrescriptionPrintPage({
   const patient = rx.patients;
   const doctor = rx.doctors;
   if (!patient || !doctor) notFound();
-  const v = rx.vitals?.[0];
-  const c = rx.consultations?.[0];
-  const medicines = rx.prescriptions?.[0]?.prescription_items ?? [];
-  const prescriptionNumber = rx.prescriptions?.[0]?.prescription_number;
+  const v = rx.vitals;
+  const c = rx.consultations;
+  const medicines = rx.prescriptions?.prescription_items ?? [];
+  const prescriptionNumber = rx.prescriptions?.prescription_number;
   return (
     <main className="mx-auto min-h-screen max-w-[210mm] bg-white p-4 text-[11px] text-black sm:p-8">
       <div data-print-hidden className="mb-4 flex justify-end">
@@ -103,18 +106,10 @@ export default async function PrescriptionPrintPage({
         <header>
           <HospitalLetterhead identity={identity} logoSize={56} />
           <div className="my-3 h-1 bg-primary" />
-          {/* The consulting doctor's identity block, kept under the hospital
-              banner so both are on the sheet without two competing headers. */}
-          <div className="flex items-start justify-between gap-6">
-            <div>
-              <h1 className="text-xl font-bold">{doctor.display_name}</h1>
-              <p>{doctor.qualification}</p>
-              <p>{doctor.specialization ?? rx.departments?.name}</p>
-              <p>Registration: {doctor.registration_number ?? "—"}</p>
-            </div>
-          </div>
         </header>
-        <div className="my-4 border-b border-primary/40" />
+        {/* The consulting doctor's identity (name, qualification, registration)
+            prints once, in the footer, so the top of the sheet stays purely
+            hospital branding. */}
         <section className="grid grid-cols-2 gap-x-8 gap-y-1 border-b pb-3 sm:grid-cols-4">
           <p>
             <b>Name:</b> {patient.name}
@@ -254,9 +249,13 @@ export default async function PrescriptionPrintPage({
             <p className="mt-1">Digital prescription</p>
           </div>
           <p className="text-right">
-            {doctor.display_name}
+            <span className="font-semibold">{doctor.display_name}</span>
             <br />
-            {doctor.registration_number}
+            {[doctor.qualification, doctor.specialization ?? rx.departments?.name]
+              .filter(Boolean)
+              .join(", ")}
+            <br />
+            Registration: {doctor.registration_number ?? "—"}
           </p>
         </footer>
       </article>

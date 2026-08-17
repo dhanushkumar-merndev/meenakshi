@@ -26,12 +26,15 @@ type DoctorQueue = {
   visit_type: string;
   status: string;
   patients: { name: string; dob: string | null; gender: string } | null;
-  vitals: Array<{
+  // vitals.visit_id is unique, so PostgREST embeds it as a single object (or
+  // null), never an array -- same as consultations/prescriptions everywhere
+  // else in the app.
+  vitals: {
     bp_systolic: number | null;
     bp_diastolic: number | null;
     temperature_c: number | null;
     spo2: number | null;
-  }>;
+  } | null;
 };
 export default async function DoctorQueuePage({
   searchParams,
@@ -81,16 +84,18 @@ export default async function DoctorQueuePage({
       <PageHeader
         title="Today OP"
         description="Patients assigned to you today"
-      />
-      <FilterTabs
-        ariaLabel="Filter today's OP patients by status"
-        active={selectedStatus}
-        params={{ q }}
-        tabs={[
-          { label: "Waiting", value: "waiting" },
-          { label: "Completed", value: "completed" },
-          { label: "All", value: "all" },
-        ]}
+        actions={
+          <FilterTabs
+            ariaLabel="Filter today's OP patients by status"
+            active={selectedStatus}
+            params={{ q }}
+            tabs={[
+              { label: "Waiting", value: "waiting" },
+              { label: "Completed", value: "completed" },
+              { label: "All", value: "all" },
+            ]}
+          />
+        }
       />
       <DebouncedSearchInput
         className="mb-4 max-w-md"
@@ -116,7 +121,7 @@ export default async function DoctorQueuePage({
               <TableBody>
                 {rows.length ? (
                   rows.map((visit) => {
-                    const v = visit.vitals?.[0];
+                    const v = visit.vitals;
                     return (
                       <TableRow key={visit.id}>
                         <TableCell className="text-lg font-semibold">

@@ -7,16 +7,15 @@ import { cn } from "@/lib/utils";
  * The printed letterhead, identical on every document the hospital hands out —
  * token, prescription, receipt, IP bill, discharge summary.
  *
- * One fixed layout, matching the hospital's own stationery:
+ * One fixed layout, matching the hospital's own stationery card:
  *
- *     [ logo ]                                    address
- *     NAME                                        phone
- *     motto                                       email
+ *     [ logo ]  NAME                                address
+ *               motto                                phone
+ *                                                     email
  *
- * It used to vary per document (centred on the token, right-aligned on the
- * prescription), which meant a patient holding two pages from the same hospital
- * saw two different headers. Everything that identifies the hospital now sits on
- * the left, everything needed to contact it on the right, and the document's own
+ * The logo sits beside the name, not above it, so the lockup reads as one
+ * unit at a glance. Everything that identifies the hospital sits on the
+ * left, everything needed to contact it on the right, and the document's own
  * details go underneath.
  */
 export function HospitalLetterhead({
@@ -38,24 +37,29 @@ export function HospitalLetterhead({
       : { top: name, bottom: null };
 
   return (
-    <div className={cn("flex w-full items-start justify-between gap-6", className)}>
-      <div className="shrink-0">
+    <div className={cn("flex w-full items-center justify-between gap-6", className)}>
+      <div className="flex shrink-0 items-center gap-3">
         <HospitalLogo size={logoSize} className="shrink-0" />
-        <p className="mt-1.5 text-lg leading-tight font-bold tracking-wide text-primary uppercase">
-          {lockup.top}
-        </p>
-        {lockup.bottom ? (
-          <p className="text-sm leading-tight font-medium tracking-[0.3em] text-primary uppercase">
-            {lockup.bottom}
+        <div>
+          <p className="text-lg leading-tight font-bold tracking-wide text-primary uppercase">
+            {lockup.top}
           </p>
-        ) : null}
-        {identity.tagline ? (
-          // The motto is one phrase; on a narrow token slip it would otherwise
-          // break after every bullet.
-          <p className="mt-0.5 text-[10px] leading-tight font-medium whitespace-nowrap text-primary/80">
-            {identity.tagline}
-          </p>
-        ) : null}
+          {/* Matches the hospital's own stationery: "HOSPITAL" sits directly
+              under "MEENAKSHI" at the same weight and size, not letter-spaced
+              apart. */}
+          {lockup.bottom ? (
+            <p className="text-lg leading-tight font-bold tracking-wide text-primary uppercase">
+              {lockup.bottom}
+            </p>
+          ) : null}
+          {identity.tagline ? (
+            // The motto is one phrase; on a narrow token slip it would
+            // otherwise break after every bullet.
+            <p className="mt-0.5 text-[10px] leading-tight font-medium whitespace-nowrap text-primary/80">
+              {identity.tagline}
+            </p>
+          ) : null}
+        </div>
       </div>
       <ContactBlock identity={identity} />
     </div>

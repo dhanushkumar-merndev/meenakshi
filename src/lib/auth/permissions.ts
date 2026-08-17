@@ -3,7 +3,12 @@ import type { AppRole } from "@/types/hospital";
 export const PERMISSIONS = {
   manageUsers: ["admin"],
   manageDoctors: ["admin"],
-  viewPatients: ["admin", "reception", "op", "doctor", "ip"],
+  // Identity-only search (name/phone/UHID), used by the patient-picker
+  // combobox everywhere it appears -- including the pharmacy counter's
+  // procedure billing, which needs to attach a bill to a patient the same
+  // way reception or IP does. This is not the /patients directory route,
+  // which stays narrower (see ROUTE_ROLES below).
+  viewPatients: ["admin", "reception", "op", "doctor", "ip", "pharmacy"],
   // Reception owns the patient register; IP staff admit patients that already
   // exist, so two desks cannot create the same person twice.
   createPatient: ["admin", "reception"],
@@ -13,6 +18,9 @@ export const PERMISSIONS = {
   dispense: ["admin", "pharmacy"],
   manageIp: ["admin", "ip"],
   admitIp: ["admin", "ip", "doctor"],
+  // IP staff or the treating doctor can ask pharmacy for consumables; only
+  // pharmacy (via `dispense`) actually fulfils the request and touches stock.
+  requestIpInventory: ["admin", "ip", "doctor"],
   configureRooms: ["admin"],
   viewFullFinance: ["admin"],
   viewVisitFinance: ["admin", "reception"],

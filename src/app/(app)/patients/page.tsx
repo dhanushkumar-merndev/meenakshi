@@ -96,7 +96,10 @@ export default async function PatientsPage({
                   <TableHead>Age/Gender</TableHead>
                   <TableHead>Visits</TableHead>
                   <TableHead>Registered</TableHead>
-                  <TableHead>Status</TableHead>
+                  {/* This is the patient RECORD's status (active/inactive/archived),
+                      not any one visit's workflow status -- a patient can be "Active"
+                      here while their latest visit shows "Completed" in Recent Visits. */}
+                  <TableHead>Record Status</TableHead>
                   <TableHead className="text-right">Action</TableHead>
                 </TableRow>
               </TableHeader>

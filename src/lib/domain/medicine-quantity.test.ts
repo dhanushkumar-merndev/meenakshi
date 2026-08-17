@@ -62,7 +62,7 @@ describe("calculatePrescriptionQuantity", () => {
     ).toBe(2);
   });
 
-  it("leaves SOS, weekly, liquid and custom instructions manual", () => {
+  it("leaves SOS, weekly and dose-range instructions manual", () => {
     expect(
       calculatePrescriptionQuantity({
         dose: "1 tablet",
@@ -79,10 +79,39 @@ describe("calculatePrescriptionQuantity", () => {
     ).toBeNull();
     expect(
       calculatePrescriptionQuantity({
+        dose: "2-3 tablets",
+        frequency: "BD (1-0-1)",
+        duration: "5 days",
+      }),
+    ).toBeNull();
+  });
+
+  it("calculates syrup, drop and unbounded-unit doses, not just tablets", () => {
+    // Stock (and the medicine's own dosage form) is tracked in "pieces" —
+    // tablets, capsules or ml — so a syrup dose works the same way a tablet
+    // dose does: the leading number is the pieces, the word after it is
+    // just a label.
+    expect(
+      calculatePrescriptionQuantity({
         dose: "5 ml",
         frequency: "TDS (1-1-1)",
         duration: "5 days",
       }),
-    ).toBeNull();
+    ).toBe(75);
+    expect(
+      calculatePrescriptionQuantity({
+        dose: "0.75 unit",
+        frequency: "OD (1-0-0)",
+        duration: "10 days",
+      }),
+    ).toBe(8);
+    // No unit word at all is just as valid as "1 tablet".
+    expect(
+      calculatePrescriptionQuantity({
+        dose: "1",
+        frequency: "QID (1-1-1-1)",
+        duration: "5 days",
+      }),
+    ).toBe(20);
   });
 });

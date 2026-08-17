@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
 import { LoaderCircle, Pencil, Plus } from "lucide-react";
 import {
   saveCharge,
@@ -23,8 +23,16 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { useAutoCloseDialog } from "@/hooks/use-auto-close-dialog";
+import { CHARGE_MASTER_CATEGORIES } from "@/lib/domain/charge-categories";
 
 const initial: ActionState = { ok: false };
 function Feedback({ state }: { state: ActionState }) {
@@ -127,6 +135,11 @@ export function ChargeDialog({
 }) {
   const [state, action, pending] = useActionState(saveCharge, initial);
   const { open, setOpen } = useAutoCloseDialog(state, "Charge saved.");
+  // Fixed vocabulary (AGENTS.md 51), not free text: "Add IP charge" matches
+  // presets from this list straight to the IP ticket's charge_category enum
+  // (src/lib/domain/charge-categories.ts). A typo here used to make a preset
+  // the IP dialog could never find.
+  const [category, setCategory] = useState(item?.category ?? CHARGE_MASTER_CATEGORIES[0]);
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger
@@ -150,11 +163,23 @@ export function ChargeDialog({
             </DialogDescription>
           </DialogHeader>
           <input type="hidden" name="id" value={item?.id ?? ""} />
+          <input type="hidden" name="category" value={category} />
           <Feedback state={state} />
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-2">
-              <Label>Category</Label>
-              <Input name="category" defaultValue={item?.category} required />
+              <Label htmlFor={`charge-category-${item?.id ?? "new"}`}>Category</Label>
+              <Select value={category} onValueChange={(value) => setCategory(String(value))}>
+                <SelectTrigger id={`charge-category-${item?.id ?? "new"}`} className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {CHARGE_MASTER_CATEGORIES.map((option) => (
+                    <SelectItem key={option} value={option} label={option}>
+                      {option}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div className="space-y-2">
               <Label>Charge name</Label>

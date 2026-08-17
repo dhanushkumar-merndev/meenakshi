@@ -6,6 +6,7 @@ import { AddUserDialog, EditDoctorDialog, EditStaffDialog } from "@/features/adm
 import { PageHeader } from "@/components/shared/page-header";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { DebouncedSearchInput } from "@/components/shared/debounced-search-input";
+import { RoleFilterSelect } from "@/components/shared/role-filter-select";
 import { Card, CardContent } from "@/components/ui/card";
 import {
   Table,
@@ -23,13 +24,16 @@ type UserRow = {
   status: string;
   doctors: { id:string;display_name:string;department_id:string|null;specialization:string|null;qualification:string|null;registration_number:string|null;op_fee_paise:number;follow_up_fee_paise:number;ip_visit_fee_paise:number;active:boolean } | null;
 };
+const STAFF_ROLES = ["admin", "reception", "op", "doctor", "ip", "pharmacy"];
 export default async function UsersPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string }>;
+  searchParams: Promise<{ q?: string; role?: string }>;
 }) {
   await requireRoute("/admin/users");
-  const q = (await searchParams).q?.trim() ?? "";
+  const params = await searchParams;
+  const q = params.q?.trim() ?? "";
+  const selectedRole = STAFF_ROLES.includes(params.role ?? "") ? (params.role as string) : "";
   const admin = createSupabaseAdminClient();
   let profilesQuery = admin
     .from("profiles")
@@ -45,11 +49,14 @@ export default async function UsersPage({
       `email.ilike.${pattern}`,
     ];
     const role = q.toLowerCase().replace(/\s+/g, "_");
-    if (["admin", "reception", "op", "doctor", "ip", "pharmacy"].includes(role)) {
+    if (STAFF_ROLES.includes(role)) {
       filters.push(`role.eq.${role}`);
     }
     profilesQuery = profilesQuery.or(filters.join(","));
   }
+  // Dropdown filter is independent of the free-text search above -- both can
+  // narrow the table at once (e.g. search "staff" within role "op").
+  if (selectedRole) profilesQuery = profilesQuery.eq("role", selectedRole);
   const [{ data: profiles }, { data: authData }, { data: departments }] = await Promise.all([
     profilesQuery,
     admin.auth.admin.listUsers({ page: 1, perPage: 100 }),
@@ -64,7 +71,12 @@ export default async function UsersPage({
       <PageHeader
         title="Staff Users"
         description="Authentication accounts, roles, doctor links, and access status"
-        actions={<AddUserDialog />}
+        actions={
+          <>
+            <RoleFilterSelect roles={STAFF_ROLES} value={selectedRole} />
+            <AddUserDialog />
+          </>
+        }
       />
       <DebouncedSearchInput className="mb-4 max-w-md" initialValue={q} placeholder="Search name, email or role" ariaLabel="Search staff users" />
       <Card>

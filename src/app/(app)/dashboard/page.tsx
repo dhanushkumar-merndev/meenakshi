@@ -26,9 +26,9 @@ const metricSets = {
     ["waiting", "Waiting", Clock3], ["followups_due", "Follow-ups Due", ClipboardCheck],
     ["reports_ready", "Reports Ready", Activity], ["collected_today_paise", "Collected Today", IndianRupee],
   ],
-  op: [["waiting", "Waiting", Clock3], ["vitals_pending", "Vitals Pending", Activity], ["ready", "Ready for Doctor", ClipboardCheck], ["completed", "Completed Today", UserRound], ["reports_pending", "Reports Pending", Activity]],
+  op: [["patients_seen_today", "Patients Today", Users], ["waiting", "Waiting", Clock3], ["vitals_pending", "Vitals Pending", Activity], ["ready", "Ready for Doctor", ClipboardCheck], ["completed", "Completed Today", UserRound], ["reports_pending", "Reports Pending", Activity]],
   doctor: [["waiting", "Waiting for Me", Clock3], ["ready", "Ready for Me", ClipboardCheck], ["completed", "Completed Today", UserRound], ["followups_due", "Follow-ups Today", Activity], ["reports_ready", "Reports to Review", ClipboardCheck], ["current_ip", "My IP Patients", BedDouble]],
-  ip: [["current_ip", "Currently Admitted", BedDouble], ["admissions_today", "Admissions Today", UserRound], ["discharges_today", "Discharges Today", ClipboardCheck], ["ip_balance_paise", "Running Balance", IndianRupee]],
+  ip: [["current_ip", "Currently Admitted", BedDouble], ["admissions_today", "Admissions Today", UserRound], ["discharges_today", "Discharges Today", ClipboardCheck], ["discharge_pending", "Pending Discharge", Clock3], ["ip_collection_paise", "IP Collected Today", IndianRupee], ["ip_balance_paise", "Running Balance", IndianRupee]],
   pharmacy: [["pending_prescriptions", "Pending Prescriptions", ClipboardCheck], ["pharmacy_sales_today_paise", "Today's Sales", IndianRupee], ["low_stock", "Low Stock", PackageX], ["out_of_stock", "Out of Stock", PackageX], ["expiring_soon", "Expiring Soon", Clock3], ["dispensed_today", "Dispensed Today", Activity]],
 } as const;
 

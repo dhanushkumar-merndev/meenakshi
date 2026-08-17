@@ -106,23 +106,23 @@ export default async function IpPage({ searchParams }: { searchParams: Promise<{
         title={view === "grid" ? "Room Occupancy" : selectedStatus === "all" ? "IP Tickets" : selectedStatus === "discharge_pending" ? "Pending Discharges" : selectedStatus === "discharged" ? "Discharged Patients" : "Current IP Patients"}
         description={view === "grid" ? "Live grid of available and occupied hospital rooms and beds" : "One ticket holds every charge, payment, note, and discharge record"}
         actions={
-          profile.role === "admin" || profile.role === "ip" ? (
-            <AdmissionDialog doctors={doctorOptions} rooms={roomOptions} />
-          ) : undefined
+          <>
+            <FilterTabs
+              ariaLabel="Switch between ticket list and room grid"
+              active={view}
+              param="view"
+              params={{ q, status: selectedStatus }}
+              tabs={[
+                { label: "List", value: "list" },
+                { label: "Grid", value: "grid" },
+              ]}
+            />
+            {profile.role === "admin" || profile.role === "ip" ? (
+              <AdmissionDialog doctors={doctorOptions} rooms={roomOptions} />
+            ) : null}
+          </>
         }
       />
-      <div className="mb-4 flex justify-end">
-        <FilterTabs
-          ariaLabel="Switch between ticket list and room grid"
-          active={view}
-          param="view"
-          params={{ q, status: selectedStatus }}
-          tabs={[
-            { label: "List", value: "list" },
-            { label: "Grid", value: "grid" },
-          ]}
-        />
-      </div>
       {referrals.length ? (
         <Card className="mb-4 border-primary/40">
           <CardContent className="p-0">
@@ -207,7 +207,7 @@ export default async function IpPage({ searchParams }: { searchParams: Promise<{
       <FilterTabs
         ariaLabel="Filter IP tickets by status"
         active={selectedStatus}
-        params={{ q }}
+        params={{ q, view }}
         tabs={[
           { label: "Current", value: "active" },
           { label: "Pending Discharge", value: "discharge_pending" },

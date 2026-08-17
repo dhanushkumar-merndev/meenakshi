@@ -27,7 +27,9 @@ type QueueRow = {
   status: string;
   patients: { name: string; dob: string | null; gender: string } | null;
   doctors: { display_name: string } | null;
-  vitals: Array<{
+  // vitals.visit_id is unique, so PostgREST embeds a single object (or null),
+  // never an array.
+  vitals: {
     weight_kg: number | null;
     height_cm: number | null;
     temperature_c: number | null;
@@ -37,7 +39,7 @@ type QueueRow = {
     spo2: number | null;
     respiratory_rate: number | null;
     notes: string | null;
-  }>;
+  } | null;
 };
 export default async function OpQueuePage({
   searchParams,
@@ -101,7 +103,7 @@ export default async function OpQueuePage({
               <TableBody>
                 {rows.length ? (
                   rows.map((visit) => {
-                    const vitals = visit.vitals?.[0];
+                    const vitals = visit.vitals;
                     const values = vitals
                       ? {
                           weight: vitals.weight_kg,

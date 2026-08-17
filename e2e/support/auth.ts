@@ -22,7 +22,9 @@ export function emailFor(role: Role) {
 export async function signIn(page: Page, role: Role) {
   await page.goto("/login");
   await page.getByLabel("Email").fill(emailFor(role));
-  await page.getByLabel("Password").fill(password!);
+  // exact: the show/hide toggle button's own aria-label ("Show password")
+  // otherwise also matches this substring search.
+  await page.getByLabel("Password", { exact: true }).fill(password!);
   await page.getByRole("button", { name: "Sign In" }).click();
   await expect(page).toHaveURL(/dashboard/, { timeout: 20_000 });
 }

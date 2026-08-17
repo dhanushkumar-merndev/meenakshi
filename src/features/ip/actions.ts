@@ -7,6 +7,7 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { databaseIdSchema } from "@/lib/validation/database-id";
 import type { ActionState } from "@/types/hospital";
 import { isIdempotentReplay } from "@/lib/domain/idempotency";
+import { IP_CHARGE_CATEGORY_MAP, type ChargeMasterCategory } from "@/lib/domain/charge-categories";
 const admission = z.object({
   patientId: databaseIdSchema.optional().or(z.literal("")),
   isEmergency: z.enum(["true", "false"]),
@@ -111,19 +112,14 @@ export async function assignIpPatient(
   revalidatePath("/ip");
   return { ok: true, message: "Patient assigned to the IP ticket." };
 }
+const IP_CHARGE_CATEGORIES = ["doctor","ward","room","bed","treatment","test","pharmacy","other"] as const;
 const charge = z.object({
   ticketId: databaseIdSchema,
   chargePresetId: z.string().optional(),
-  category: z.enum([
-    "doctor",
-    "ward",
-    "room",
-    "bed",
-    "treatment",
-    "test",
-    "pharmacy",
-    "other",
-  ]),
+  // Only used (and re-validated below) when no preset is selected -- a preset's
+  // category always overrides this with the mapped value from the Charges
+  // master, which uses its own, different-looking vocabulary (e.g. "IP Doctor").
+  category: z.string().optional(),
   item: z.string().min(2),
   quantity: z.coerce.number().int().positive(),
   rate: z.string(),
@@ -138,19 +134,22 @@ export async function addIpCharge(
   if (!parsed.success)
     return { ok: false, fieldErrors: parsed.error.flatten().fieldErrors };
   const supabase = await createSupabaseServerClient();
-  let category = parsed.data.category;
+  let category: (typeof IP_CHARGE_CATEGORIES)[number];
   let item = parsed.data.item;
   let rate: number;
   if (parsed.data.chargePresetId && parsed.data.chargePresetId !== "custom") {
     const presetId = databaseIdSchema.safeParse(parsed.data.chargePresetId);
     if (!presetId.success) return { ok: false, message: "Select a valid configured charge." };
     const { data: preset, error: presetError } = await supabase.from("charges").select("category,charge_name,amount_paise").eq("id", presetId.data).eq("active", true).single();
-    const presetCategory = z.enum(["doctor","ward","room","bed","treatment","test","pharmacy","other"]).safeParse(preset?.category);
-    if (presetError || !preset || !presetCategory.success) return { ok: false, message: "That configured charge is no longer available." };
-    category = presetCategory.data;
+    const mappedCategory = preset ? IP_CHARGE_CATEGORY_MAP[preset.category as ChargeMasterCategory] : undefined;
+    if (presetError || !preset || !mappedCategory) return { ok: false, message: "That configured charge is no longer available." };
+    category = mappedCategory;
     item = preset.charge_name;
     rate = preset.amount_paise;
   } else {
+    const customCategory = z.enum(IP_CHARGE_CATEGORIES).safeParse(parsed.data.category);
+    if (!customCategory.success) return { ok: false, message: "Select a valid charge category." };
+    category = customCategory.data;
     try {
       rate = rupeesToPaise(parsed.data.rate);
     } catch (error) {

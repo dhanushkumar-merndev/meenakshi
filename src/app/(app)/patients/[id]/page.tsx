@@ -31,7 +31,9 @@ type VisitRow = {
   fee_paise: number;
   status: string;
   doctors: { display_name: string } | null;
-  consultations: { assessment: string | null }[];
+  // consultations.visit_id is unique, so PostgREST embeds a single object (or
+  // null), never an array.
+  consultations: { assessment: string | null } | null;
   visit_payments: { amount_paise: number; mode: string; created_at: string }[];
 };
 type DoctorRow = {
@@ -213,7 +215,7 @@ export default async function PatientProfilePage({
                               {visit.visit_type.replaceAll("_", " ")}
                             </TableCell>
                             <TableCell className="max-w-52 truncate">
-                              {visit.consultations?.[0]?.assessment ?? "—"}
+                              {visit.consultations?.assessment ?? "—"}
                             </TableCell>
                             {canFinance ? (
                               <>

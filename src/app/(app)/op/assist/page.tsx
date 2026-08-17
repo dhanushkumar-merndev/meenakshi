@@ -24,8 +24,10 @@ type Row = {
   created_at: string;
   patients: { name: string; uhid: string; phone_normalized: string } | null;
   doctors: { display_name: string } | null;
-  consultations: Array<{ status: string; admission_recommended: boolean | null }>;
-  prescriptions: Array<{ status: string }>;
+  // consultations.visit_id and prescriptions.visit_id are both unique, so
+  // PostgREST embeds a single object (or null), never an array.
+  consultations: { status: string; admission_recommended: boolean | null } | null;
+  prescriptions: { status: string } | null;
 };
 
 /**
@@ -68,12 +70,12 @@ export default async function OpAssistPage({
 
   /** Where this patient goes next, from the state of their consultation. */
   function nextStop(row: Row) {
-    const consultation = row.consultations?.[0];
+    const consultation = row.consultations;
     if (row.status !== "completed" || consultation?.status !== "completed")
       return { label: "With doctor", tone: "secondary" as const };
     if (consultation?.admission_recommended)
       return { label: "Billing, then IP", tone: "default" as const };
-    const rx = row.prescriptions?.[0];
+    const rx = row.prescriptions;
     if (rx && ["pending", "partially_dispensed"].includes(rx.status))
       return { label: "Pharmacy", tone: "default" as const };
     return { label: "Billing counter", tone: "default" as const };
@@ -127,7 +129,7 @@ export default async function OpAssistPage({
                 {rows.length ? (
                   rows.map((row) => {
                     const stop = nextStop(row);
-                    const consultationDone = row.consultations?.[0]?.status === "completed";
+                    const consultationDone = row.consultations?.status === "completed";
                     return (
                       <TableRow key={row.id}>
                         <TableCell className="font-medium tabular-nums">#{row.token_number}</TableCell>
