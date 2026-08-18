@@ -55,7 +55,6 @@ type OpVisit = {
   token_number: number;
   doctor_name: string;
   fee_paise: number;
-  has_digital_consultation: boolean;
 };
 type IpTicket = {
   ip_ticket_id: string;
@@ -153,7 +152,9 @@ function PatientSearch({
             ) : (
               <>
                 <CommandEmpty>
-                  {mode === "op" ? "No matching OP visit today." : "No matching admitted patient."}
+                  {mode === "op"
+                    ? "No matching OP visit still needing entry today."
+                    : "No matching admitted patient."}
                 </CommandEmpty>
                 <CommandGroup>
                   {mode === "op"
@@ -173,7 +174,6 @@ function PatientSearch({
                             </p>
                             <p className="text-xs text-muted-foreground">
                               {visit.doctor_name}
-                              {visit.has_digital_consultation ? " · already entered digitally" : ""}
                             </p>
                           </div>
                         </CommandItem>
@@ -332,10 +332,10 @@ export function ManualPrescriptionDialog({
           <div className="space-y-2">
             <Label>Patient *</Label>
             <PatientSearch mode={mode} onPick={pickPatient} />
-            {visit?.has_digital_consultation ? (
-              <p className="text-xs text-destructive">
-                This visit already has a digitally completed consultation; use the
-                pending prescription in the queue instead of entering it again here.
+            {mode === "op" ? (
+              <p className="text-xs text-muted-foreground">
+                Only shows OP visits still needing entry -- one already completed
+                digitally has nothing left to do here.
               </p>
             ) : null}
           </div>
@@ -347,10 +347,7 @@ export function ManualPrescriptionDialog({
             // there with the right patient already open.
             <div className="rounded-lg border bg-muted/40 p-4 text-sm">
               <p className="font-medium">{patientLabel}</p>
-              <p className="mt-1 text-muted-foreground">
-                {visit.doctor_name}
-                {visit.has_digital_consultation ? " · already entered digitally" : ""}
-              </p>
+              <p className="mt-1 text-muted-foreground">{visit.doctor_name}</p>
               <Button
                 className="mt-3"
                 render={<Link href={`/visits/${visit.visit_id}`} target="_blank" />}

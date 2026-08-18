@@ -12,7 +12,6 @@ type VisitRow = {
   status: string;
   doctor_name: string;
   fee_paise: number;
-  has_digital_consultation: boolean;
 };
 
 export async function GET(request: NextRequest) {
