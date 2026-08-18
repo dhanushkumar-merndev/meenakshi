@@ -97,6 +97,7 @@ export default async function ReceptionPage({
                 { label: "Waiting", value: "waiting" },
                 { label: "Completed", value: "completed" },
               ]}
+              className="mb-0"
             />
             <ReceptionPatientDialog doctors={doctors} />
           </>

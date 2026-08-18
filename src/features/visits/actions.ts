@@ -54,9 +54,17 @@ export async function addConsultantToToken(_: ActionState, formData: FormData): 
   return { ok: true, message: "Consultant added with a token from that doctor's own series." };
 }
 
-const paymentSchema = z.object({ visitId: databaseIdSchema, patientId: databaseIdSchema, amount: z.string(), mode: z.enum(["cash", "upi", "card", "bank_transfer", "other"]), reference: z.string().max(100).optional(), idempotencyKey: databaseIdSchema });
+const paymentSchema = z.object({ visitId: databaseIdSchema, patientId: databaseIdSchema.optional().or(z.literal("")), amount: z.string(), mode: z.enum(["cash", "upi", "card", "bank_transfer", "other"]), reference: z.string().max(100).optional(), idempotencyKey: databaseIdSchema });
+/**
+ * Settles a visit's outstanding fee directly -- the counterpart to the
+ * consultation fee dispense_prescription collects when the visit actually
+ * has medicines. A visit with none (e.g. referred straight to admission)
+ * never reaches the pharmacy queue, so it had no way to ever be settled.
+ * The prevent_visit_overpayment trigger is the real guard against collecting
+ * more than is owed; this only pre-checks it for a friendlier message.
+ */
 export async function addVisitPayment(_: ActionState, formData: FormData): Promise<ActionState> {
-  await requirePermission("viewVisitFinance");
+  await requirePermission("collectVisitPayment");
   const parsed = paymentSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) return { ok: false, fieldErrors: parsed.error.flatten().fieldErrors };
   let amount: number; try { amount = rupeesToPaise(parsed.data.amount); } catch (error) { return { ok: false, message: (error as Error).message }; }
@@ -64,6 +72,18 @@ export async function addVisitPayment(_: ActionState, formData: FormData): Promi
   const supabase = await createSupabaseServerClient();
   const { error } = await supabase.from("visit_payments").insert({ visit_id: parsed.data.visitId, amount_paise: amount, mode: parsed.data.mode, reference: parsed.data.reference || null, idempotency_key: parsed.data.idempotencyKey });
   if (isIdempotentReplay(error)) return { ok: true, message: "Payment was already recorded." };
-  if (error) return { ok: false, message: "Payment could not be recorded." };
-  revalidatePath(`/patients/${parsed.data.patientId}`); return { ok: true, message: "Payment recorded." };
+  if (error)
+    return {
+      ok: false,
+      message: error.message.includes("exceeds outstanding")
+        ? "That is more than the outstanding balance."
+        : "Payment could not be recorded.",
+    };
+  if (parsed.data.patientId) revalidatePath(`/patients/${parsed.data.patientId}`);
+  revalidatePath(`/visits/${parsed.data.visitId}`);
+  revalidatePath("/reception");
+  revalidatePath("/reception/payments");
+  revalidatePath("/pharmacy");
+  revalidatePath("/dashboard");
+  return { ok: true, message: "Payment recorded." };
 }

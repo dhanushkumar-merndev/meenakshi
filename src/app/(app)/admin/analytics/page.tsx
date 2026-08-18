@@ -137,12 +137,17 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Pr
 
   return (
     <div>
-      <PageHeader title="Hospital Analytics" description="Server-aggregated operational and collection reporting without clinical performance scores" />
-      <form className="mb-5 flex flex-wrap items-end gap-3">
-        <div className="space-y-1"><label className="text-xs font-medium">From</label><Input name="from" type="date" defaultValue={from} /></div>
-        <div className="space-y-1"><label className="text-xs font-medium">To</label><Input name="to" type="date" defaultValue={to} /></div>
-        <Button type="submit">Apply Range</Button>
-      </form>
+      <PageHeader
+        title="Hospital Analytics"
+        description="Server-aggregated operational and collection reporting without clinical performance scores"
+        actions={
+          <form className="flex flex-wrap items-end gap-3">
+            <div className="space-y-1"><label className="text-xs font-medium">From</label><Input name="from" type="date" defaultValue={from} /></div>
+            <div className="space-y-1"><label className="text-xs font-medium">To</label><Input name="to" type="date" defaultValue={to} /></div>
+            <Button type="submit">Apply Range</Button>
+          </form>
+        }
+      />
 
       <section className="mb-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         {metrics.map(([label, value, money]) => (

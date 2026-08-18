@@ -94,6 +94,7 @@ export default async function DoctorQueuePage({
               { label: "Completed", value: "completed" },
               { label: "All", value: "all" },
             ]}
+            className="mb-0"
           />
         }
       />

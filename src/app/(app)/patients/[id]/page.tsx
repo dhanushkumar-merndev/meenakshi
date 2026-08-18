@@ -7,6 +7,7 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { calculateAge, formatHospitalDate, isHospitalToday } from "@/lib/domain/date";
 import { formatInr, paymentSummary } from "@/lib/domain/money";
 import { CreateVisitDialog } from "@/features/visits/create-visit-dialog";
+import { CollectPaymentDialog } from "@/features/visits/collect-payment-dialog";
 import { EditPatientDialog } from "@/features/patients/edit-patient-dialog";
 import { PageHeader } from "@/components/shared/page-header";
 import { StatusBadge } from "@/components/shared/status-badge";
@@ -234,13 +235,22 @@ export default async function PatientProfilePage({
                               <StatusBadge status={visit.status} />
                             </TableCell>
                             <TableCell className="text-right">
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                render={<Link href={`/visits/${visit.id}`} />}
-                              >
-                                Open
-                              </Button>
+                              <div className="flex justify-end gap-2">
+                                {canFinance && money.balancePaise > 0 ? (
+                                  <CollectPaymentDialog
+                                    visitId={visit.id}
+                                    patientId={patient.id}
+                                    balancePaise={money.balancePaise}
+                                  />
+                                ) : null}
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  render={<Link href={`/visits/${visit.id}`} />}
+                                >
+                                  Open
+                                </Button>
+                              </div>
                             </TableCell>
                           </TableRow>
                         );

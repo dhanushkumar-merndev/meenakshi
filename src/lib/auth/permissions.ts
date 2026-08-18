@@ -28,6 +28,10 @@ export const PERMISSIONS = {
   configureRooms: ["admin"],
   viewFullFinance: ["admin"],
   viewVisitFinance: ["admin", "reception"],
+  // Same fee the pharmacy counter already collects when dispensing medicines
+  // (dispense_prescription) -- this covers the visit that has none, which
+  // otherwise had no way to ever be settled.
+  collectVisitPayment: ["admin", "reception", "pharmacy"],
   uploadReport: ["admin", "reception", "op", "ip"],
   manageMedicine: ["admin", "pharmacy"],
   viewAudit: ["admin"],

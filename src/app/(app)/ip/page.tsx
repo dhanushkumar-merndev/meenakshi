@@ -116,6 +116,7 @@ export default async function IpPage({ searchParams }: { searchParams: Promise<{
                 { label: "List", value: "list" },
                 { label: "Grid", value: "grid" },
               ]}
+              className="mb-0"
             />
             {profile.role === "admin" || profile.role === "ip" ? (
               <AdmissionDialog doctors={doctorOptions} rooms={roomOptions} />

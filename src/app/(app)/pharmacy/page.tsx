@@ -7,6 +7,7 @@ import { formatInr } from "@/lib/domain/money";
 import { formatPrescriptionNumber } from "@/lib/domain/prescription";
 import { DispenseDialog } from "@/features/pharmacy/dispense-dialog";
 import { ManualPrescriptionDialog } from "@/features/pharmacy/manual-prescription-dialog";
+import { CollectPaymentDialog } from "@/features/visits/collect-payment-dialog";
 import { DebouncedSearchInput } from "@/components/shared/debounced-search-input";
 import { FilterTabs } from "@/components/shared/filter-tabs";
 import { PageHeader } from "@/components/shared/page-header";
@@ -119,6 +120,7 @@ export default async function PharmacyPage({
                 { label: "Completed", value: "completed" },
                 { label: "All", value: "all" },
               ]}
+              className="mb-0"
             />
             <ManualPrescriptionDialog doctors={doctors} />
           </>
@@ -244,6 +246,15 @@ export default async function PharmacyPage({
                             />
                           ) : (
                             <div className="flex justify-end gap-2">
+                              {/* A cancelled/no-medicine prescription never goes
+                                  through DispenseDialog, so this is the only
+                                  place left to settle a fee it left owing. */}
+                              {rx.visit_id && rx.consultation_balance_paise > 0 ? (
+                                <CollectPaymentDialog
+                                  visitId={rx.visit_id}
+                                  balancePaise={rx.consultation_balance_paise}
+                                />
+                              ) : null}
                               {rx.latest_sale_id ? (
                                 <Button
                                   size="sm"

@@ -12,6 +12,7 @@ import { AllergyDialog } from "@/features/patients/allergy-dialog";
 import { VitalsDialog } from "@/features/op/vitals-dialog";
 import { UploadReportDialog } from "@/features/reports/upload-report-dialog";
 import { AdmissionDialog } from "@/features/ip/ip-dialogs";
+import { CollectPaymentDialog } from "@/features/visits/collect-payment-dialog";
 import { PageHeader } from "@/components/shared/page-header";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -262,21 +263,30 @@ export default async function VisitPage({
       </div>
       {finance ? (
         <Card className="mb-4">
-          <CardContent className="grid grid-cols-3 gap-3 p-4 text-sm">
-            <div>
-              <p className="text-muted-foreground">Visit fee</p>
-              <p className="font-semibold">{formatInr(visit.fee_paise)}</p>
+          <CardContent className="flex flex-wrap items-center justify-between gap-4 p-4 text-sm">
+            <div className="flex flex-wrap gap-6">
+              <div>
+                <p className="text-muted-foreground">Visit fee</p>
+                <p className="font-semibold">{formatInr(visit.fee_paise)}</p>
+              </div>
+              <div>
+                <p className="text-muted-foreground">Collected</p>
+                <p className="font-semibold">
+                  {formatInr(money.totalCollectedPaise)}
+                </p>
+              </div>
+              <div>
+                <p className="text-muted-foreground">Balance</p>
+                <p className="font-semibold">{formatInr(money.balancePaise)}</p>
+              </div>
             </div>
-            <div>
-              <p className="text-muted-foreground">Collected</p>
-              <p className="font-semibold">
-                {formatInr(money.totalCollectedPaise)}
-              </p>
-            </div>
-            <div>
-              <p className="text-muted-foreground">Balance</p>
-              <p className="font-semibold">{formatInr(money.balancePaise)}</p>
-            </div>
+            {money.balancePaise > 0 ? (
+              <CollectPaymentDialog
+                visitId={visit.id}
+                patientId={visit.patient_id}
+                balancePaise={money.balancePaise}
+              />
+            ) : null}
           </CardContent>
         </Card>
       ) : seesBalance ? (
