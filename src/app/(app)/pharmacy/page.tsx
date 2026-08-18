@@ -216,6 +216,7 @@ export default async function PharmacyPage({
                           <StatusBadge status={rx.status} />
                         </TableCell>
                         <TableCell className="text-right">
+                          <div className="flex justify-end gap-2">
                           {rx.status === "pending" || rx.status === "partially_dispensed" ? (
                             <DispenseDialog
                               key={`${rx.id}:${rx.status}:${rx.items.reduce((sum, item) => sum + item.dispensed_quantity, 0)}`}
@@ -245,7 +246,7 @@ export default async function PharmacyPage({
                               batches={batches}
                             />
                           ) : (
-                            <div className="flex justify-end gap-2">
+                            <>
                               {/* A cancelled/no-medicine prescription never goes
                                   through DispenseDialog, so this is the only
                                   place left to settle a fee it left owing. */}
@@ -263,15 +264,19 @@ export default async function PharmacyPage({
                                   <Printer /> Receipt
                                 </Button>
                               ) : null}
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                render={<Link href={`/print/prescription/${rx.id}`} target="_blank" />}
-                              >
-                                <Printer /> Prescription
-                              </Button>
-                            </div>
+                            </>
                           )}
+                          {/* Always available: preview/open the full
+                              prescription -- what's on it, before or after
+                              dispensing -- not only once it is closed out. */}
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            render={<Link href={`/print/prescription/${rx.id}`} target="_blank" />}
+                          >
+                            <Printer /> Prescription
+                          </Button>
+                          </div>
                         </TableCell>
                       </TableRow>
                     );

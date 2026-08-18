@@ -150,7 +150,7 @@ export default async function VisitPage({
     // Doctors need these too: they pick the kind of investigation they are
     // ordering, which is the same list an uploaded report is filed under.
     hasPermission(profile.role, "uploadReport") ||
-    hasPermission(profile.role, "writeConsultation")
+    hasPermission(profile.role, "pharmacyEnterConsultation")
       ? supabase
           .from("report_categories")
           .select("id,name")
@@ -185,9 +185,13 @@ export default async function VisitPage({
     typeof configuredFeePaise === "number"
       ? (configuredFeePaise / 100).toFixed(2)
       : undefined;
+  // Pharmacy enters exactly what the doctor wrote on paper, so it isn't
+  // scoped to "their own" visit the way a doctor's own login is -- pharmacy
+  // has no doctorId at all, and is entering on behalf of whichever doctor is
+  // named in the prescription.
   const canEditClinical =
-    hasPermission(profile.role, "writeConsultation") &&
-    (profile.role === "admin" || profile.doctorId === visit.doctor_id) &&
+    hasPermission(profile.role, "pharmacyEnterConsultation") &&
+    (profile.role === "admin" || profile.role === "pharmacy" || profile.doctorId === visit.doctor_id) &&
     visit.status !== "completed" &&
     !consultationCompleted;
   const initialVitals = vitals

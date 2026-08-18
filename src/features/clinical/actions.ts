@@ -86,7 +86,7 @@ export async function saveConsultation(
   _: ActionState,
   formData: FormData,
 ): Promise<ActionState> {
-  await requirePermission("writeConsultation");
+  await requirePermission("pharmacyEnterConsultation");
   const parsed = schema.safeParse(Object.fromEntries(formData));
   if (!parsed.success)
     return { ok: false, fieldErrors: parsed.error.flatten().fieldErrors };
@@ -188,7 +188,7 @@ export async function saveConsultation(
  * touches a completed or cancelled one.
  */
 export async function startConsultation(visitId: string) {
-  await requirePermission("writeConsultation");
+  await requirePermission("pharmacyEnterConsultation");
   const parsed = databaseIdSchema.safeParse(visitId);
   if (!parsed.success) return { ok: false };
   const supabase = await createSupabaseServerClient();

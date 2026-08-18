@@ -1,6 +1,7 @@
 "use client";
+import Link from "next/link";
 import { useActionState, useEffect, useMemo, useRef, useState } from "react";
-import { Check, ChevronsUpDown, FileEdit, LoaderCircle, Plus, Trash2 } from "lucide-react";
+import { Check, ChevronsUpDown, FileEdit, LoaderCircle, NotebookPen, Plus, Trash2 } from "lucide-react";
 import { createManualPrescription } from "./manual-prescription-actions";
 import { MedicineCombobox } from "@/features/clinical/medicine-combobox";
 import { DURATION_PRESETS, FREQUENCY_PRESETS, PresetSelect } from "@/features/clinical/preset-select";
@@ -219,7 +220,6 @@ export function ManualPrescriptionDialog({
   const [visit, setVisit] = useState<OpVisit | null>(null);
   const [ticket, setTicket] = useState<IpTicket | null>(null);
   const [doctorId, setDoctorId] = useState("");
-  const [fee, setFee] = useState("");
   const [medicines, setMedicines] = useState<MedicineLine[]>([newMedicine()]);
   const { open, setOpen } = useAutoCloseDialog(state, "Prescription entered.");
 
@@ -231,13 +231,11 @@ export function ManualPrescriptionDialog({
     setVisit(null);
     setTicket(null);
     setDoctorId("");
-    setFee("");
     setMedicines([newMedicine()]);
   };
   const pickPatient = (v: OpVisit | null, t: IpTicket | null) => {
     setVisit(v);
     setTicket(t);
-    setFee(v && v.fee_paise > 0 ? (v.fee_paise / 100).toFixed(2) : "");
   };
 
   const updateMedicine = (medKey: string, patch: Partial<MedicineLine>) =>
@@ -268,15 +266,17 @@ export function ManualPrescriptionDialog({
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger render={<Button variant="outline" onClick={resetForm} />}>
-        <FileEdit /> Dispense as Per Rx
+        <FileEdit /> Enter Doctor&apos;s Prescription
       </DialogTrigger>
       <DialogContent className="max-h-[calc(100vh-2rem)] overflow-y-auto sm:max-w-4xl">
-        <form action={action} className="contents">
+        <form action={mode === "op" ? undefined : action} className="contents">
           <DialogHeader>
-            <DialogTitle>Dispense as Per Rx</DialogTitle>
+            <DialogTitle>Enter Doctor&apos;s Prescription</DialogTitle>
             <DialogDescription>
-              For a prescription the consultant wrote on paper. Enter it here; it
-              then appears in the pending queue to dispense like any other.
+              For a prescription the consultant wrote on paper.{" "}
+              {mode === "op"
+                ? "Pick the patient, then fill it in on the same consultation form the doctor uses."
+                : "Enter it here; it then appears in the pending queue to dispense like any other."}
             </DialogDescription>
           </DialogHeader>
           <input type="hidden" name="idempotencyKey" value={key} />
@@ -340,16 +340,35 @@ export function ManualPrescriptionDialog({
             ) : null}
           </div>
 
-          {patientLabel ? (
+          {mode === "op" && visit ? (
+            // Pharmacy now has the same access a doctor does to the full
+            // consultation form (symptoms, diagnosis, medicines, everything) --
+            // no separate thinner form to duplicate it. This just gets them
+            // there with the right patient already open.
+            <div className="rounded-lg border bg-muted/40 p-4 text-sm">
+              <p className="font-medium">{patientLabel}</p>
+              <p className="mt-1 text-muted-foreground">
+                {visit.doctor_name}
+                {visit.has_digital_consultation ? " · already entered digitally" : ""}
+              </p>
+              <Button
+                className="mt-3"
+                render={<Link href={`/visits/${visit.visit_id}`} target="_blank" />}
+              >
+                <NotebookPen /> Open Consultation
+              </Button>
+            </div>
+          ) : null}
+
+          {mode === "ip" && patientLabel ? (
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
                 <Label>Consulting doctor</Label>
                 <Select value={doctorId} onValueChange={(v) => setDoctorId(String(v))}>
                   <SelectTrigger className="w-full">
-                    <SelectValue placeholder={visit?.doctor_name ?? ticket?.doctor_name ?? "Select"}>
+                    <SelectValue placeholder={ticket?.doctor_name ?? "Select"}>
                       {() =>
                         doctors.find((d) => d.id === doctorId)?.label ??
-                        visit?.doctor_name ??
                         ticket?.doctor_name ??
                         "Select"
                       }
@@ -364,27 +383,13 @@ export function ManualPrescriptionDialog({
                   </SelectContent>
                 </Select>
               </div>
-              {mode === "op" ? (
-                <div className="space-y-2">
-                  <Label htmlFor="manual-rx-fee">Consultation fee (₹)</Label>
-                  <Input
-                    id="manual-rx-fee"
-                    name="fee"
-                    inputMode="decimal"
-                    value={fee}
-                    onChange={(e) => setFee(e.target.value)}
-                    placeholder="500"
-                  />
-                  <p className="text-xs text-destructive">{state.fieldErrors?.fee?.[0]}</p>
-                </div>
-              ) : (
-                <p className="self-end text-xs text-muted-foreground">
-                  IP charges are billed on the ticket separately, not collected here.
-                </p>
-              )}
+              <p className="self-end text-xs text-muted-foreground">
+                IP charges are billed on the ticket separately, not collected here.
+              </p>
             </div>
           ) : null}
 
+          {mode === "ip" ? (
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <Label>Medicines</Label>
@@ -478,11 +483,14 @@ export function ManualPrescriptionDialog({
               </Table>
             </div>
           </div>
+          ) : null}
 
           <DialogFooter showCloseButton>
-            <Button disabled={pending || !patientLabel || validLines.length === 0} type="submit">
-              {pending ? <LoaderCircle className="animate-spin" /> : <Check />} Save Prescription
-            </Button>
+            {mode === "ip" ? (
+              <Button disabled={pending || !patientLabel || validLines.length === 0} type="submit">
+                {pending ? <LoaderCircle className="animate-spin" /> : <Check />} Save Prescription
+              </Button>
+            ) : null}
           </DialogFooter>
         </form>
       </DialogContent>

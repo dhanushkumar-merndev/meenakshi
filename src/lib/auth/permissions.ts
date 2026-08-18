@@ -15,6 +15,10 @@ export const PERMISSIONS = {
   createVisit: ["admin", "reception"],
   recordVitals: ["admin", "op", "doctor"],
   writeConsultation: ["admin", "doctor"],
+  // Narrower than writeConsultation on purpose: only the consultation form
+  // itself (entering exactly what the doctor wrote on paper), not progress
+  // notes, discharge summaries, or report uploads -- those stay doctor-only.
+  pharmacyEnterConsultation: ["admin", "doctor", "pharmacy"],
   dispense: ["admin", "pharmacy"],
   // A consultant who wrote the prescription on paper never touches the
   // system; pharmacy enters it digitally so it flows through the same
@@ -58,7 +62,7 @@ export const ROUTE_ROLES: Record<string, readonly AppRole[]> = {
   // Doctors read only: they review the results they ordered. The upload
   // action stays behind the uploadReport permission.
   "/reports": ["admin", "reception", "op", "ip", "doctor"],
-  "/visits": ["admin", "reception", "op", "doctor"],
+  "/visits": ["admin", "reception", "op", "doctor", "pharmacy"],
 };
 
 export function canAccessRoute(role: AppRole, pathname: string) {
