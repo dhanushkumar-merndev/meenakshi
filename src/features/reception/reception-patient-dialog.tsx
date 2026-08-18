@@ -59,6 +59,7 @@ type Patient = {
 };
 type Consultant = { key: string; doctorId: string };
 const initial: ActionState = { ok: false };
+const GENDER_LABELS: Record<string, string> = { unknown: "Not specified", male: "Male", female: "Female", other: "Other" };
 
 export function ReceptionPatientDialog({ doctors }: { doctors: Doctor[] }) {
   const [open, setOpen] = useState(false);
@@ -543,7 +544,7 @@ export function ReceptionPatientDialog({ doctors }: { doctors: Doctor[] }) {
                     <Label htmlFor="quick-gender">Gender</Label>
                     <Select value={newGender} onValueChange={(value) => setNewGender(String(value))}>
                       <SelectTrigger id="quick-gender" className="w-full">
-                        <SelectValue />
+                        <SelectValue>{() => GENDER_LABELS[newGender] ?? newGender}</SelectValue>
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="unknown">Not specified</SelectItem>
@@ -557,7 +558,7 @@ export function ReceptionPatientDialog({ doctors }: { doctors: Doctor[] }) {
                     <Label htmlFor="quick-blood">Blood group</Label>
                     <Select value={newBloodGroup} onValueChange={(value) => setNewBloodGroup(String(value))}>
                       <SelectTrigger id="quick-blood" className="w-full">
-                        <SelectValue placeholder="Not known" />
+                        <SelectValue placeholder="Not known">{() => newBloodGroup || "Not known"}</SelectValue>
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="">Not known</SelectItem>

@@ -274,6 +274,7 @@ export default async function PatientProfilePage({
         <TabsContent value="ip">
           <Card>
             <CardContent className="p-0">
+              <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -313,12 +314,14 @@ export default async function PatientProfilePage({
                   )}
                 </TableBody>
               </Table>
+              </div>
             </CardContent>
           </Card>
         </TabsContent>
         <TabsContent value="reports">
           <Card>
             <CardContent className="p-0">
+              <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -353,6 +356,7 @@ export default async function PatientProfilePage({
                   )}
                 </TableBody>
               </Table>
+              </div>
             </CardContent>
           </Card>
         </TabsContent>
@@ -360,6 +364,7 @@ export default async function PatientProfilePage({
           <TabsContent value="payments">
             <Card>
               <CardContent className="p-0">
+                <div className="overflow-x-auto">
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -386,6 +391,7 @@ export default async function PatientProfilePage({
                     )}
                   </TableBody>
                 </Table>
+                </div>
               </CardContent>
             </Card>
           </TabsContent>

@@ -3,6 +3,7 @@ import { useActionState, useState } from "react";
 import { BedDouble, IndianRupee, LoaderCircle, Package, Plus, Trash2, UserRoundCheck } from "lucide-react";
 import { addIpCharge, addIpPayment, assignIpPatient, createAdmission } from "./actions";
 import { requestIpInventory } from "./inventory-request-actions";
+import { MedicineCombobox } from "@/features/clinical/medicine-combobox";
 import type { ActionState } from "@/types/hospital";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -168,7 +169,7 @@ export function AdmissionDialog({
               <Label htmlFor="payment-mode">Mode</Label>
               <Select value={mode} onValueChange={(v) => setMode(v as string)}>
                 <SelectTrigger id="payment-mode" className="w-full">
-                  <SelectValue />
+                  <SelectValue>{() => modes.find(([v]) => v === mode)?.[1] ?? mode}</SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   {modes.map(([v, l]) => (
@@ -241,7 +242,14 @@ export function ChargeDialog({ ticketId, presets }: { ticketId: string; presets:
                 }}
               >
                 <SelectTrigger id="charge-preset" className="w-full">
-                  <SelectValue placeholder="Select configured charge" />
+                  {/* Without a render function the trigger shows the stored
+                      preset id rather than its name. */}
+                  <SelectValue placeholder="Select configured charge">
+                    {() => {
+                      const preset = presets.find((entry) => entry.id === presetId);
+                      return preset ? `${preset.name} · ₹${preset.rate}` : "Select configured charge";
+                    }}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   {presets.map((preset) => <SelectItem key={preset.id} value={preset.id} label={`${preset.name} · ₹${preset.rate}`}>{preset.name} · ₹{preset.rate}</SelectItem>)}
@@ -353,7 +361,7 @@ export function IpPaymentDialog({
               <Label>Mode</Label>
               <Select value={mode} onValueChange={(v) => setMode(v as string)}>
                 <SelectTrigger className="w-full">
-                  <SelectValue />
+                  <SelectValue>{() => modes.find(([v]) => v === mode)?.[1] ?? mode}</SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   {modes.map(([v, l]) => (
@@ -445,10 +453,12 @@ type RequestLine = { key: string; name: string; quantity: number };
 const newRequestLine = (): RequestLine => ({ key: crypto.randomUUID(), name: "", quantity: 1 });
 
 /**
- * IP staff or the treating doctor asking pharmacy for consumables. No
- * inventory catalog access here on purpose -- the requester just describes
- * what's needed; pharmacy matches it to real stock (or prices it manually)
- * when they fulfil the request. Stock never changes from this dialog.
+ * IP staff or the treating doctor asking pharmacy for consumables. Typing
+ * searches live stock (same combobox the doctor's own prescription uses) so
+ * the requester can see what pharmacy actually has while asking -- but
+ * nothing here is a catalog lock: typed text that matches nothing can still
+ * be sent, since pharmacy always matches or manually prices at fulfilment.
+ * Stock never changes from this dialog either way.
  */
 export function RequestInventoryDialog({ ticketId }: { ticketId: string }) {
   const [state, action, pending] = useActionState(requestIpInventory, initial);
@@ -484,16 +494,16 @@ export function RequestInventoryDialog({ ticketId }: { ticketId: string }) {
           <div className="space-y-2">
             {lines.map((line, index) => (
               <div className="flex gap-2" key={line.key}>
-                <Input
-                  className="flex-1"
-                  placeholder="e.g. IV cannula 20G"
-                  value={line.name}
-                  onChange={(event) =>
-                    setLines((rows) =>
-                      rows.map((row, i) => (i === index ? { ...row, name: event.target.value } : row)),
-                    )
-                  }
-                />
+                <div className="flex-1">
+                  <MedicineCombobox
+                    value={{ medicine_name: line.name }}
+                    onChange={(next) =>
+                      setLines((rows) =>
+                        rows.map((row, i) => (i === index ? { ...row, name: next.medicine_name } : row)),
+                      )
+                    }
+                  />
+                </div>
                 <Input
                   className="w-20"
                   type="number"

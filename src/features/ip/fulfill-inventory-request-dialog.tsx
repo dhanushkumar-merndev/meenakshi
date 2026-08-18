@@ -1,6 +1,7 @@
 "use client";
+import Link from "next/link";
 import { useActionState, useMemo, useState } from "react";
-import { CheckCircle2, LoaderCircle, PackageCheck } from "lucide-react";
+import { CheckCircle2, LoaderCircle, PackageCheck, Printer } from "lucide-react";
 import { fulfillIpInventoryRequest } from "./inventory-request-actions";
 import { formatInr } from "@/lib/domain/money";
 import { Button } from "@/components/ui/button";
@@ -107,10 +108,20 @@ export function FulfillInventoryRequestDialog({
   );
 
   if (state.ok) {
+    // Whatever fell short of the requested quantity (unmatched entirely, or
+    // matched but stock only covered part of it) belongs on a note the
+    // family can take to buy it outside -- nothing was billed for it either
+    // way.
+    const hasShortfall = lines.some((line) => line.fulfilledQuantity < line.requestedQuantity);
     return (
       <div className="flex items-center justify-end gap-2">
         <CheckCircle2 className="text-primary" />
         <span className="text-sm text-muted-foreground">Fulfilled</span>
+        {hasShortfall ? (
+          <Button size="sm" variant="outline" render={<Link href={`/print/ip-shortage/${requestId}`} target="_blank" />}>
+            <Printer /> Shortage Note
+          </Button>
+        ) : null}
       </div>
     );
   }

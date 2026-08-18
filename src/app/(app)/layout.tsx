@@ -13,9 +13,14 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
       <SidebarInset className="h-svh min-h-0 overflow-hidden">
         <AppHeader />
         <div
-          className="min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-contain p-3 sm:p-5 lg:p-6"
+          className="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain p-3 sm:p-5 lg:p-6"
           data-app-workspace
         >
+          {/* Any page content that would otherwise force the whole shell wider
+              on a narrow phone (an un-wrapped button row, a table) clips here
+              instead -- individual pages scope their own horizontal scroll
+              (e.g. a table's own overflow-x-auto wrapper) where content is
+              genuinely meant to scroll sideways. */}
           {children}
         </div>
       </SidebarInset>

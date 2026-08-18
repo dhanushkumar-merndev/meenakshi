@@ -219,7 +219,7 @@ export function EditStaffDialog({ user }: { user: { id: string; fullName: string
             <div className="space-y-2"><Label htmlFor={`staff-name-${user.id}`}>Name</Label><Input id={`staff-name-${user.id}`} name="fullName" defaultValue={user.fullName} required /></div>
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2"><Label>Role</Label><Select value={role} onValueChange={(value) => setRole(value as string)}><SelectTrigger className="w-full"><SelectValue /></SelectTrigger><SelectContent>{["admin", "reception", "op", "ip", "pharmacy"].map((value) => <SelectItem key={value} value={value}>{value}</SelectItem>)}</SelectContent></Select></div>
-              <div className="space-y-2"><Label>Status</Label><Select value={status} onValueChange={(value) => setStatus(value as string)}><SelectTrigger className="w-full"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="active">Active</SelectItem><SelectItem value="inactive">Inactive</SelectItem></SelectContent></Select></div>
+              <div className="space-y-2"><Label>Status</Label><Select value={status} onValueChange={(value) => setStatus(value as string)}><SelectTrigger className="w-full"><SelectValue>{() => (status === "active" ? "Active" : "Inactive")}</SelectValue></SelectTrigger><SelectContent><SelectItem value="active">Active</SelectItem><SelectItem value="inactive">Inactive</SelectItem></SelectContent></Select></div>
             </div>
             <div className="space-y-2"><Label htmlFor={`staff-password-${user.id}`}>New password (optional)</Label><Input id={`staff-password-${user.id}`} name="password" type="password" minLength={10} /></div>
           </div>

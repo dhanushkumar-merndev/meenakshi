@@ -31,6 +31,7 @@ import {
 } from "@/components/ui/select";
 
 const initial: ActionState = { ok: false };
+const GENDER_LABELS: Record<string, string> = { unknown: "Not specified", male: "Male", female: "Female", other: "Other" };
 const ErrorText = ({ errors }: { errors?: string[] }) =>
   errors?.map((item) => (
     <p className="text-xs text-destructive" key={item}>
@@ -151,7 +152,7 @@ export function NewPatientDialog() {
                   onValueChange={(value) => setGender(value as string)}
                 >
                   <SelectTrigger className="w-full">
-                    <SelectValue />
+                    <SelectValue>{() => GENDER_LABELS[gender] ?? gender}</SelectValue>
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="unknown">Not specified</SelectItem>
@@ -169,7 +170,7 @@ export function NewPatientDialog() {
                   onValueChange={(value) => setBloodGroup(String(value))}
                 >
                   <SelectTrigger className="w-full">
-                    <SelectValue />
+                    <SelectValue>{() => bloodGroup || "Not known"}</SelectValue>
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="">Not known</SelectItem>

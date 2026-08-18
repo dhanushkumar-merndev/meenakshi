@@ -36,6 +36,7 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 
 const initial: ActionState = { ok: false };
+const MODE_LABELS: Record<string, string> = { cash: "Cash", upi: "UPI", card: "Card", bank_transfer: "Bank Transfer", other: "Other" };
 
 export type InventoryItem = {
   id: string;
@@ -203,7 +204,7 @@ export function ProcedureBillDialog({
             <div className="space-y-2">
               <Label>Payment mode</Label>
               <Select value={mode} onValueChange={(v) => setMode(String(v))}>
-                <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                <SelectTrigger className="w-full"><SelectValue>{() => MODE_LABELS[mode] ?? mode}</SelectValue></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="cash">Cash</SelectItem>
                   <SelectItem value="upi">UPI</SelectItem>

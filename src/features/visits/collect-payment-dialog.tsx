@@ -27,6 +27,7 @@ import {
 import { useAutoCloseDialog } from "@/hooks/use-auto-close-dialog";
 
 const initial: ActionState = { ok: false };
+const MODE_LABELS: Record<string, string> = { cash: "Cash", upi: "UPI", card: "Card", bank_transfer: "Bank Transfer", other: "Other" };
 
 /**
  * Settles a visit's fee when it never reaches the pharmacy counter (no
@@ -88,7 +89,7 @@ export function CollectPaymentDialog({
             <Label>Payment mode</Label>
             <Select value={mode} onValueChange={(v) => setMode(String(v))}>
               <SelectTrigger className="w-full">
-                <SelectValue />
+                <SelectValue>{() => MODE_LABELS[mode] ?? mode}</SelectValue>
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="cash">Cash</SelectItem>

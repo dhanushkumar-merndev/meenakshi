@@ -38,6 +38,21 @@ import {
   ROUTE_PRESETS,
 } from "./preset-select";
 
+// Base UI's Select shows the trigger's stored value, not the item's label,
+// unless a render function tells it what to show -- these are the fallback
+// lookups for the few selects here whose value differs from its label text.
+const FOLLOW_UP_LABELS: Record<string, string> = {
+  none: "No follow-up",
+  after_report: "After report",
+  specific_date: "Specific date",
+  after_days: "After number of days",
+};
+const WARD_TYPE_LABELS: Record<string, string> = {
+  general: "General Ward",
+  private: "Private Room",
+  icu: "ICU",
+};
+
 type MedicineLine = {
   key: string;
   medicine_id?: string;
@@ -515,7 +530,7 @@ export function ConsultationEditor({
               onValueChange={(value) => setFollowUp(value as string)}
             >
               <SelectTrigger className="w-full">
-                <SelectValue />
+                <SelectValue>{() => FOLLOW_UP_LABELS[followUp] ?? followUp}</SelectValue>
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="none">No follow-up</SelectItem>
@@ -582,7 +597,7 @@ export function ConsultationEditor({
                   onValueChange={(value) => setWardType(String(value))}
                 >
                   <SelectTrigger id="ward-type" className="w-full">
-                    <SelectValue />
+                    <SelectValue>{() => WARD_TYPE_LABELS[wardType] ?? wardType}</SelectValue>
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="general">General Ward</SelectItem>

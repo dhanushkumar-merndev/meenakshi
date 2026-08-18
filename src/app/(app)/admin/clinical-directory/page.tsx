@@ -47,6 +47,7 @@ export default async function ClinicalDirectoryPage({ searchParams }: { searchPa
       <DebouncedSearchInput className="mb-4 max-w-md" initialValue={q} placeholder="Search clinical term, type or source" ariaLabel="Search clinical directory" />
       <Card>
         <CardContent className="p-0">
+          <div className="overflow-x-auto">
           <Table>
             <TableHeader>
               <TableRow>
@@ -78,6 +79,7 @@ export default async function ClinicalDirectoryPage({ searchParams }: { searchPa
               {!rows.length ? <TableRow><TableCell colSpan={6} className="h-32 text-center text-muted-foreground">{q ? "No clinical terms match this search." : "No clinical terms found."}</TableCell></TableRow> : null}
             </TableBody>
           </Table>
+          </div>
         </CardContent>
       </Card>
     </div>

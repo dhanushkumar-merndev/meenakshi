@@ -32,6 +32,8 @@ import {
   TableRow,
 } from "@/components/ui/table";
 
+const MODE_LABELS: Record<string, string> = { cash: "Cash", upi: "UPI", card: "Card", bank_transfer: "Bank Transfer", other: "Other" };
+
 type Item = {
   id: string;
   medicineId: string | null;
@@ -382,7 +384,7 @@ export function DispenseDialog({
                   onValueChange={(value) => setMode(value as string)}
                 >
                   <SelectTrigger className="w-48">
-                    <SelectValue />
+                    <SelectValue>{() => MODE_LABELS[mode] ?? mode}</SelectValue>
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="cash">Cash</SelectItem>

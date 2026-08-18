@@ -184,6 +184,7 @@ export default async function IpTicketPage({
         {canFinance ? <TabsContent value="charges">
           <Card>
             <CardContent className="p-0">
+              <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -210,12 +211,14 @@ export default async function IpTicketPage({
                   ))}
                 </TableBody>
               </Table>
+              </div>
             </CardContent>
           </Card>
         </TabsContent> : null}
         {canFinance ? <TabsContent value="payments">
           <Card>
             <CardContent className="p-0">
+              <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -240,6 +243,7 @@ export default async function IpTicketPage({
                   ))}
                 </TableBody>
               </Table>
+              </div>
             </CardContent>
           </Card>
         </TabsContent> : null}
@@ -306,9 +310,13 @@ export default async function IpTicketPage({
         </TabsContent>
         {ticket.ip_inventory_requests.length ? (
           <TabsContent value="requests" className="space-y-3">
-            {ticket.ip_inventory_requests.map((request) => (
+            {ticket.ip_inventory_requests.map((request) => {
+              const hasShortfall = request.ip_inventory_request_items.some(
+                (item) => item.requested_quantity - item.fulfilled_quantity > 0,
+              );
+              return (
               <Card key={request.id}>
-                <CardHeader className="flex flex-row items-center justify-between">
+                <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2">
                   <div>
                     <CardTitle className="text-base">
                       {formatHospitalDate(request.created_at, true)}
@@ -317,9 +325,17 @@ export default async function IpTicketPage({
                       <p className="mt-1 text-xs text-muted-foreground">{request.notes}</p>
                     ) : null}
                   </div>
-                  <StatusBadge status={request.status} />
+                  <div className="flex items-center gap-2">
+                    {request.status === "fulfilled" && hasShortfall ? (
+                      <Button size="sm" variant="outline" render={<Link href={`/print/ip-shortage/${request.id}`} target="_blank" />}>
+                        <Printer /> Shortage Note
+                      </Button>
+                    ) : null}
+                    <StatusBadge status={request.status} />
+                  </div>
                 </CardHeader>
                 <CardContent className="p-0">
+                  <div className="overflow-x-auto">
                   <Table>
                     <TableHeader>
                       <TableRow>
@@ -344,9 +360,11 @@ export default async function IpTicketPage({
                       ))}
                     </TableBody>
                   </Table>
+                  </div>
                 </CardContent>
               </Card>
-            ))}
+              );
+            })}
           </TabsContent>
         ) : null}
       </Tabs>

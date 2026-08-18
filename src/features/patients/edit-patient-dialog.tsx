@@ -29,6 +29,9 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
+const GENDER_LABELS: Record<string, string> = { male: "Male", female: "Female", other: "Other", unknown: "Not specified" };
+const STATUS_LABELS: Record<string, string> = { active: "Active", archived: "Archived" };
+
 type EditablePatient = {
   id: string;
   name: string;
@@ -141,7 +144,7 @@ export function EditPatientDialog({
                   }
                 >
                   <SelectTrigger className="w-full">
-                    <SelectValue />
+                    <SelectValue>{() => GENDER_LABELS[fields.gender] ?? fields.gender}</SelectValue>
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="male">Male</SelectItem>
@@ -171,7 +174,7 @@ export function EditPatientDialog({
                   }
                 >
                   <SelectTrigger className="w-full">
-                    <SelectValue />
+                    <SelectValue>{() => STATUS_LABELS[fields.status] ?? fields.status}</SelectValue>
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="active">Active</SelectItem>

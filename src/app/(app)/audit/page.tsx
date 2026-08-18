@@ -43,6 +43,7 @@ export default async function AuditPage({ searchParams }: { searchParams: Promis
       <DebouncedSearchInput className="mb-4 max-w-md" initialValue={q} placeholder="Search action or entity type" ariaLabel="Search audit logs" />
       <Card>
         <CardContent className="p-0">
+          <div className="overflow-x-auto">
           <Table>
             <TableHeader>
               <TableRow>
@@ -69,7 +70,9 @@ export default async function AuditPage({ searchParams }: { searchParams: Promis
               ))}
               {!rows.length ? <TableRow><TableCell colSpan={5} className="h-32 text-center text-muted-foreground">{q ? "No audit logs match this search." : "No audit logs found."}</TableCell></TableRow> : null}
             </TableBody>
-          </Table><TablePager page={page} pages={Math.max(1, Math.ceil((count ?? 0) / size))} total={count ?? 0} params={{ q }} />
+          </Table>
+          </div>
+          <TablePager page={page} pages={Math.max(1, Math.ceil((count ?? 0) / size))} total={count ?? 0} params={{ q }} />
         </CardContent>
       </Card>
     </div>
