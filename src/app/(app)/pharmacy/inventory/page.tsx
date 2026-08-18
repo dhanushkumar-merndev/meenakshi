@@ -68,21 +68,22 @@ export default async function InventoryPage({
         title="Inventory"
         description="Consumables such as sutures, gauze and dressing material, and the procedure bills that use them"
         actions={
-          <div className="flex gap-2">
+          <>
+            <FilterTabs
+              ariaLabel="Switch between inventory stock and procedure bills"
+              active={tab}
+              param="tab"
+              params={{ q }}
+              tabs={[
+                { label: "Stock", value: "stock" },
+                { label: "Procedure Bills", value: "bills" },
+              ]}
+              className="mb-0"
+            />
             <InventoryItemDialog />
             <ProcedureBillDialog items={items} doctors={doctors} />
-          </div>
+          </>
         }
-      />
-      <FilterTabs
-        ariaLabel="Switch between inventory stock and procedure bills"
-        active={tab}
-        param="tab"
-        params={{ q }}
-        tabs={[
-          { label: "Stock", value: "stock" },
-          { label: "Procedure Bills", value: "bills" },
-        ]}
       />
       {tab === "stock" ? (
         <>

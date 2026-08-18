@@ -63,11 +63,11 @@ export default async function ReceiptPrintPage({
   const items = receipt.items ?? [];
 
   return (
-    <main className="mx-auto min-h-screen max-w-md bg-white p-5 text-black">
-      <div data-print-hidden className="mb-5 flex justify-end">
+    <main className="mx-auto min-h-screen max-w-[210mm] bg-white p-4 text-black sm:p-8">
+      <div data-print-hidden className="mb-4 flex justify-end">
         <PrintButton label="Print Receipt" />
       </div>
-      <article className="border border-black p-6 font-sans">
+      <article className="mx-auto max-w-md border border-black p-6 font-sans">
         <HospitalLetterhead identity={identity} logoSize={48} />
         <p className="mt-4 border-y border-black py-2 text-center text-sm font-semibold uppercase">
           Payment Receipt

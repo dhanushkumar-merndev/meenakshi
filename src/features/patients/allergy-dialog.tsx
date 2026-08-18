@@ -54,7 +54,10 @@ export function AllergyDialog({
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger render={<Button size="sm" variant={allergies ? "destructive" : "outline"} />}>
+      {/* xs is the closest Button size to the h-5 Badge row it sits in
+          alongside (Status/Age/Doctor/Rx badges) -- true pixel parity would
+          need a non-Button trigger, which isn't worth losing the click target for. */}
+      <DialogTrigger render={<Button size="xs" variant={allergies ? "destructive" : "outline"} />}>
         <TriangleAlert /> {allergies ? "Edit allergies" : triggerLabel}
       </DialogTrigger>
       <DialogContent className="flex max-h-[70dvh] flex-col overflow-hidden sm:max-w-lg">

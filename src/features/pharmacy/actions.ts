@@ -14,6 +14,10 @@ const lineSchema = z
       prescription_item_id: databaseIdSchema,
       batch_id: databaseIdSchema,
       quantity: z.number().int().positive(),
+      // Pharmacist-entered raise of what was prescribed (e.g. a couple of
+      // extra days the patient asks for at the counter). Optional; zod would
+      // otherwise silently strip it and the increase would never reach the RPC.
+      new_requested_quantity: z.number().int().positive().max(100_000).optional(),
     }),
   )
   .min(1)

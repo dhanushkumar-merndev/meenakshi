@@ -36,6 +36,12 @@ type Item = {
   id: string;
   medicineId: string | null;
   name: string;
+  dose?: string | null;
+  frequency?: string | null;
+  duration?: string | null;
+  route?: string | null;
+  dosageForm?: string | null;
+  strength?: string | null;
   requested: number;
   dispensed: number;
 };
@@ -80,6 +86,11 @@ export function DispenseDialog({
   const [feeCollected, setFeeCollected] = useState(() =>
     outstanding > 0 ? (outstanding / 100).toFixed(2) : "",
   );
+  // Pending starts at what was prescribed; the pharmacist can raise it here
+  // (e.g. the patient asks for a couple more days) without a separate screen.
+  const [pendingOverrides, setPendingOverrides] = useState<Record<string, number>>({});
+  const pendingFor = (item: Item) =>
+    pendingOverrides[item.id] ?? item.requested - item.dispensed;
   const [lines, setLines] = useState(() =>
     items.map((item) => {
       const batch = batches
@@ -99,12 +110,23 @@ export function DispenseDialog({
     () =>
       lines
         .filter((line) => line.batchId && line.quantity > 0)
-        .map((line) => ({
-          prescription_item_id: line.itemId,
-          batch_id: line.batchId,
-          quantity: line.quantity,
-        })),
-    [lines],
+        .map((line) => {
+          const item = items.find((i) => i.id === line.itemId);
+          const override = item ? pendingOverrides[item.id] : undefined;
+          const newRequested =
+            item && override !== undefined
+              ? item.dispensed + override
+              : undefined;
+          return {
+            prescription_item_id: line.itemId,
+            batch_id: line.batchId,
+            quantity: line.quantity,
+            ...(newRequested !== undefined
+              ? { new_requested_quantity: newRequested }
+              : {}),
+          };
+        }),
+    [lines, items, pendingOverrides],
   );
   // Mirrors the server's rounding (round(qty * pack price / units per pack))
   // so what the pharmacist sees before confirming matches the receipt after.
@@ -157,7 +179,14 @@ export function DispenseDialog({
             size="sm"
             render={<Link href={`/print/receipt/${state.data?.saleId}`} target="_blank" />}
           >
-            <Printer /> Receipt
+            <Printer /> Payment Receipt
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            render={<Link href={`/print/prescription/${prescriptionId}`} target="_blank" />}
+          >
+            <Printer /> Prescription
           </Button>
         </div>
       </div>
@@ -168,7 +197,7 @@ export function DispenseDialog({
       <DialogTrigger render={<Button size="sm" />}>
         <Pill /> Dispense
       </DialogTrigger>
-      <DialogContent className="sm:max-w-3xl">
+      <DialogContent className="max-h-[calc(100vh-2rem)] overflow-y-auto sm:max-w-5xl">
         <form action={action} className="contents">
           <DialogHeader>
             <DialogTitle>Dispense {prescriptionNumber}</DialogTitle>
@@ -190,7 +219,10 @@ export function DispenseDialog({
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Medicine</TableHead>
+                  <TableHead>S.No</TableHead>
+                  <TableHead className="min-w-40">Medicine &amp; Form</TableHead>
+                  <TableHead>Strength</TableHead>
+                  <TableHead>Dose &amp; Frequency</TableHead>
                   <TableHead>Pending</TableHead>
                   <TableHead className="min-w-48">
                     Batch / Expiry / Stock
@@ -206,10 +238,53 @@ export function DispenseDialog({
                       batch.medicineId === item.medicineId &&
                       batch.quantity > 0,
                   );
+                  const pending = pendingFor(item);
                   return (
                     <TableRow key={item.id}>
-                      <TableCell className="font-medium">{item.name}</TableCell>
-                      <TableCell>{item.requested - item.dispensed}</TableCell>
+                      <TableCell className="text-muted-foreground">{index + 1}</TableCell>
+                      <TableCell className="font-medium">
+                        {item.name}
+                        {item.dosageForm ? (
+                          <span className="block text-xs font-normal text-muted-foreground">
+                            {item.dosageForm}
+                          </span>
+                        ) : null}
+                      </TableCell>
+                      <TableCell className="whitespace-nowrap text-sm">
+                        {item.strength ?? "—"}
+                      </TableCell>
+                      <TableCell className="whitespace-nowrap text-sm">
+                        {[item.dose, item.frequency].filter(Boolean).join(" · ") || "—"}
+                        {item.duration ? (
+                          <span className="block text-xs text-muted-foreground">
+                            {item.duration}
+                          </span>
+                        ) : null}
+                      </TableCell>
+                      <TableCell>
+                        {/* Editable: the patient can ask for extra days at the
+                            counter, so pending isn't fixed to what the doctor
+                            originally wrote. Can only be raised, never lowered
+                            below what is still outstanding. */}
+                        <Input
+                          className="w-20"
+                          type="number"
+                          min={item.requested - item.dispensed}
+                          value={pending}
+                          onChange={(event) => {
+                            const next = Math.max(
+                              item.requested - item.dispensed,
+                              Number(event.target.value) || 0,
+                            );
+                            setPendingOverrides((rows) => ({ ...rows, [item.id]: next }));
+                          }}
+                        />
+                        {pending > item.requested - item.dispensed ? (
+                          <p className="mt-1 text-[11px] text-muted-foreground">
+                            +{pending - (item.requested - item.dispensed)} extra
+                          </p>
+                        ) : null}
+                      </TableCell>
                       <TableCell>
                         <Select
                           value={lines[index]?.batchId}
@@ -241,7 +316,7 @@ export function DispenseDialog({
                           className="w-24"
                           type="number"
                           min={0}
-                          max={item.requested - item.dispensed}
+                          max={pending}
                           value={lines[index]?.quantity ?? 0}
                           onChange={(event) =>
                             setLines((rows) =>
@@ -263,7 +338,6 @@ export function DispenseDialog({
                           const pack = options.find((b) => b.id === lines[index]?.batchId)?.unitsPerPack ?? 1;
                           if (pack <= 1) return null;
                           const pieces = lines[index]?.quantity ?? 0;
-                          const pending = item.requested - item.dispensed;
                           return (
                             <div className="mt-1 space-y-0.5">
                               <p className="text-[11px] text-muted-foreground">

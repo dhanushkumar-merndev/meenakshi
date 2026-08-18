@@ -6,6 +6,7 @@ import { formatInr } from "@/lib/domain/money";
 import { EMPTY_UUID, searchDigits } from "@/lib/domain/search";
 import { findMatchingPatientIds } from "@/lib/search/patients";
 import { DebouncedSearchInput } from "@/components/shared/debounced-search-input";
+import { FilterTabs } from "@/components/shared/filter-tabs";
 import { PageHeader } from "@/components/shared/page-header";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { ReceptionPatientDialog } from "@/features/reception/reception-patient-dialog";
@@ -32,20 +33,28 @@ type Visit = {
   doctors: { id: string; display_name: string } | null;
   visit_payments: Array<{ amount_paise: number }>;
 };
+const WAITING_STATUSES = ["waiting", "vitals_pending", "ready", "in_consultation"];
 export default async function ReceptionPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string }>;
+  searchParams: Promise<{ q?: string; status?: string }>;
 }) {
   await requireRoute("/reception");
-  const q = (await searchParams).q?.trim() ?? "";
+  const params = await searchParams;
+  const q = params.q?.trim() ?? "";
+  const selectedStatus =
+    params.status === "waiting" || params.status === "completed" ? params.status : "all";
   const supabase = await createSupabaseServerClient();
-  const { data: doctorRows } = await supabase.from("doctors").select("id,display_name,op_fee_paise,follow_up_fee_paise,departments(name)").eq("active", true).order("display_name");
-  const doctors = ((doctorRows ?? []) as unknown as Array<{ id: string; display_name: string; op_fee_paise: number; follow_up_fee_paise: number; departments: { name: string } | null }>).map((doctor) => ({ id: doctor.id, displayName: doctor.display_name, department: doctor.departments?.name ?? "—", opFeePaise: doctor.op_fee_paise, followUpFeePaise: doctor.follow_up_fee_paise }));
   const today = new Intl.DateTimeFormat("en-CA", {
     timeZone: "Asia/Kolkata",
   }).format(new Date());
-  const patientIds = q ? await findMatchingPatientIds(supabase, q) : [];
+  // Independent of each other -- the doctor picker doesn't need the search
+  // match, so both go over the wire together instead of one after the other.
+  const [{ data: doctorRows }, patientIds] = await Promise.all([
+    supabase.from("doctors").select("id,display_name,op_fee_paise,follow_up_fee_paise,departments(name)").eq("active", true).order("display_name"),
+    q ? findMatchingPatientIds(supabase, q) : Promise.resolve([]),
+  ]);
+  const doctors = ((doctorRows ?? []) as unknown as Array<{ id: string; display_name: string; op_fee_paise: number; follow_up_fee_paise: number; departments: { name: string } | null }>).map((doctor) => ({ id: doctor.id, displayName: doctor.display_name, department: doctor.departments?.name ?? "—", opFeePaise: doctor.op_fee_paise, followUpFeePaise: doctor.follow_up_fee_paise }));
   let visitsQuery = supabase
     .from("visits")
     .select(
@@ -56,6 +65,8 @@ export default async function ReceptionPage({
     // the visit they just created, not to work down a queue in call order --
     // that ordering belongs to the OP and doctor screens.
     .order("created_at", { ascending: false });
+  if (selectedStatus === "waiting") visitsQuery = visitsQuery.in("status", WAITING_STATUSES);
+  else if (selectedStatus === "completed") visitsQuery = visitsQuery.eq("status", "completed");
   if (q) {
     const filters = patientIds.length
       ? [`patient_id.in.(${patientIds.join(",")})`]
@@ -76,7 +87,19 @@ export default async function ReceptionPage({
         title="Today's Visits"
         description="Reception queue, offline collections, and token access"
         actions={
-          <ReceptionPatientDialog doctors={doctors} />
+          <>
+            <FilterTabs
+              ariaLabel="Filter today's visits by status"
+              active={selectedStatus}
+              params={{ q }}
+              tabs={[
+                { label: "All", value: "all" },
+                { label: "Waiting", value: "waiting" },
+                { label: "Completed", value: "completed" },
+              ]}
+            />
+            <ReceptionPatientDialog doctors={doctors} />
+          </>
         }
       />
       <DebouncedSearchInput
@@ -141,7 +164,13 @@ export default async function ReceptionPage({
                       colSpan={9}
                       className="h-32 text-center text-muted-foreground"
                     >
-                      {q ? "No visits match this search." : "No visits created today."}
+                      {q
+                        ? "No visits match this search."
+                        : selectedStatus === "waiting"
+                          ? "No visits waiting today."
+                          : selectedStatus === "completed"
+                            ? "No completed visits today."
+                            : "No visits created today."}
                     </TableCell>
                   </TableRow>
                 )}

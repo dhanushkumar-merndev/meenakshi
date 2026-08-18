@@ -223,9 +223,9 @@ export default async function VisitPage({
             >
               <Printer /> Token
             </Button>
-            {visit.status === "completed" || consultationCompleted ? (
+            {prescription?.id ? (
               <Button
-                render={<Link href={`/print/prescription/${visit.id}`} />}
+                render={<Link href={`/print/prescription/${prescription.id}`} />}
               >
                 <Printer /> Prescription
               </Button>
@@ -296,7 +296,7 @@ export default async function VisitPage({
         </Alert>
       ) : null}
       <Card className="mb-4">
-        <CardHeader className="flex-row items-center justify-between">
+        <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle className="text-base">Vitals</CardTitle>
           {hasPermission(profile.role, "recordVitals") &&
           visit.status !== "completed" &&
@@ -340,7 +340,7 @@ export default async function VisitPage({
         </CardContent>
       </Card>
       <Card className="mb-4">
-        <CardHeader className="flex-row items-center justify-between gap-3">
+        <CardHeader className="flex flex-row items-center justify-between gap-3">
           <div>
             <CardTitle className="text-base">Investigations & Reports</CardTitle>
             <p className="mt-1 text-sm text-muted-foreground">

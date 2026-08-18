@@ -240,7 +240,7 @@ export function ConsultationEditor({
         </CardContent>
       </Card>
       <Card>
-        <CardHeader className="flex-row items-center justify-between">
+        <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle className="text-base">Medicines</CardTitle>
           <Button
             type="button"
@@ -396,7 +396,7 @@ export function ConsultationEditor({
         </CardContent>
       </Card>
       <Card>
-        <CardHeader className="flex-row items-center justify-between">
+        <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle className="text-base">Investigations / Tests</CardTitle>
           <Button
             type="button"

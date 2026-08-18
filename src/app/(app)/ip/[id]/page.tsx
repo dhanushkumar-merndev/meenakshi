@@ -60,7 +60,15 @@ type Ticket = {
   ip_progress_notes: Array<{
     id: string;
     created_at: string;
-    note: string;
+    note: string | null;
+    pulse: string | null;
+    bp: string | null;
+    spo2: string | null;
+    respiratory_rate: string | null;
+    chief_complaint: string | null;
+    issues: string | null;
+    examination: string | null;
+    plan: string | null;
     doctors: { display_name: string } | null;
   }>;
   ip_inventory_requests: Array<{
@@ -89,7 +97,7 @@ export default async function IpTicketPage({
   const { data, error } = await supabase
     .from("ip_tickets")
     .select(
-      "id,ticket_number,patient_id,is_emergency,admission_at,discharge_at,room,bed,admission_reason,status,final_diagnosis,hospital_course,treatment_summary,discharge_medicines,discharge_advice,follow_up,patients(name,uhid,phone_normalized),doctors(display_name,ip_visit_fee_paise),ip_charges(id,created_at,category,item,quantity,rate_paise,amount_paise),ip_payments(id,created_at,amount_paise,mode,reference),ip_progress_notes(id,created_at,note,doctors(display_name)),ip_inventory_requests(id,notes,status,created_at,ip_inventory_request_items(id,requested_name,requested_quantity,fulfilled_quantity,unit_price_paise,status))",
+      "id,ticket_number,patient_id,is_emergency,admission_at,discharge_at,room,bed,admission_reason,status,final_diagnosis,hospital_course,treatment_summary,discharge_medicines,discharge_advice,follow_up,patients(name,uhid,phone_normalized),doctors(display_name,ip_visit_fee_paise),ip_charges(id,created_at,category,item,quantity,rate_paise,amount_paise),ip_payments(id,created_at,amount_paise,mode,reference),ip_progress_notes(id,created_at,note,pulse,bp,spo2,respiratory_rate,chief_complaint,issues,examination,plan,doctors(display_name)),ip_inventory_requests(id,notes,status,created_at,ip_inventory_request_items(id,requested_name,requested_quantity,fulfilled_quantity,unit_price_paise,status))",
     )
     .eq("id", id)
     .single();
@@ -243,15 +251,56 @@ export default async function IpTicketPage({
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
-              {ticket.ip_progress_notes.map((n) => (
-                <div className="rounded-lg border p-3" key={n.id}>
-                  <div className="flex justify-between text-xs text-muted-foreground">
-                    <span>{n.doctors?.display_name}</span>
-                    <span>{formatHospitalDate(n.created_at, true)}</span>
-                  </div>
-                  <p className="mt-2 whitespace-pre-wrap text-sm">{n.note}</p>
-                </div>
-              ))}
+              {ticket.ip_progress_notes.length ? (
+                ticket.ip_progress_notes.map((n) => {
+                  const vitals = [
+                    n.pulse ? `Pulse ${n.pulse}` : null,
+                    n.bp ? `BP ${n.bp}` : null,
+                    n.spo2 ? `SpO2 ${n.spo2}` : null,
+                    n.respiratory_rate ? `RR ${n.respiratory_rate}` : null,
+                  ].filter(Boolean);
+                  const fields: Array<[string, string | null]> = [
+                    ["Chief complaint", n.chief_complaint],
+                    ["Issues", n.issues],
+                    ["Examination", n.examination],
+                    ["Plan", n.plan],
+                  ];
+                  return (
+                    <div className="rounded-lg border p-3" key={n.id}>
+                      <div className="flex justify-between text-xs text-muted-foreground">
+                        <span>{n.doctors?.display_name}</span>
+                        <span>{formatHospitalDate(n.created_at, true)}</span>
+                      </div>
+                      {vitals.length ? (
+                        <p className="mt-2 text-xs font-medium text-muted-foreground">
+                          {vitals.join(" · ")}
+                        </p>
+                      ) : null}
+                      <dl className="mt-2 space-y-1.5 text-sm">
+                        {fields
+                          .filter(([, value]) => value)
+                          .map(([label, value]) => (
+                            <div key={label}>
+                              <dt className="text-xs font-medium text-muted-foreground">
+                                {label}
+                              </dt>
+                              <dd className="whitespace-pre-wrap">{value}</dd>
+                            </div>
+                          ))}
+                      </dl>
+                      {n.note ? (
+                        <p className="mt-2 whitespace-pre-wrap text-sm text-muted-foreground">
+                          {n.note}
+                        </p>
+                      ) : null}
+                    </div>
+                  );
+                })
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  No progress notes recorded yet.
+                </p>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
@@ -259,7 +308,7 @@ export default async function IpTicketPage({
           <TabsContent value="requests" className="space-y-3">
             {ticket.ip_inventory_requests.map((request) => (
               <Card key={request.id}>
-                <CardHeader className="flex-row items-center justify-between">
+                <CardHeader className="flex flex-row items-center justify-between">
                   <div>
                     <CardTitle className="text-base">
                       {formatHospitalDate(request.created_at, true)}

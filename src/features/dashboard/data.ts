@@ -35,11 +35,16 @@ export async function getDashboardData(profile: Profile) {
     const [summaryResult, result] = await Promise.all([summaryPromise, supabase.from("ip_tickets").select("id,ticket_number,admission_at,room,bed,status,is_emergency,patients(name),doctors(display_name)").in("status", ["admitted", "discharge_pending"]).order("admission_at", { ascending: false }).limit(8)]);
     return { summary: (summaryResult.data ?? {}) as DashboardSummary, role: profile.role, activity: { kind: "ip" as const, rows: result.data ?? [] } };
   }
+  // Today only: a visit from a prior day is stale (already auto-cancelled if
+  // it was still waiting -- see the expire-stale-hospital-visits cron job)
+  // and showing it here just looks like yesterday's queue never cleared.
+  const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata" }).format(new Date());
   const [summaryResult, visitsResult] = await Promise.all([
     summaryPromise,
     supabase
       .from("visits")
       .select("id, token_number, visit_type, status, created_at, patients(name), doctors(display_name)")
+      .eq("visit_date", today)
       .order("created_at", { ascending: false })
       .limit(8),
   ]);

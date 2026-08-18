@@ -7,53 +7,65 @@ import { PrintButton } from "@/components/shared/print-button";
 import { HospitalLetterhead } from "@/components/shared/hospital-letterhead";
 import { getHospitalIdentity } from "@/lib/print/hospital-identity.server";
 
+// Keyed by prescription id, not visit id: a prescription dispensed through
+// "Dispense as Per Rx" for an IP patient has no visit at all (visit_id is
+// null, ip_ticket_id is set instead), and needs the exact same print page.
 type Rx = {
+  prescription_number: number;
   created_at: string;
-  patients: {
-    name: string;
-    uhid: string | null;
-    phone_normalized: string;
-    dob: string | null;
-    gender: string;
-  } | null;
   doctors: {
     display_name: string;
     qualification: string | null;
     registration_number: string | null;
     specialization: string | null;
   } | null;
-  departments: { name: string } | null;
-  // vitals/consultations/prescriptions each have a unique(visit_id) column,
-  // so PostgREST embeds a single object (or null) here, never an array --
-  // indexing with [0] silently discarded all three sections.
-  vitals: {
-    weight_kg: number | null;
-    temperature_c: number | null;
-    bp_systolic: number | null;
-    bp_diastolic: number | null;
-  } | null;
-  consultations: {
-    symptoms: string | null;
-    history: string | null;
-    examination: string | null;
-    assessment: string | null;
-    advice: string | null;
-  } | null;
-  test_orders: Array<{
-    test_name: string;
+  prescription_items: Array<{
+    medicine_name: string;
+    dose: string | null;
+    frequency: string | null;
+    duration: string | null;
+    route: string | null;
     notes: string | null;
-    created_at: string;
   }>;
-  prescriptions: {
-    prescription_number: number;
-    prescription_items: Array<{
-      medicine_name: string;
-      dose: string | null;
-      frequency: string | null;
-      duration: string | null;
-      route: string | null;
-      notes: string | null;
-    }>;
+  // vitals/consultations each have a unique(visit_id) column, so PostgREST
+  // embeds a single object (or null) here, never an array.
+  visits: {
+    created_at: string;
+    patients: {
+      name: string;
+      uhid: string | null;
+      phone_normalized: string;
+      dob: string | null;
+      gender: string;
+    } | null;
+    departments: { name: string } | null;
+    vitals: {
+      weight_kg: number | null;
+      temperature_c: number | null;
+      bp_systolic: number | null;
+      bp_diastolic: number | null;
+    } | null;
+    consultations: {
+      symptoms: string | null;
+      history: string | null;
+      examination: string | null;
+      assessment: string | null;
+      advice: string | null;
+      admission_recommended: boolean | null;
+      admission_ward_type: string | null;
+      admission_reason: string | null;
+    } | null;
+    test_orders: Array<{ test_name: string; notes: string | null; created_at: string }>;
+  } | null;
+  ip_tickets: {
+    admission_at: string;
+    patients: {
+      name: string;
+      uhid: string | null;
+      phone_normalized: string;
+      dob: string | null;
+      gender: string;
+    } | null;
   } | null;
 };
 export default async function PrescriptionPrintPage({
@@ -64,17 +76,23 @@ export default async function PrescriptionPrintPage({
   const { id } = await params;
   const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase
-    .from("visits")
+    .from("prescriptions")
     .select(
-      "created_at,patients(name,uhid,phone_normalized,dob,gender),doctors(display_name,qualification,registration_number,specialization),departments(name),vitals(weight_kg,temperature_c,bp_systolic,bp_diastolic),consultations(symptoms,history,examination,assessment,advice),test_orders(test_name,notes,created_at),prescriptions(prescription_number,prescription_items(medicine_name,dose,frequency,duration,route,notes))",
+      "prescription_number,created_at,doctors(display_name,qualification,registration_number,specialization),prescription_items(medicine_name,dose,frequency,duration,route,notes),visits(created_at,patients(name,uhid,phone_normalized,dob,gender),departments(name),vitals(weight_kg,temperature_c,bp_systolic,bp_diastolic),consultations(symptoms,history,examination,assessment,advice,admission_recommended,admission_ward_type,admission_reason),test_orders(test_name,notes,created_at)),ip_tickets(admission_at,patients(name,uhid,phone_normalized,dob,gender))",
     )
     .eq("id", id)
-    .eq("status", "completed")
     .single();
   if (error || !data) notFound();
+  const rx = data as unknown as Rx;
+  const visit = rx.visits;
+  const ipTicket = rx.ip_tickets;
+  const patient = visit?.patients ?? ipTicket?.patients;
+  const doctor = rx.doctors;
+  if (!patient || !doctor) notFound();
   // Money is kept off the prescription unless the hospital explicitly opts in
   // (AGENTS.md 24). The fee itself lives on visits, which is column-restricted,
-  // so it is read through the finance RPC only when the setting is on.
+  // so it is read through the finance RPC only when the setting is on, and
+  // only for OP -- IP fees are billed on the ticket, not per-prescription.
   const [{ data: printSettings }, identity] = await Promise.all([
     supabase
       .from("hospital_settings")
@@ -84,19 +102,18 @@ export default async function PrescriptionPrintPage({
     getHospitalIdentity(),
   ]);
   let feePaise: number | null = null;
-  if (printSettings?.print_fee_on_prescription) {
-    const { data: finance } = await supabase.rpc("get_visit_financial_summaries", { p_visit_ids: [id] });
+  if (printSettings?.print_fee_on_prescription && visit) {
+    const { data: finance } = await supabase.rpc("get_visit_financial_summaries", {
+      p_visit_ids: [id],
+    });
     const row = (finance ?? [])[0] as { fee_paise?: number } | undefined;
     feePaise = typeof row?.fee_paise === "number" ? row.fee_paise : null;
   }
-  const rx = data as unknown as Rx;
-  const patient = rx.patients;
-  const doctor = rx.doctors;
-  if (!patient || !doctor) notFound();
-  const v = rx.vitals;
-  const c = rx.consultations;
-  const medicines = rx.prescriptions?.prescription_items ?? [];
-  const prescriptionNumber = rx.prescriptions?.prescription_number;
+  const v = visit?.vitals ?? null;
+  const c = visit?.consultations ?? null;
+  const testOrders = visit?.test_orders ?? [];
+  const medicines = rx.prescription_items;
+  const visitDate = visit?.created_at ?? ipTicket?.admission_at ?? rx.created_at;
   return (
     <main className="mx-auto min-h-screen max-w-[210mm] bg-white p-4 text-[11px] text-black sm:p-8">
       <div data-print-hidden className="mb-4 flex justify-end">
@@ -122,14 +139,11 @@ export default async function PrescriptionPrintPage({
             <b>Patient ID:</b> {patient.uhid ?? "—"}
           </p>
           <p>
-            <b>Date:</b> {formatHospitalDate(rx.created_at)}
+            <b>Date:</b> {formatHospitalDate(visitDate)}
           </p>
-          {prescriptionNumber ? (
-            <p>
-              <b>Prescription No:</b>{" "}
-              {formatPrescriptionNumber(prescriptionNumber)}
-            </p>
-          ) : null}
+          <p>
+            <b>Prescription No:</b> {formatPrescriptionNumber(rx.prescription_number)}
+          </p>
           <p>
             <b>Weight:</b> {v?.weight_kg ? `${v.weight_kg} kg` : "—"}
           </p>
@@ -159,7 +173,7 @@ export default async function PrescriptionPrintPage({
               </section>
             ))}
         </div>
-        {rx.test_orders.length ? (
+        {testOrders.length ? (
           <section className="mb-4">
             <h3 className="mb-2 font-bold uppercase tracking-wide text-primary">
               Investigations
@@ -173,7 +187,7 @@ export default async function PrescriptionPrintPage({
                 </tr>
               </thead>
               <tbody>
-                {rx.test_orders.map((test, index) => (
+                {testOrders.map((test, index) => (
                   <tr key={`${test.test_name}-${index}`}>
                     <td className="border p-2">{test.test_name}</td>
                     <td className="border p-2">
@@ -186,11 +200,11 @@ export default async function PrescriptionPrintPage({
             </table>
           </section>
         ) : null}
-        {medicines.length ? (
-          <section>
-            <h3 className="mb-2 font-bold uppercase tracking-wide text-primary">
-              Rx · Medicines
-            </h3>
+        <section>
+          <h3 className="mb-2 font-bold uppercase tracking-wide text-primary">
+            Rx · Medicines
+          </h3>
+          {medicines.length ? (
             <table className="w-full border-collapse">
               <thead className="print:table-header-group">
                 <tr>
@@ -221,6 +235,21 @@ export default async function PrescriptionPrintPage({
                 ))}
               </tbody>
             </table>
+          ) : (
+            <p className="italic text-black/60">
+              No medicines prescribed at this visit.
+            </p>
+          )}
+        </section>
+        {c?.admission_recommended ? (
+          <section className="mt-4 border border-primary/40 bg-primary/5 p-2">
+            <h3 className="font-bold uppercase tracking-wide text-primary">
+              Advised: IP Admission
+            </h3>
+            <p className="mt-1">
+              Ward: {c.admission_ward_type ?? "—"}
+              {c.admission_reason ? ` · Reason: ${c.admission_reason}` : ""}
+            </p>
           </section>
         ) : null}
         {c?.advice ? (
@@ -251,7 +280,7 @@ export default async function PrescriptionPrintPage({
           <p className="text-right">
             <span className="font-semibold">{doctor.display_name}</span>
             <br />
-            {[doctor.qualification, doctor.specialization ?? rx.departments?.name]
+            {[doctor.qualification, doctor.specialization ?? visit?.departments?.name]
               .filter(Boolean)
               .join(", ")}
             <br />

@@ -16,6 +16,10 @@ export const PERMISSIONS = {
   recordVitals: ["admin", "op", "doctor"],
   writeConsultation: ["admin", "doctor"],
   dispense: ["admin", "pharmacy"],
+  // A consultant who wrote the prescription on paper never touches the
+  // system; pharmacy enters it digitally so it flows through the same
+  // pending queue and dispense screen ("Dispense as Per Rx").
+  dispenseAsPerRx: ["admin", "pharmacy"],
   manageIp: ["admin", "ip"],
   admitIp: ["admin", "ip", "doctor"],
   // IP staff or the treating doctor can ask pharmacy for consumables; only

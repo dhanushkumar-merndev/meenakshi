@@ -13,12 +13,15 @@ export function FilterTabs({
   param = "status",
   params = {},
   ariaLabel,
+  className,
 }: {
   tabs: FilterTab[];
   active: string;
   param?: string;
   params?: Record<string, string | undefined>;
   ariaLabel: string;
+  /** Override the default mb-4 -- e.g. mb-0 when embedded in a PageHeader's actions row. */
+  className?: string;
 }) {
   const href = (value: string) => {
     const search = new URLSearchParams();
@@ -30,7 +33,10 @@ export function FilterTabs({
   return (
     <nav
       aria-label={ariaLabel}
-      className="mb-4 flex gap-1 overflow-x-auto rounded-lg bg-muted p-1"
+      // p-0.5 + py-1 lands the pill bar at ~32px, matching the default h-8
+      // Button it is so often paired with in a PageHeader actions row --
+      // the original p-1 + py-1.5 made the whole bar visibly taller.
+      className={cn("mb-4 flex gap-1 overflow-x-auto rounded-lg bg-muted p-0.5", className)}
     >
       {tabs.map((tab) => {
         const selected = tab.value === active;
@@ -40,7 +46,7 @@ export function FilterTabs({
             href={href(tab.value)}
             aria-current={selected ? "page" : undefined}
             className={cn(
-              "flex shrink-0 items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium whitespace-nowrap transition-colors",
+              "flex shrink-0 items-center gap-1.5 rounded-md px-3 py-1 text-sm font-medium whitespace-nowrap transition-colors",
               "focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
               selected
                 ? "bg-background text-foreground shadow-sm"

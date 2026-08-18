@@ -20,7 +20,37 @@ export function ProgressNoteDialog({ticketId,defaultFee}:{ticketId:string;
   const[chargeable,setChargeable]=useState(false);
   const[fee,setFee]=useState(defaultFee??"");
   const{open,setOpen}=useAutoCloseDialog(state,"Progress note saved.");
-  return <Dialog open={open} onOpenChange={setOpen}><DialogTrigger render={<Button size="sm" variant="outline"/>}><NotebookPen/> Progress Note</DialogTrigger><DialogContent><form action={action} className="contents"><DialogHeader><DialogTitle>Add progress note</DialogTitle><DialogDescription>A chargeable visit adds one doctor charge to the IP ticket, exactly once.</DialogDescription></DialogHeader><input type="hidden" name="ticketId" value={ticketId}/><input type="hidden" name="idempotencyKey" value={key}/><input type="hidden" name="chargeable" value={chargeable?"on":""}/>{state.message&&!state.ok?<Alert variant="destructive"><AlertDescription>{state.message}</AlertDescription></Alert>:null}<div className="space-y-2"><Label htmlFor="progress-note">Clinical note</Label><Textarea id="progress-note" name="note" rows={6} required/></div><label className="flex items-center gap-2 text-sm"><Checkbox checked={chargeable} onCheckedChange={(checked)=>setChargeable(checked===true)}/> Charge as an IP doctor visit</label>{/* A ward round and a detailed review are not worth the same, and the
+  return <Dialog open={open} onOpenChange={setOpen}><DialogTrigger render={<Button size="sm" variant="outline"/>}><NotebookPen/> Progress Note</DialogTrigger><DialogContent className="max-h-[calc(100vh-2rem)] overflow-y-auto sm:max-w-2xl"><form action={action} className="contents"><DialogHeader><DialogTitle>Add progress note</DialogTitle><DialogDescription>A chargeable visit adds one doctor charge to the IP ticket, exactly once.</DialogDescription></DialogHeader><input type="hidden" name="ticketId" value={ticketId}/><input type="hidden" name="idempotencyKey" value={key}/><input type="hidden" name="chargeable" value={chargeable?"on":""}/>{state.message&&!state.ok?<Alert variant="destructive"><AlertDescription>{state.message}</AlertDescription></Alert>:null}
+      <div className="space-y-2">
+        <Label>Vitals</Label>
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+          <Input name="pulse" placeholder="Pulse" aria-label="Pulse" />
+          <Input name="bp" placeholder="BP" aria-label="Blood pressure" />
+          <Input name="spo2" placeholder="SpO2" aria-label="SpO2" />
+          <Input name="respiratoryRate" placeholder="RR" aria-label="Respiratory rate" />
+        </div>
+      </div>
+      <div className="space-y-2">
+        <Label htmlFor="progress-complaint">Chief complaint</Label>
+        <Textarea id="progress-complaint" name="chiefComplaint" rows={2} />
+      </div>
+      <div className="space-y-2">
+        <Label htmlFor="progress-issues">Issues</Label>
+        <Textarea id="progress-issues" name="issues" rows={2} />
+      </div>
+      <div className="grid gap-4 sm:grid-cols-2">
+        <div className="space-y-2">
+          <Label htmlFor="progress-examination">Examination</Label>
+          <Textarea id="progress-examination" name="examination" rows={3} />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="progress-plan">Plan</Label>
+          <Textarea id="progress-plan" name="plan" rows={3} />
+        </div>
+      </div>
+      <div className="space-y-2"><Label htmlFor="progress-note">Additional notes</Label><Textarea id="progress-note" name="note" rows={3}/></div>
+      {state.message&&!state.ok?null:<p className="text-xs text-muted-foreground">Record at least one field above. Treatment / medicine changes are entered by pharmacy via &ldquo;Dispense as Per Rx&rdquo;, matched against actual stock.</p>}
+      <label className="flex items-center gap-2 text-sm"><Checkbox checked={chargeable} onCheckedChange={(checked)=>setChargeable(checked===true)}/> Charge as an IP doctor visit</label>{/* A ward round and a detailed review are not worth the same, and the
       doctor may waive the charge, so the amount is typed here rather than
       always taken from their configured fee. */}
 {chargeable?<div className="max-w-xs space-y-2"><Label htmlFor="progress-fee">Visit charge (₹)</Label><Input id="progress-fee" name="fee" inputMode="decimal" value={fee} onChange={(event)=>setFee(event.target.value)} placeholder="500"/><p className="text-xs text-muted-foreground">Pre-filled with the configured IP visit fee. Enter 0 to record the visit without charging.</p><p className="text-xs text-destructive">{state.fieldErrors?.fee?.[0]}</p></div>:null}<DialogFooter showCloseButton><Button disabled={pending} type="submit">{pending?<LoaderCircle className="animate-spin"/>:<NotebookPen/>} Save Note</Button></DialogFooter></form></DialogContent></Dialog>}

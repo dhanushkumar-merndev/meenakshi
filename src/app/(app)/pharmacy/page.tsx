@@ -1,12 +1,17 @@
+import Link from "next/link";
+import { Printer } from "lucide-react";
 import { requireRoute } from "@/lib/auth/dal";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { formatHospitalDate } from "@/lib/domain/date";
 import { formatInr } from "@/lib/domain/money";
 import { formatPrescriptionNumber } from "@/lib/domain/prescription";
 import { DispenseDialog } from "@/features/pharmacy/dispense-dialog";
+import { ManualPrescriptionDialog } from "@/features/pharmacy/manual-prescription-dialog";
 import { DebouncedSearchInput } from "@/components/shared/debounced-search-input";
+import { FilterTabs } from "@/components/shared/filter-tabs";
 import { PageHeader } from "@/components/shared/page-header";
 import { StatusBadge } from "@/components/shared/status-badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
   Table,
@@ -32,10 +37,17 @@ type Rx = {
   doctor_name: string | null;
   consultation_fee_paise: number;
   consultation_balance_paise: number;
+  latest_sale_id: string | null;
   items: Array<{
     id: string;
     medicine_id: string | null;
     medicine_name: string;
+    dose: string | null;
+    frequency: string | null;
+    duration: string | null;
+    route: string | null;
+    dosage_form: string | null;
+    strength: string | null;
     requested_quantity: number;
     dispensed_quantity: number;
   }>;
@@ -52,22 +64,27 @@ type Batch = {
 export default async function PharmacyPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string }>;
+  searchParams: Promise<{ q?: string; status?: string }>;
 }) {
   await requireRoute("/pharmacy");
-  const q = (await searchParams).q?.trim() ?? "";
+  const params = await searchParams;
+  const q = params.q?.trim() ?? "";
+  const selectedStatus =
+    params.status === "completed" || params.status === "all" ? params.status : "pending";
   const supabase = await createSupabaseServerClient();
   // Expiry is not swept here: the Supabase pg_cron job
   // "expire-stale-hospital-prescriptions" runs every minute, so doing it per
   // request only added a round-trip and Vercel function time.
   // Read through an RPC: the pharmacy role has no SELECT on public.patients, so
   // an embedded join would silently return null patient names.
-  const [rxResult, batchResult] = await Promise.all([
+  const [rxResult, batchResult, doctorsResult] = await Promise.all([
     supabase.rpc("list_pending_prescriptions", {
       p_query: q || null,
       p_limit: 50,
+      p_status_filter: selectedStatus,
     }),
     supabase.rpc("list_available_dispense_batches", { p_limit: 500 }),
+    supabase.from("doctors").select("id,display_name").eq("active", true).order("display_name"),
   ]);
   if (rxResult.error) {
     throw new Error("Pending prescriptions could not be loaded.");
@@ -76,6 +93,7 @@ export default async function PharmacyPage({
     throw new Error("Available medicine batches could not be loaded.");
   }
   const prescriptions = (rxResult.data ?? []) as unknown as Rx[];
+  const doctors = (doctorsResult.data ?? []).map((d) => ({ id: d.id, label: d.display_name }));
   const batches = ((batchResult.data ?? []) as unknown as Batch[]).map((b) => ({
     id: b.id,
     medicineId: b.medicine_id,
@@ -88,14 +106,29 @@ export default async function PharmacyPage({
   return (
     <div>
       <PageHeader
-        title="Pending Prescriptions"
+        title="Prescriptions"
         description="Full dispensing completes the prescription; partial quantities remain pending; unused prescriptions expire after 24 hours"
+        actions={
+          <>
+            <FilterTabs
+              ariaLabel="Filter prescriptions by status"
+              active={selectedStatus}
+              params={{ q }}
+              tabs={[
+                { label: "Pending", value: "pending" },
+                { label: "Completed", value: "completed" },
+                { label: "All", value: "all" },
+              ]}
+            />
+            <ManualPrescriptionDialog doctors={doctors} />
+          </>
+        }
       />
       <DebouncedSearchInput
         className="mb-4 max-w-md"
         initialValue={q}
         placeholder="Search token, patient name, phone or RX number"
-        ariaLabel="Search pending prescriptions by token, patient or prescription number"
+        ariaLabel="Search prescriptions by token, patient or prescription number"
       />
       <Card>
         <CardContent className="p-0">
@@ -181,27 +214,53 @@ export default async function PharmacyPage({
                           <StatusBadge status={rx.status} />
                         </TableCell>
                         <TableCell className="text-right">
-                          <DispenseDialog
-                            key={`${rx.id}:${rx.status}:${rx.items.reduce((sum, item) => sum + item.dispensed_quantity, 0)}`}
-                            prescriptionId={rx.id}
-                            prescriptionNumber={formatPrescriptionNumber(
-                              rx.prescription_number,
-                            )}
-                            patientName={patient ?? "Patient"}
-                            source={source}
-                            consultationBalancePaise={
-                              rx.consultation_balance_paise
-                            }
-                            doctorName={rx.doctor_name}
-                            items={rx.items.map((item) => ({
-                              id: item.id,
-                              medicineId: item.medicine_id,
-                              name: item.medicine_name,
-                              requested: item.requested_quantity,
-                              dispensed: item.dispensed_quantity,
-                            }))}
-                            batches={batches}
-                          />
+                          {rx.status === "pending" || rx.status === "partially_dispensed" ? (
+                            <DispenseDialog
+                              key={`${rx.id}:${rx.status}:${rx.items.reduce((sum, item) => sum + item.dispensed_quantity, 0)}`}
+                              prescriptionId={rx.id}
+                              prescriptionNumber={formatPrescriptionNumber(
+                                rx.prescription_number,
+                              )}
+                              patientName={patient ?? "Patient"}
+                              source={source}
+                              consultationBalancePaise={
+                                rx.consultation_balance_paise
+                              }
+                              doctorName={rx.doctor_name}
+                              items={rx.items.map((item) => ({
+                                id: item.id,
+                                medicineId: item.medicine_id,
+                                name: item.medicine_name,
+                                dose: item.dose,
+                                frequency: item.frequency,
+                                duration: item.duration,
+                                route: item.route,
+                                dosageForm: item.dosage_form,
+                                strength: item.strength,
+                                requested: item.requested_quantity,
+                                dispensed: item.dispensed_quantity,
+                              }))}
+                              batches={batches}
+                            />
+                          ) : (
+                            <div className="flex justify-end gap-2">
+                              {rx.latest_sale_id ? (
+                                <Button
+                                  size="sm"
+                                  render={<Link href={`/print/receipt/${rx.latest_sale_id}`} target="_blank" />}
+                                >
+                                  <Printer /> Receipt
+                                </Button>
+                              ) : null}
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                render={<Link href={`/print/prescription/${rx.id}`} target="_blank" />}
+                              >
+                                <Printer /> Prescription
+                              </Button>
+                            </div>
+                          )}
                         </TableCell>
                       </TableRow>
                     );
@@ -213,8 +272,12 @@ export default async function PharmacyPage({
                       className="h-32 text-center text-muted-foreground"
                     >
                       {q
-                        ? "No pending prescription matches that search."
-                        : "No prescriptions waiting for dispensing."}
+                        ? "No prescription matches that search."
+                        : selectedStatus === "completed"
+                          ? "No dispensed prescriptions yet."
+                          : selectedStatus === "all"
+                            ? "No prescriptions yet."
+                            : "No prescriptions waiting for dispensing."}
                     </TableCell>
                   </TableRow>
                 )}

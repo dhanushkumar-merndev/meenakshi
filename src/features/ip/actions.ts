@@ -68,6 +68,11 @@ export async function createAdmission(
       return { ok: false, message: "The admission database function is being updated. Refresh and retry." };
     if (message.includes("already admitted") || error?.code === "23505")
       return { ok: false, message: "This patient or room already has an active admission." };
+    if (message.includes("outstanding op consultation fee"))
+      return {
+        ok: false,
+        message: "This patient's OP consultation fee is still outstanding. Collect it at the pharmacy/reception counter, then admit.",
+      };
     return { ok: false, message: `Admission could not be created${error?.code ? ` (${error.code})` : ""}.` };
   }
   revalidatePath("/ip");
@@ -210,14 +215,22 @@ export async function addIpPayment(
   return { ok: true, message: "Payment recorded." };
 }
 
-const noteSchema=z.object({ticketId:databaseIdSchema,note:z.string().min(2).max(10000),chargeable:z.string().optional(),fee:z.string().trim().optional(),idempotencyKey:databaseIdSchema});
+const noteSchema=z.object({ticketId:databaseIdSchema,note:z.string().max(10000).optional(),chargeable:z.string().optional(),fee:z.string().trim().optional(),idempotencyKey:databaseIdSchema,
+  pulse:z.string().max(20).optional(),bp:z.string().max(20).optional(),spo2:z.string().max(20).optional(),respiratoryRate:z.string().max(20).optional(),
+  chiefComplaint:z.string().max(2000).optional(),issues:z.string().max(2000).optional(),examination:z.string().max(2000).optional(),plan:z.string().max(2000).optional()});
 export async function addProgressNote(_:ActionState,formData:FormData):Promise<ActionState>{await requirePermission("writeConsultation");const parsed=noteSchema.safeParse(Object.fromEntries(formData));if(!parsed.success)return{ok:false,fieldErrors:parsed.error.flatten().fieldErrors};
+  // Looks like a consultation, so it needs at least one clinical field --
+  // an empty round with nothing recorded is not a note.
+  const fields=[parsed.data.note,parsed.data.chiefComplaint,parsed.data.issues,parsed.data.examination,parsed.data.plan,parsed.data.pulse,parsed.data.bp,parsed.data.spo2,parsed.data.respiratoryRate];
+  if(!fields.some((f)=>f&&f.trim().length>0))return{ok:false,message:"Record at least a vital, a clinical field, or a note."};
   // The doctor types what this visit is worth. Blank falls back to their
   // configured IP visit fee; 0 is a deliberate waiver and must be kept.
   const chargeable=parsed.data.chargeable==="on";let feePaise:number|null=null;
   if(chargeable&&parsed.data.fee){try{feePaise=rupeesToPaise(parsed.data.fee);}catch(error){return{ok:false,fieldErrors:{fee:[(error as Error).message]}};}
     if(feePaise<0)return{ok:false,fieldErrors:{fee:["Fee cannot be negative."]}};}
-  const supabase=await createSupabaseServerClient();const{error}=await supabase.rpc("add_ip_progress_note",{p_ticket_id:parsed.data.ticketId,p_note:parsed.data.note,p_chargeable:chargeable,p_idempotency_key:parsed.data.idempotencyKey,p_fee_paise:feePaise});if(error)return{ok:false,message:"Progress note could not be saved."};revalidatePath(`/ip/${parsed.data.ticketId}`);return{ok:true,message:"Progress note saved."}}
+  const supabase=await createSupabaseServerClient();const{error}=await supabase.rpc("add_ip_progress_note",{p_ticket_id:parsed.data.ticketId,p_note:parsed.data.note||null,p_chargeable:chargeable,p_idempotency_key:parsed.data.idempotencyKey,p_fee_paise:feePaise,
+    p_pulse:parsed.data.pulse||null,p_bp:parsed.data.bp||null,p_spo2:parsed.data.spo2||null,p_respiratory_rate:parsed.data.respiratoryRate||null,
+    p_chief_complaint:parsed.data.chiefComplaint||null,p_issues:parsed.data.issues||null,p_examination:parsed.data.examination||null,p_plan:parsed.data.plan||null});if(error)return{ok:false,message:"Progress note could not be saved."};revalidatePath(`/ip/${parsed.data.ticketId}`);return{ok:true,message:"Progress note saved."}}
 const summarySchema=z.object({ticketId:databaseIdSchema,finalDiagnosis:z.string().min(2).max(5000),hospitalCourse:z.string().min(2).max(10000),treatmentSummary:z.string().max(10000).optional(),dischargeMedicines:z.string().max(10000).optional(),dischargeAdvice:z.string().min(2).max(10000),followUp:z.string().max(2000).optional()});
 export async function saveDischargeSummary(_:ActionState,formData:FormData):Promise<ActionState>{await requirePermission("writeConsultation");const parsed=summarySchema.safeParse(Object.fromEntries(formData));if(!parsed.success)return{ok:false,fieldErrors:parsed.error.flatten().fieldErrors};const supabase=await createSupabaseServerClient();const{error}=await supabase.rpc("save_ip_discharge_summary",{p_ticket_id:parsed.data.ticketId,p_final_diagnosis:parsed.data.finalDiagnosis,p_hospital_course:parsed.data.hospitalCourse,p_treatment_summary:parsed.data.treatmentSummary||null,p_discharge_medicines:parsed.data.dischargeMedicines||null,p_discharge_advice:parsed.data.dischargeAdvice,p_follow_up:parsed.data.followUp||null});if(error)return{ok:false,message:"Discharge summary could not be saved."};revalidatePath(`/ip/${parsed.data.ticketId}`);revalidatePath("/ip");return{ok:true,message:"Clinical discharge summary saved; IP staff may complete discharge."}}
 const completeSchema=z.object({ticketId:databaseIdSchema});
