@@ -21,6 +21,8 @@ export function BulkClinicalImport() {
       columns={[
         { key: "term_type", label: "Type", value: (row) => row.term_type },
         { key: "display_text", label: "Term", value: (row) => row.display_text },
+        { key: "code", label: "Code", value: (row) => row.code || "—" },
+        { key: "code_system", label: "Code System", value: (row) => row.code_system || "—" },
         { key: "search_aliases", label: "Aliases", value: (row) => row.search_aliases.join(", ") || "—" },
         { key: "active", label: "Active", value: (row) => (row.active ? "Yes" : "No") },
       ]}

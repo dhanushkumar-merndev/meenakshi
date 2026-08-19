@@ -6,7 +6,14 @@ import {
   type ImportErrorRow,
 } from "@/lib/domain/bulk-import";
 
-export const CLINICAL_IMPORT_HEADERS = ["term_type", "display_text", "search_aliases", "active"] as const;
+export const CLINICAL_IMPORT_HEADERS = [
+  "term_type",
+  "display_text",
+  "code",
+  "code_system",
+  "search_aliases",
+  "active",
+] as const;
 
 export const CLINICAL_TERM_TYPES = [
   "symptom",
@@ -22,6 +29,8 @@ export const CLINICAL_TERM_TYPES = [
 export type NormalizedClinicalImport = {
   term_type: string;
   display_text: string;
+  code: string;
+  code_system: string;
   search_aliases: string[];
   active: boolean;
 };
@@ -54,6 +63,15 @@ export function validateClinicalImportRows(input: unknown[]): {
     }
     if (display_text.length < 2) errors.push("display_text is required");
 
+    // Both optional, but only together -- a code with no system attached to
+    // it (or a system with no code) is not useful, so the pair is dropped
+    // rather than half-saved. This is how a hospital loads its own ICD-10,
+    // SNOMED-CT, or any other coded terminology through the sheet.
+    const code = cellText(data.code);
+    const code_system = cellText(data.code_system);
+    if (code && !code_system) errors.push("code_system is required when code is set");
+    if (code_system && !code) errors.push("code is required when code_system is set");
+
     let active = true;
     try {
       active = cellBoolean(data.active);
@@ -76,7 +94,7 @@ export function validateClinicalImportRows(input: unknown[]): {
       invalid.push({ row: index + 2, data, errors });
       return;
     }
-    valid.push({ term_type, display_text, search_aliases, active });
+    valid.push({ term_type, display_text, code, code_system, search_aliases, active });
   });
 
   if (input.length > MAX_IMPORT_ROWS) {

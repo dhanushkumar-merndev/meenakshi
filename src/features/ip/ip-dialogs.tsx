@@ -196,11 +196,25 @@ export function AdmissionDialog({
     </Dialog>
   );
 }
+const CUSTOM_CHARGE_CATEGORIES: Array<[string, string]> = [
+  ["doctor", "Doctor"],
+  ["ward", "Ward"],
+  ["room", "Room"],
+  ["bed", "Bed"],
+  ["treatment", "Treatment"],
+  ["test", "Test"],
+  ["pharmacy", "Pharmacy"],
+  ["other", "Other"],
+];
 export function ChargeDialog({ ticketId, presets }: { ticketId: string; presets: Array<{ id: string; category: string; name: string; rate: string }> }) {
   const [state, action, pending] = useActionState(addIpCharge, initial);
-  // Every IP charge comes from the configured Charges master, so the running
-  // bill only ever contains rates the hospital has approved.
-  const [presetId, setPresetId] = useState(presets[0]?.id ?? "");
+  // Every preset charge comes from the configured Charges master, so most
+  // billing only ever uses rates the hospital has approved. "Custom" is the
+  // escape hatch for the one-off item that isn't in that master -- name,
+  // quantity and amount typed in directly (addIpCharge already supports this
+  // path; only the dialog never offered it).
+  const [presetId, setPresetId] = useState(presets[0]?.id ?? "custom");
+  const isCustom = presetId === "custom";
   const initialPreset = presets[0];
   const [category, setCategory] = useState(initialPreset?.category ?? "treatment");
   const [item, setItem] = useState(initialPreset?.name ?? "");
@@ -233,6 +247,12 @@ export function ChargeDialog({ ticketId, presets }: { ticketId: string; presets:
                 onValueChange={(value) => {
                   const id = String(value);
                   setPresetId(id);
+                  if (id === "custom") {
+                    setItem("");
+                    setRate("");
+                    setCategory("other");
+                    return;
+                  }
                   const preset = presets.find((entry) => entry.id === id);
                   if (preset) {
                     setCategory(preset.category);
@@ -246,19 +266,48 @@ export function ChargeDialog({ ticketId, presets }: { ticketId: string; presets:
                       preset id rather than its name. */}
                   <SelectValue placeholder="Select configured charge">
                     {() => {
+                      if (isCustom) return "Custom (enter manually)";
                       const preset = presets.find((entry) => entry.id === presetId);
                       return preset ? `${preset.name} · ₹${preset.rate}` : "Select configured charge";
                     }}
                   </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
+                  <SelectItem value="custom" label="Custom (enter manually)">
+                    Custom (enter manually)
+                  </SelectItem>
                   {presets.map((preset) => <SelectItem key={preset.id} value={preset.id} label={`${preset.name} · ₹${preset.rate}`}>{preset.name} · ₹{preset.rate}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
+            {isCustom ? (
+              <div className="space-y-2">
+                <Label htmlFor="charge-category">Category</Label>
+                <Select value={category} onValueChange={(value) => setCategory(String(value))}>
+                  <SelectTrigger id="charge-category" className="w-full">
+                    <SelectValue>{() => CUSTOM_CHARGE_CATEGORIES.find(([v]) => v === category)?.[1] ?? category}</SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    {CUSTOM_CHARGE_CATEGORIES.map(([value, label]) => (
+                      <SelectItem key={value} value={value}>
+                        {label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            ) : null}
             <div className="space-y-2">
               <Label htmlFor="item">Item</Label>
-              <Input id="item" name="item" value={item} readOnly required />
+              <Input
+                id="item"
+                name="item"
+                value={item}
+                onChange={isCustom ? (event) => setItem(event.target.value) : undefined}
+                placeholder={isCustom ? "e.g. Wheelchair rental" : undefined}
+                readOnly={!isCustom}
+                required
+              />
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-2">
@@ -272,13 +321,22 @@ export function ChargeDialog({ ticketId, presets }: { ticketId: string; presets:
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="rate">Rate</Label>
-                <Input id="rate" name="rate" inputMode="decimal" value={rate} readOnly required />
+                <Label htmlFor="rate">{isCustom ? "Amount (₹)" : "Rate"}</Label>
+                <Input
+                  id="rate"
+                  name="rate"
+                  inputMode="decimal"
+                  value={rate}
+                  onChange={isCustom ? (event) => setRate(event.target.value) : undefined}
+                  placeholder={isCustom ? "0.00" : undefined}
+                  readOnly={!isCustom}
+                  required
+                />
               </div>
             </div>
           </div>
           <DialogFooter showCloseButton>
-            <Button disabled={pending || !presetId} type="submit">
+            <Button disabled={pending || !presetId || (isCustom && (!item.trim() || !rate.trim()))} type="submit">
               {pending ? <LoaderCircle className="animate-spin" /> : <Plus />}{" "}
               Add Charge
             </Button>

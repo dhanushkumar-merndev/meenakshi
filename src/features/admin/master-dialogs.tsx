@@ -259,6 +259,10 @@ export function ReportCategoryDialog({
   );
 }
 
+// Suggestions only -- code_system is free text so a hospital is never
+// blocked from recording a coding system this list hasn't heard of yet.
+const CODE_SYSTEM_SUGGESTIONS = ["ICD-10", "SNOMED-CT", "Other"];
+
 export function ClinicalTermDialog({
   item,
 }: {
@@ -268,6 +272,8 @@ export function ClinicalTermDialog({
     displayText: string;
     aliases: string;
     source: string;
+    code: string | null;
+    codeSystem: string | null;
     active: boolean;
   };
 }) {
@@ -329,6 +335,35 @@ export function ClinicalTermDialog({
               <Label>Search aliases (comma separated)</Label>
               <Textarea name="aliases" defaultValue={item?.aliases} />
             </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label>Code</Label>
+                <Input
+                  name="code"
+                  placeholder="e.g. J45.9 or a SNOMED-CT concept ID"
+                  defaultValue={item?.code ?? ""}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Code system</Label>
+                <Input
+                  name="codeSystem"
+                  list="code-system-suggestions"
+                  placeholder="ICD-10, SNOMED-CT, Other…"
+                  defaultValue={item?.codeSystem ?? ""}
+                />
+                <datalist id="code-system-suggestions">
+                  {CODE_SYSTEM_SUGGESTIONS.map((option) => (
+                    <option key={option} value={option} />
+                  ))}
+                </datalist>
+              </div>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Optional. Both fields are needed together -- a code entered
+              without its system (or vice versa) is not saved. Leave both
+              blank for an uncoded, hospital-specific term.
+            </p>
             <Active value={item?.active} />
           </div>
           <DialogFooter showCloseButton>

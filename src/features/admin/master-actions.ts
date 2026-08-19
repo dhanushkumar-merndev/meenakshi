@@ -59,10 +59,14 @@ export async function saveReportCategory(_: ActionState, formData: FormData): Pr
 }
 
 export async function saveClinicalTerm(_: ActionState, formData: FormData): Promise<ActionState> {
-  const parsed = z.object({ id: optionalId, type: z.string().trim().min(2).max(50), displayText: z.string().trim().min(2).max(300), aliases: z.string().trim().max(1000).optional(), source: z.string().trim().min(2).max(120), active: z.string().optional() }).safeParse(Object.fromEntries(formData));
+  const parsed = z.object({ id: optionalId, type: z.string().trim().min(2).max(50), displayText: z.string().trim().min(2).max(300), aliases: z.string().trim().max(1000).optional(), source: z.string().trim().min(2).max(120), code: z.string().trim().max(50).optional(), codeSystem: z.string().trim().max(50).optional(), active: z.string().optional() }).safeParse(Object.fromEntries(formData));
   if (!parsed.success) return { ok: false, fieldErrors: parsed.error.flatten().fieldErrors };
   const { actor, admin } = await adminActor();
-  const values = { term_type: parsed.data.type, display_text: parsed.data.displayText, search_aliases: (parsed.data.aliases ?? "").split(",").map((item) => item.trim()).filter(Boolean), source: parsed.data.source, active: parsed.data.active === "on" };
+  // A code without its system (or vice versa) is meaningless, so both are
+  // dropped together rather than storing a code nobody can attribute --
+  // this is how a hospital adds its own SNOMED-CT (or any other) coded terms
+  // one at a time, the same code_system column the bulk import already writes.
+  const values = { term_type: parsed.data.type, display_text: parsed.data.displayText, search_aliases: (parsed.data.aliases ?? "").split(",").map((item) => item.trim()).filter(Boolean), source: parsed.data.source, code: parsed.data.code && parsed.data.codeSystem ? parsed.data.code : null, code_system: parsed.data.code && parsed.data.codeSystem ? parsed.data.codeSystem : null, active: parsed.data.active === "on" };
   const query = parsed.data.id ? admin.from("clinical_terms").update(values).eq("id", parsed.data.id) : admin.from("clinical_terms").insert(values);
   const { error } = await query;
   if (error) return { ok: false, message: error.code === "23505" ? "This clinical term already exists." : "Clinical term could not be saved." };

@@ -25,7 +25,11 @@ export async function updateSession(request: NextRequest) {
   const { data } = await supabase.auth.getClaims();
   const path = request.nextUrl.pathname;
   const isLogin = path === "/login";
-  const isProtected = !isLogin && path !== "/" && !path.startsWith("/setup");
+  // /offline is the service worker's fallback for a page that was never
+  // cached -- it must render with no session and no network, exactly like
+  // /login and /setup already do.
+  const isProtected =
+    !isLogin && path !== "/" && path !== "/offline" && !path.startsWith("/setup");
 
   if (isProtected && !data?.claims) {
     const loginUrl = request.nextUrl.clone();

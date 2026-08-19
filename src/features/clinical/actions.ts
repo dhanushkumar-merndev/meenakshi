@@ -13,6 +13,12 @@ const schema = z.object({
   history: z.string().max(10000).optional(),
   examination: z.string().max(5000).optional(),
   assessment: z.string().min(1, "Assessment/diagnosis is required.").max(5000),
+  // The joined display text of every row in `diagnoses` below -- still built
+  // and sent by the client so every existing reader of consultations.assessment
+  // (print, exports, dashboards) keeps working unchanged. See
+  // 20260819120000_structured_diagnosis_entries for why this stays alongside
+  // the new structured column instead of replacing it.
+  diagnoses: z.string().max(20_000),
   advice: z.string().max(5000).optional(),
   followUpType: z.enum(["none", "after_report", "specific_date", "after_days"]),
   followUpDate: z.string().date().optional().or(z.literal("")),
@@ -44,6 +50,18 @@ const testSchema = z
     z.object({
       test_name: z.string().trim().min(1).max(300),
       category: z.string().trim().max(100).optional(),
+      notes: z.string().max(1000).optional(),
+    }),
+  )
+  .max(30);
+const diagnosisSchema = z
+  .array(
+    z.object({
+      term_id: databaseIdSchema.optional().or(z.literal("")),
+      display_text: z.string().trim().min(1).max(300),
+      code: z.string().max(50).optional(),
+      code_system: z.string().max(50).optional(),
+      status: z.enum(["provisional", "confirmed"]).default("provisional"),
       notes: z.string().max(1000).optional(),
     }),
   )
@@ -91,12 +109,14 @@ export async function saveConsultation(
   if (!parsed.success)
     return { ok: false, fieldErrors: parsed.error.flatten().fieldErrors };
   let medicines: z.infer<typeof medicineSchema>,
-    tests: z.infer<typeof testSchema>;
+    tests: z.infer<typeof testSchema>,
+    diagnoses: z.infer<typeof diagnosisSchema>;
   try {
     medicines = medicineSchema.parse(JSON.parse(parsed.data.medicines));
     tests = testSchema.parse(JSON.parse(parsed.data.tests));
+    diagnoses = diagnosisSchema.parse(JSON.parse(parsed.data.diagnoses));
   } catch {
-    return { ok: false, message: "Check medicine and investigation rows." };
+    return { ok: false, message: "Check diagnosis, medicine and investigation rows." };
   }
   const followUpDays = parsed.data.followUpDays
     ? Number(parsed.data.followUpDays)
@@ -149,6 +169,7 @@ export async function saveConsultation(
     p_follow_up_days: followUpDays,
     p_medicines: medicines,
     p_tests: tests,
+    p_diagnoses: diagnoses,
     p_complete: parsed.data.intent === "complete",
     p_fee_paise: feePaise !== null && !Number.isNaN(feePaise) ? feePaise : null,
     // Doctor recommends a ward type only; IP staff assign the actual bed.

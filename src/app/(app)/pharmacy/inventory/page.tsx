@@ -1,3 +1,5 @@
+import Link from "next/link";
+import { Printer } from "lucide-react";
 import { requireRoute } from "@/lib/auth/dal";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { formatHospitalDate } from "@/lib/domain/date";
@@ -11,6 +13,7 @@ import { PageHeader } from "@/components/shared/page-header";
 import { FilterTabs } from "@/components/shared/filter-tabs";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { DebouncedSearchInput } from "@/components/shared/debounced-search-input";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
   Table,
@@ -31,8 +34,9 @@ type Sale = {
   payment_mode: string | null;
   ip_ticket_id: string | null;
   created_at: string;
-  patients: { name: string; uhid: string } | null;
-  doctors: { display_name: string } | null;
+  patient_name: string | null;
+  patient_uhid: string | null;
+  doctor_name: string | null;
 };
 
 export default async function InventoryPage({
@@ -50,11 +54,7 @@ export default async function InventoryPage({
     supabase.rpc("search_inventory_items", { p_query: tab === "stock" ? q || null : null, p_limit: 100 }),
     supabase.from("doctors").select("id,display_name").eq("active", true).order("display_name"),
     tab === "bills"
-      ? supabase
-          .from("procedure_sales")
-          .select("id,sale_number,procedure_name,procedure_fee_paise,items_total_paise,total_paise,payment_mode,ip_ticket_id,created_at,patients(name,uhid),doctors(display_name)")
-          .order("created_at", { ascending: false })
-          .limit(50)
+      ? supabase.rpc("list_procedure_sales", { p_query: null, p_limit: 50 })
       : Promise.resolve({ data: [] }),
   ]);
 
@@ -164,6 +164,7 @@ export default async function InventoryPage({
                     <TableHead>Items</TableHead>
                     <TableHead>Total</TableHead>
                     <TableHead>Settlement</TableHead>
+                    <TableHead className="text-right">Action</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -175,10 +176,10 @@ export default async function InventoryPage({
                         </TableCell>
                         <TableCell className="whitespace-nowrap">{formatHospitalDate(sale.created_at, true)}</TableCell>
                         <TableCell>
-                          <span className="font-medium">{sale.patients?.name ?? "—"}</span>
-                          <span className="block text-xs text-muted-foreground">{sale.patients?.uhid ?? ""}</span>
+                          <span className="font-medium">{sale.patient_name ?? "—"}</span>
+                          <span className="block text-xs text-muted-foreground">{sale.patient_uhid ?? ""}</span>
                         </TableCell>
-                        <TableCell>{sale.doctors?.display_name ?? "—"}</TableCell>
+                        <TableCell>{sale.doctor_name ?? "—"}</TableCell>
                         <TableCell>{sale.procedure_name}</TableCell>
                         <TableCell className="tabular-nums">{formatInr(sale.procedure_fee_paise)}</TableCell>
                         <TableCell className="tabular-nums">{formatInr(sale.items_total_paise)}</TableCell>
@@ -192,11 +193,20 @@ export default async function InventoryPage({
                             </span>
                           )}
                         </TableCell>
+                        <TableCell className="text-right">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            render={<Link href={`/print/procedure-bill/${sale.id}`} target="_blank" />}
+                          >
+                            <Printer /> Print
+                          </Button>
+                        </TableCell>
                       </TableRow>
                     ))
                   ) : (
                     <TableRow>
-                      <TableCell colSpan={9} className="h-32 text-center text-muted-foreground">
+                      <TableCell colSpan={10} className="h-32 text-center text-muted-foreground">
                         No procedure bills yet.
                       </TableCell>
                     </TableRow>

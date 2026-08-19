@@ -38,6 +38,7 @@ type VisitDetail = {
   status: string;
   patient_id: string;
   doctor_id: string;
+  related_previous_visit_id: string | null;
   patients: {
     name: string;
     uhid: string | null;
@@ -67,6 +68,7 @@ type VisitDetail = {
     notes: string | null;
   } | null;
   consultations: {
+    id: string;
     symptoms: string | null;
     history: string | null;
     examination: string | null;
@@ -131,12 +133,12 @@ export default async function VisitPage({
   const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase
     .from("visits")
-    .select(`id,token_number,created_at,visit_date,visit_type,status,patient_id,doctor_id,patients(name,uhid,phone_normalized,dob,gender,allergies,blood_group),doctors(display_name,qualification,registration_number,op_fee_paise,follow_up_fee_paise),departments(name),vitals(weight_kg,height_cm,temperature_c,bp_systolic,bp_diastolic,pulse,spo2,respiratory_rate,notes),consultations(symptoms,history,examination,assessment,advice,follow_up_type,follow_up_date,follow_up_days,status,admission_recommended,admission_ward_type,admission_reason),prescriptions(id,prescription_number,status,prescription_items(medicine_id,medicine_name,dose,frequency,duration,route,notes,requested_quantity)),test_orders(id,test_name,category,notes,status)${finance ? ",visit_payments(amount_paise,mode,created_at)" : ""}`)
+    .select(`id,token_number,created_at,visit_date,visit_type,status,patient_id,doctor_id,related_previous_visit_id,patients(name,uhid,phone_normalized,dob,gender,allergies,blood_group),doctors(display_name,qualification,registration_number,op_fee_paise,follow_up_fee_paise),departments(name),vitals(weight_kg,height_cm,temperature_c,bp_systolic,bp_diastolic,pulse,spo2,respiratory_rate,notes),consultations(id,symptoms,history,examination,assessment,advice,follow_up_type,follow_up_date,follow_up_days,status,admission_recommended,admission_ward_type,admission_reason),prescriptions(id,prescription_number,status,prescription_items(medicine_id,medicine_name,dose,frequency,duration,route,notes,requested_quantity)),test_orders(id,test_name,category,notes,status)${finance ? ",visit_payments(amount_paise,mode,created_at)" : ""}`)
     .eq("id", id)
     .single();
   if (error || !data) notFound();
   const visit = data as unknown as VisitDetail;
-  const [financialResult, reportsResult, categoriesResult] = await Promise.all([
+  const [financialResult, reportsResult, categoriesResult, previousPrescriptionResult, diagnosesResult] = await Promise.all([
     seesBalance
       ? supabase.rpc("get_visit_financial_summaries", { p_visit_ids: [id] })
       : Promise.resolve({ data: [] }),
@@ -157,6 +159,28 @@ export default async function VisitPage({
           .eq("active", true)
           .order("name")
       : Promise.resolve({ data: [] }),
+    // "Current medication" carry-forward: a follow-up visit starts with an
+    // empty prescription of its own, so without this the consultant retypes
+    // the last visit's medicines from scratch every time. Fetched
+    // unconditionally alongside the rest rather than after -- whether it is
+    // actually used depends on this visit's own prescription, decided below.
+    visit.visit_type === "follow_up" && visit.related_previous_visit_id
+      ? supabase
+          .from("prescriptions")
+          .select("visits(visit_date),prescription_items(medicine_id,medicine_name,dose,frequency,duration,route,notes,requested_quantity)")
+          .eq("visit_id", visit.related_previous_visit_id)
+          .maybeSingle()
+      : Promise.resolve({ data: null }),
+    // Structured diagnosis rows for this visit's own consultation, if one
+    // already exists -- reopening a draft rebuilds the picker's tabs/status/
+    // notes state from these rather than only the flat assessment text.
+    visit.consultations?.id
+      ? supabase
+          .from("consultation_diagnoses")
+          .select("term_id,display_text,code,code_system,status,notes")
+          .eq("consultation_id", visit.consultations.id)
+          .order("created_at")
+      : Promise.resolve({ data: [] }),
   ]);
   const summary = financialResult.data?.[0] as
     | { fee_paise?: number; collected_paise?: number }
@@ -170,6 +194,53 @@ export default async function VisitPage({
   const consultation = visit.consultations;
   const consultationCompleted = consultation?.status === "completed";
   const prescription = visit.prescriptions;
+  // Only offer the carry-forward when this visit has not already had its own
+  // medicines entered (fresh page load of a brand-new follow-up) -- a draft
+  // already saved for this visit is never silently overwritten by the old one.
+  const previousPrescription = previousPrescriptionResult.data as unknown as {
+    visits: { visit_date: string } | null;
+    prescription_items: Array<{
+      medicine_id: string | null;
+      medicine_name: string;
+      dose: string | null;
+      frequency: string | null;
+      duration: string | null;
+      route: string | null;
+      notes: string | null;
+      requested_quantity: number;
+    }>;
+  } | null;
+  const carryForwardMedicines =
+    !prescription?.prescription_items?.length && previousPrescription?.prescription_items?.length
+      ? previousPrescription.prescription_items
+      : null;
+  const savedDiagnoses = (diagnosesResult.data ?? []) as Array<{
+    term_id: string | null;
+    display_text: string;
+    code: string | null;
+    code_system: string | null;
+    status: string;
+    notes: string | null;
+  }>;
+  // A consultation saved before structured diagnoses existed has rows here
+  // but only the flat assessment text -- fall back to that, one entry per
+  // line, so reopening an old draft never loses what was already typed.
+  const initialDiagnoses = savedDiagnoses.length
+    ? savedDiagnoses.map((row) => ({
+        term_id: row.term_id ?? undefined,
+        display_text: row.display_text,
+        code: row.code ?? undefined,
+        code_system: row.code_system ?? undefined,
+        status: (row.status === "confirmed" ? "confirmed" : "provisional") as
+          | "provisional"
+          | "confirmed",
+        notes: row.notes ?? undefined,
+      }))
+    : (consultation?.assessment ?? "")
+        .split("\n")
+        .map((line) => line.trim())
+        .filter(Boolean)
+        .map((line) => ({ display_text: line, status: "provisional" as const }));
   // Collected comes from the summary RPC, not the payment rows: OP staff have
   // no read access to visit_payments, only to the totals.
   const money = paymentSummary(visit.fee_paise, [
@@ -476,7 +547,8 @@ export default async function VisitPage({
         <ConsultationEditor
           visitId={visit.id}
           initial={consultation ?? undefined}
-          initialMedicines={(prescription?.prescription_items ?? []).map(
+          initialDiagnoses={initialDiagnoses}
+          initialMedicines={(prescription?.prescription_items ?? carryForwardMedicines ?? []).map(
             (item) => ({
               medicine_id: item.medicine_id ?? undefined,
               medicine_name: item.medicine_name,
@@ -488,6 +560,18 @@ export default async function VisitPage({
               quantity: item.requested_quantity,
             }),
           )}
+          // The embedded visit date can be null under pharmacy's narrower
+          // visits RLS scoping even when the prescription items themselves
+          // are readable (they aren't gated the same way) -- fall back to a
+          // generic label so the disclosure banner never silently disappears
+          // just because the exact date couldn't be read.
+          carriedForwardFrom={
+            carryForwardMedicines
+              ? (previousPrescription?.visits?.visit_date
+                  ? formatHospitalDate(previousPrescription.visits.visit_date)
+                  : "the previous visit")
+              : undefined
+          }
           initialTests={(visit.test_orders ?? []).map((item) => ({
             test_name: item.test_name,
             category: item.category ?? "",

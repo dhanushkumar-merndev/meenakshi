@@ -1,9 +1,9 @@
 "use client";
 import { useActionState, useEffect, useState } from "react";
-import { FileCheck2, LoaderCircle, Plus, Save, Trash2 } from "lucide-react";
+import { FileCheck2, History, LoaderCircle, Plus, Save, Trash2 } from "lucide-react";
 import { saveConsultation, startConsultation } from "./actions";
 import { MedicineCombobox } from "./medicine-combobox";
-import { DiagnosisPicker } from "./diagnosis-picker";
+import { DiagnosisPicker, type DiagnosisEntry } from "./diagnosis-picker";
 import { TermCombobox } from "./term-combobox";
 import type { ActionState } from "@/types/hospital";
 import { DatePickerField } from "@/components/shared/date-picker-field";
@@ -71,7 +71,6 @@ type InitialConsultation = {
   symptoms?: string | null;
   history?: string | null;
   examination?: string | null;
-  assessment?: string | null;
   advice?: string | null;
   follow_up_type?: string;
   follow_up_date?: string | null;
@@ -96,14 +95,25 @@ const newMedicine = (): MedicineLine => ({
 export function ConsultationEditor({
   visitId,
   initial,
+  initialDiagnoses = [],
   initialMedicines = [],
+  carriedForwardFrom,
   initialTests = [],
   testCategories = [],
   defaultFee,
 }: {
   visitId: string;
   initial?: InitialConsultation;
+  initialDiagnoses?: DiagnosisEntry[];
   initialMedicines?: SavedMedicineLine[];
+  /**
+   * Set when `initialMedicines` is not this visit's own prescription but the
+   * previous visit's, carried forward for a follow-up so the consultant edits
+   * the last prescription instead of retyping it. Already a display-ready
+   * label (a formatted date, or a generic fallback), so it never reads as if
+   * it were already entered for today's visit.
+   */
+  carriedForwardFrom?: string;
   initialTests?: Omit<TestLine, "key">[];
   /** Report categories the hospital configures; the kind of test being ordered. */
   testCategories?: string[];
@@ -244,10 +254,15 @@ export function ConsultationEditor({
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-2">
-          <DiagnosisPicker name="assessment" initialValue={initial?.assessment ?? ""} />
+          <DiagnosisPicker
+            assessmentName="assessment"
+            diagnosesName="diagnoses"
+            initialValue={initialDiagnoses}
+          />
           <p className="text-xs text-muted-foreground">
-            Search by name or ICD-10 code. Anything without a coded match can
-            still be added exactly as typed.
+            Search ICD-10 or SNOMED-CT by name or code, pick a common
+            diagnosis above, or switch to Other Diagnosis to add anything
+            exactly as typed.
           </p>
           <p className="text-xs text-destructive">
             {state.fieldErrors?.assessment?.[0]}
@@ -266,6 +281,18 @@ export function ConsultationEditor({
             <Plus /> Add Medicine
           </Button>
         </CardHeader>
+        {carriedForwardFrom ? (
+          <CardContent className="pb-0">
+            <Alert>
+              <History />
+              <AlertDescription>
+                Current medication, carried forward from {carriedForwardFrom}.
+                Review and correct before saving -- nothing below is entered
+                for today&apos;s visit yet.
+              </AlertDescription>
+            </Alert>
+          </CardContent>
+        ) : null}
         <CardContent className="p-0">
           <div className="overflow-x-auto">
             <Table>

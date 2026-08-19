@@ -11,12 +11,16 @@ export function DischargeDocument({
   identity: HospitalIdentity;
 }) {
   const sections = [
-    ["Admission Reason", ticket.admission_reason],
     ["Final Diagnosis", ticket.final_diagnosis],
-    ["Hospital Course", ticket.hospital_course],
-    ["Treatment", ticket.treatment_summary],
+    ["Chief Complaint", ticket.chief_complaint],
+    // Only printed when a procedure actually happened -- a routine medical
+    // admission's summary has no operative note to show.
+    ["Procedure Done", ticket.procedure_done],
+    ["Operative Notes", ticket.operative_notes],
+    ["Course in the Hospital", ticket.hospital_course],
+    ["Treatment Given", ticket.treatment_summary],
     ["Discharge Medicines", ticket.discharge_medicines],
-    ["Advice", ticket.discharge_advice],
+    ["Discharge Advise", ticket.discharge_advice],
     ["Follow-up", ticket.follow_up],
   ].filter(([, value]) => value);
 

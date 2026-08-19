@@ -6,7 +6,7 @@
  * accounts you log in with.
  *
  * Never run this against a production database. Requires SUPABASE_SERVICE_ROLE_KEY.
- *   node scripts/seed-demo-data.mjs
+ *   node scripts/seed-demo-data.mjs [patientCount]
  */
 import { createClient } from "@supabase/supabase-js";
 import { readFileSync } from "node:fs";
@@ -20,6 +20,7 @@ const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
 if (!url || !key) throw new Error("NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required.");
 const db = createClient(url, key, { auth: { persistSession: false } });
 
+const PATIENT_COUNT = Number(process.argv[2]) || 100;
 const must = (label, { error }) => { if (error) throw new Error(`${label}: ${error.message}`); };
 const pick = (arr, i) => arr[i % arr.length];
 const rand = (n) => Math.floor(Math.random() * n);
@@ -210,10 +211,10 @@ const LAST = ["Kumar", "Raman", "Krishnan", "Subramani", "Natarajan", "Pillai", 
 const BLOOD = ["A+", "B+", "O+", "AB+", "A-", "O-", null];
 const PLACES = ["Ramanathapuram", "Paramakudi", "Mudukulathur", "Kamuthi", "Uchipuli", "Thondi", "Sayalkudi", "Kadaladi"];
 
-console.log("\nSeeding 100 patients...");
+console.log(`\nSeeding ${PATIENT_COUNT} patients...`);
 const patientRows = [];
 const usedPhones = new Set();
-for (let i = 0; i < 100; i++) {
+for (let i = 0; i < PATIENT_COUNT; i++) {
   // Some families deliberately share a phone number (rural reality).
   let phone;
   if (i > 0 && i % 12 === 0) phone = patientRows[i - 1].phone_normalized;

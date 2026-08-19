@@ -23,11 +23,13 @@ export default async function ClinicalDirectoryPage({ searchParams }: { searchPa
   const supabase = await createSupabaseServerClient();
   let query = supabase
     .from("clinical_terms")
-    .select("id,term_type,display_text,search_aliases,active,source")
+    .select("id,term_type,display_text,search_aliases,active,source,code,code_system")
     .order("term_type")
     .order("display_text")
     .range(0, 99);
-  if (q) { const pattern = containsSearchPattern(q); query = query.or(`display_text.ilike.${pattern},term_type.ilike.${pattern},source.ilike.${pattern}`); }
+  // Code and code_system are searchable too -- "SNOMED" or "J45" finds a
+  // coded term the same way a display-text search does.
+  if (q) { const pattern = containsSearchPattern(q); query = query.or(`display_text.ilike.${pattern},term_type.ilike.${pattern},source.ilike.${pattern},code.ilike.${pattern},code_system.ilike.${pattern}`); }
   const { data } = await query;
   const rows = data ?? [];
   return (
@@ -53,6 +55,8 @@ export default async function ClinicalDirectoryPage({ searchParams }: { searchPa
               <TableRow>
                 <TableHead>Type</TableHead>
                 <TableHead>Display Text</TableHead>
+                <TableHead>Code</TableHead>
+                <TableHead>Code System</TableHead>
                 <TableHead>Search Aliases</TableHead>
                 <TableHead>Active</TableHead>
                 <TableHead>Source</TableHead>
@@ -66,17 +70,19 @@ export default async function ClinicalDirectoryPage({ searchParams }: { searchPa
                   <TableCell className="font-medium">
                     {term.display_text}
                   </TableCell>
+                  <TableCell className="font-mono text-xs">{term.code || "—"}</TableCell>
+                  <TableCell>{term.code_system || "—"}</TableCell>
                   <TableCell>{term.search_aliases.join(", ") || "—"}</TableCell>
                   <TableCell>
                     <StatusBadge status={term.active ? "active" : "inactive"} />
                   </TableCell>
                   <TableCell>{term.source}</TableCell>
                   <TableCell>
-                    <ClinicalTermDialog item={{ id: term.id, type: term.term_type, displayText: term.display_text, aliases: term.search_aliases.join(", "), source: term.source, active: term.active }} />
+                    <ClinicalTermDialog item={{ id: term.id, type: term.term_type, displayText: term.display_text, aliases: term.search_aliases.join(", "), source: term.source, code: term.code, codeSystem: term.code_system, active: term.active }} />
                   </TableCell>
                 </TableRow>
               ))}
-              {!rows.length ? <TableRow><TableCell colSpan={6} className="h-32 text-center text-muted-foreground">{q ? "No clinical terms match this search." : "No clinical terms found."}</TableCell></TableRow> : null}
+              {!rows.length ? <TableRow><TableCell colSpan={8} className="h-32 text-center text-muted-foreground">{q ? "No clinical terms match this search." : "No clinical terms found."}</TableCell></TableRow> : null}
             </TableBody>
           </Table>
           </div>

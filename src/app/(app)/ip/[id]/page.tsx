@@ -33,6 +33,9 @@ type Ticket = {
   bed: string | null;
   admission_reason: string | null;
   final_diagnosis: string | null;
+  chief_complaint: string | null;
+  procedure_done: string | null;
+  operative_notes: string | null;
   hospital_course: string | null;
   treatment_summary: string | null;
   discharge_medicines: string | null;
@@ -97,7 +100,7 @@ export default async function IpTicketPage({
   const { data, error } = await supabase
     .from("ip_tickets")
     .select(
-      "id,ticket_number,patient_id,is_emergency,admission_at,discharge_at,room,bed,admission_reason,status,final_diagnosis,hospital_course,treatment_summary,discharge_medicines,discharge_advice,follow_up,patients(name,uhid,phone_normalized),doctors(display_name,ip_visit_fee_paise),ip_charges(id,created_at,category,item,quantity,rate_paise,amount_paise),ip_payments(id,created_at,amount_paise,mode,reference),ip_progress_notes(id,created_at,note,pulse,bp,spo2,respiratory_rate,chief_complaint,issues,examination,plan,doctors(display_name)),ip_inventory_requests(id,notes,status,created_at,ip_inventory_request_items(id,requested_name,requested_quantity,fulfilled_quantity,unit_price_paise,status))",
+      "id,ticket_number,patient_id,is_emergency,admission_at,discharge_at,room,bed,admission_reason,status,final_diagnosis,chief_complaint,procedure_done,operative_notes,hospital_course,treatment_summary,discharge_medicines,discharge_advice,follow_up,patients(name,uhid,phone_normalized),doctors(display_name,ip_visit_fee_paise),ip_charges(id,created_at,category,item,quantity,rate_paise,amount_paise),ip_payments(id,created_at,amount_paise,mode,reference),ip_progress_notes(id,created_at,note,pulse,bp,spo2,respiratory_rate,chief_complaint,issues,examination,plan,doctors(display_name)),ip_inventory_requests(id,notes,status,created_at,ip_inventory_request_items(id,requested_name,requested_quantity,fulfilled_quantity,unit_price_paise,status))",
     )
     .eq("id", id)
     .single();
@@ -122,7 +125,7 @@ export default async function IpTicketPage({
             {canFinance ? <Button size="sm" variant="outline" render={<Link href={`/print/ip-ticket/${ticket.id}`} />}><Printer /> Running Bill</Button> : null}
             {ticket.status === "discharged" ? <>{canFinance ? <Button size="sm" variant="outline" render={<Link href={`/print/ip-bill/${ticket.id}`} />}><Printer /> Final Bill</Button> : null}<Button size="sm" render={<Link href={`/print/discharge/${ticket.id}`} />}><Printer /> Discharge Summary</Button></> : null}
             {canDoctor && ticket.status === "admitted" ? <ProgressNoteDialog ticketId={ticket.id} defaultFee={typeof ticket.doctors?.ip_visit_fee_paise === "number" ? (ticket.doctors.ip_visit_fee_paise / 100).toFixed(2) : undefined} /> : null}
-            {canDoctor && ["admitted","discharge_pending"].includes(ticket.status) ? <DischargeSummaryDialog ticketId={ticket.id} initialValues={{finalDiagnosis:ticket.final_diagnosis,hospitalCourse:ticket.hospital_course,treatmentSummary:ticket.treatment_summary,dischargeMedicines:ticket.discharge_medicines,dischargeAdvice:ticket.discharge_advice,followUp:ticket.follow_up}} /> : null}
+            {canDoctor && ["admitted","discharge_pending"].includes(ticket.status) ? <DischargeSummaryDialog ticketId={ticket.id} initialValues={{finalDiagnosis:ticket.final_diagnosis,chiefComplaint:ticket.chief_complaint,procedureDone:ticket.procedure_done,operativeNotes:ticket.operative_notes,hospitalCourse:ticket.hospital_course,treatmentSummary:ticket.treatment_summary,dischargeMedicines:ticket.discharge_medicines,dischargeAdvice:ticket.discharge_advice,followUp:ticket.follow_up}} /> : null}
             {(canManage || canDoctor) && ["admitted", "discharge_pending"].includes(ticket.status) ? (
               <RequestInventoryDialog ticketId={ticket.id} />
             ) : null}

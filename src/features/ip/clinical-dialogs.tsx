@@ -54,5 +54,53 @@ export function ProgressNoteDialog({ticketId,defaultFee}:{ticketId:string;
       doctor may waive the charge, so the amount is typed here rather than
       always taken from their configured fee. */}
 {chargeable?<div className="max-w-xs space-y-2"><Label htmlFor="progress-fee">Visit charge (₹)</Label><Input id="progress-fee" name="fee" inputMode="decimal" value={fee} onChange={(event)=>setFee(event.target.value)} placeholder="500"/><p className="text-xs text-muted-foreground">Pre-filled with the configured IP visit fee. Enter 0 to record the visit without charging.</p><p className="text-xs text-destructive">{state.fieldErrors?.fee?.[0]}</p></div>:null}<DialogFooter showCloseButton><Button disabled={pending} type="submit">{pending?<LoaderCircle className="animate-spin"/>:<NotebookPen/>} Save Note</Button></DialogFooter></form></DialogContent></Dialog>}
-export function DischargeSummaryDialog({ticketId,initialValues}:{ticketId:string;initialValues?:Record<string,string|null>}){const[state,action,pending]=useActionState(saveDischargeSummary,initial);const{open,setOpen}=useAutoCloseDialog(state,"Discharge summary saved.");const fields=[["finalDiagnosis","Final Diagnosis",true],["hospitalCourse","Hospital Course",true],["treatmentSummary","Treatment",false],["dischargeMedicines","Discharge Medicines",false],["dischargeAdvice","Advice",true],["followUp","Follow-up",false]] as const;return <Dialog open={open} onOpenChange={setOpen}><DialogTrigger render={<Button size="sm"/>}><Stethoscope/> Prepare Discharge</DialogTrigger><DialogContent className="max-h-[calc(100vh-2rem)] overflow-y-auto sm:max-w-2xl"><form action={action} className="contents"><DialogHeader><DialogTitle>Clinical discharge summary</DialogTitle><DialogDescription>Saving moves the ticket to Discharge Pending. IP staff completes billing and discharge.</DialogDescription></DialogHeader><input type="hidden" name="ticketId" value={ticketId}/>{state.message&&!state.ok?<Alert variant="destructive"><AlertDescription>{state.message}</AlertDescription></Alert>:null}<div className="grid gap-4 sm:grid-cols-2">{fields.map(([name,label,required])=><div className={`space-y-2 ${["hospitalCourse","treatmentSummary"].includes(name)?"sm:col-span-2":""}`} key={name}><Label htmlFor={`discharge-${name}`}>{label}{required?" *":""}</Label><Textarea id={`discharge-${name}`} name={name} defaultValue={initialValues?.[name]??""} rows={name==="hospitalCourse"?5:3} required={required}/><p className="text-xs text-destructive">{state.fieldErrors?.[name]?.[0]}</p></div>)}</div><DialogFooter showCloseButton><Button disabled={pending} type="submit">{pending?<LoaderCircle className="animate-spin"/>:<FileCheck2/>} Save Summary</Button></DialogFooter></form></DialogContent></Dialog>}
+// Order matches the hospital's own discharge summary layout: diagnosis, then
+// (only when a procedure actually happened) what was done and the operative
+// note, then the narrative of the stay, treatment, medicines, advice and
+// follow-up. Procedure done / Operative Notes stay hidden -- and unsubmitted,
+// since an unrendered field is simply absent from FormData -- until the
+// "Procedure / surgery performed" checkbox is on, so a routine medical
+// admission's form doesn't carry two empty surgical fields nobody asked for.
+export function DischargeSummaryDialog({ticketId,initialValues}:{ticketId:string;initialValues?:Record<string,string|null>}){
+  const[state,action,pending]=useActionState(saveDischargeSummary,initial);
+  const{open,setOpen}=useAutoCloseDialog(state,"Discharge summary saved.");
+  const[procedurePerformed,setProcedurePerformed]=useState(Boolean(initialValues?.procedureDone||initialValues?.operativeNotes));
+  const field=(name:string,label:string,options?:{required?:boolean;span2?:boolean;rows?:number})=>
+    <div className={`space-y-2 ${options?.span2?"sm:col-span-2":""}`} key={name}>
+      <Label htmlFor={`discharge-${name}`}>{label}{options?.required?" *":""}</Label>
+      <Textarea id={`discharge-${name}`} name={name} defaultValue={initialValues?.[name]??""} rows={options?.rows??3} required={options?.required}/>
+      <p className="text-xs text-destructive">{state.fieldErrors?.[name]?.[0]}</p>
+    </div>;
+  return <Dialog open={open} onOpenChange={setOpen}>
+    <DialogTrigger render={<Button size="sm"/>}><Stethoscope/> Prepare Discharge</DialogTrigger>
+    <DialogContent className="max-h-[calc(100vh-2rem)] overflow-y-auto sm:max-w-2xl">
+      <form action={action} className="contents">
+        <DialogHeader>
+          <DialogTitle>Clinical discharge summary</DialogTitle>
+          <DialogDescription>Saving moves the ticket to Discharge Pending. IP staff completes billing and discharge.</DialogDescription>
+        </DialogHeader>
+        <input type="hidden" name="ticketId" value={ticketId}/>
+        {state.message&&!state.ok?<Alert variant="destructive"><AlertDescription>{state.message}</AlertDescription></Alert>:null}
+        <div className="grid gap-4 sm:grid-cols-2">
+          {field("finalDiagnosis","Final Diagnosis",{required:true})}
+          {field("chiefComplaint","Chief Complaint")}
+          <label className="flex items-center gap-2 text-sm sm:col-span-2">
+            <Checkbox checked={procedurePerformed} onCheckedChange={(checked)=>setProcedurePerformed(checked===true)}/>
+            Procedure / surgery performed
+          </label>
+          {procedurePerformed?field("procedureDone","Procedure Done"):null}
+          {procedurePerformed?field("operativeNotes","Operative Notes",{span2:true,rows:4}):null}
+          {field("hospitalCourse","Course in the Hospital",{required:true,span2:true,rows:5})}
+          {field("treatmentSummary","Treatment Given",{span2:true})}
+          {field("dischargeMedicines","Discharge Medicines")}
+          {field("dischargeAdvice","Discharge Advise",{required:true})}
+          {field("followUp","Follow-up")}
+        </div>
+        <DialogFooter showCloseButton>
+          <Button disabled={pending} type="submit">{pending?<LoaderCircle className="animate-spin"/>:<FileCheck2/>} Save Summary</Button>
+        </DialogFooter>
+      </form>
+    </DialogContent>
+  </Dialog>;
+}
 export function CompleteDischargeDialog({ticketId,balancePaise}:{ticketId:string;balancePaise:number}){const[state,action,pending]=useActionState(completeDischarge,initial);const{open,setOpen}=useAutoCloseDialog(state,"Discharge completed.");return <Dialog open={open} onOpenChange={setOpen}><DialogTrigger render={<Button size="sm" disabled={balancePaise>0}/>}><FileCheck2/> Complete Discharge</DialogTrigger><DialogContent><form action={action} className="contents"><DialogHeader><DialogTitle>Complete discharge?</DialogTitle><DialogDescription>This records the final discharge time. Historical charges, payments, and clinical notes remain immutable.</DialogDescription></DialogHeader><input type="hidden" name="ticketId" value={ticketId}/>{balancePaise>0?<Alert variant="destructive"><AlertDescription>Outstanding balance must be collected first.</AlertDescription></Alert>:null}{state.message&&!state.ok?<Alert variant="destructive"><AlertDescription>{state.message}</AlertDescription></Alert>:null}<DialogFooter showCloseButton><Button disabled={pending||balancePaise>0} type="submit">{pending?<LoaderCircle className="animate-spin"/>:<FileCheck2/>} Confirm Discharge</Button></DialogFooter></form></DialogContent></Dialog>}

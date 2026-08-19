@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { LoaderCircle, Plus, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Command,
   CommandEmpty,
@@ -12,40 +13,109 @@ import {
   CommandItem,
   CommandList,
 } from "@/components/ui/command";
+import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
-export type ClinicalTerm = { display_text: string; code: string | null; code_system: string | null };
+export type ClinicalTerm = {
+  display_text: string;
+  code: string | null;
+  code_system: string | null;
+};
+
+export type DiagnosisEntry = {
+  term_id?: string;
+  display_text: string;
+  code?: string;
+  code_system?: string;
+  status: "provisional" | "confirmed";
+  notes?: string;
+};
+
+type CodeSystemTab = "ICD-10" | "SNOMED-CT" | "other";
+
+const TABS: Array<{ value: CodeSystemTab; label: string }> = [
+  { value: "ICD-10", label: "ICD 10" },
+  { value: "SNOMED-CT", label: "SNOMED-CT" },
+  { value: "other", label: "Other Diagnosis" },
+];
+
+// Tailwind needs the full class names present somewhere for the JIT scanner
+// to keep them -- kept as a literal map rather than built from code_system.
+const SYSTEM_DOT: Record<string, string> = {
+  "ICD-10": "bg-blue-500",
+  "SNOMED-CT": "bg-emerald-500",
+};
+
+// A hospital-configurable shortlist would belong in Masters; hardcoded here
+// for now as the one-click chips the reference layout shows above the tabs.
+const COMMON_DIAGNOSES = [
+  "Diabetes mellitus",
+  "HTN - Hypertension",
+  "Acute gastritis",
+  "Upper respiratory infection",
+  "Lower respiratory infection",
+  "Eczema",
+  "Lumbar sprain",
+  "Osteoarthritis",
+  "Cervical spondylosis",
+  "Tinea",
+  "Diabetic foot",
+  "Ulcer",
+  "Abscess",
+  "Pharyngitis",
+  "Tonsillitis",
+  "Injury",
+  "Dog bite - wound",
+  "Cat bite - wound",
+];
+const COMMON_SHOWN = 3;
 
 /**
- * Diagnosis entry backed by the local ICD-10 directory.
+ * Assessment/Diagnosis entry. Redesigned around the three coding contexts a
+ * diagnosis can come from: ICD-10 and SNOMED-CT are each searched against the
+ * local clinical_terms directory, filtered to that one code_system (SNOMED-CT
+ * stays empty until the hospital loads codes for it through Admin > Clinical
+ * Directory -- nothing is bundled, see that page); "Other Diagnosis" is
+ * always free text, no directory lookup. A shortlist of common diagnoses
+ * above the tabs adds a name in one click without a code system at all.
+ * Every added diagnosis carries a Provisional/Confirmed status and an
+ * optional note captured at add time.
  *
- * Search, select and free-text entry all happen in one box: anything the doctor
- * types that has no coded match can still be added as-is, so an unusual case is
- * never blocked by a missing code. Selections are serialised into a hidden
- * input so the surrounding server action needs no client state.
+ * Renders two hidden inputs: `assessmentName` is still the plain joined-text
+ * field (`Display text (CODE)` per line) every existing reader --
+ * print/prescription, exports, dashboards -- already expects unchanged;
+ * `diagnosesName` carries the full structured list the database also now
+ * stores per-entry (see the 20260819120000 migration).
  */
 export function DiagnosisPicker({
-  name,
-  initialValue = "",
-  termType = "diagnosis",
-  placeholder = "Search diagnosis or ICD-10 code",
+  assessmentName,
+  diagnosesName,
+  initialValue = [],
 }: {
-  name: string;
-  initialValue?: string;
-  termType?: string;
-  placeholder?: string;
+  assessmentName: string;
+  diagnosesName: string;
+  initialValue?: DiagnosisEntry[];
 }) {
-  const [selected, setSelected] = useState<string[]>(() =>
-    initialValue.split("\n").map((line) => line.trim()).filter(Boolean),
-  );
+  const [entries, setEntries] = useState<DiagnosisEntry[]>(initialValue);
+  const [system, setSystem] = useState<CodeSystemTab>("ICD-10");
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
+  const [status, setStatus] = useState<"provisional" | "confirmed">("provisional");
+  const [notes, setNotes] = useState("");
   const [items, setItems] = useState<ClinicalTerm[]>([]);
   const [loading, setLoading] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
-    if (query.trim().length < 2) return;
+    if (system === "other" || !open || query.trim().length < 2) return;
     const timer = setTimeout(async () => {
       abortRef.current?.abort();
       const controller = new AbortController();
@@ -53,98 +123,246 @@ export function DiagnosisPicker({
       setLoading(true);
       try {
         const response = await fetch(
-          `/api/search/clinical-terms?type=${termType}&q=${encodeURIComponent(query)}`,
+          `/api/search/clinical-terms?type=diagnosis&q=${encodeURIComponent(query)}`,
           { signal: controller.signal },
         );
         const body = await response.json();
-        setItems(body.items ?? []);
+        const all = (body.items ?? []) as ClinicalTerm[];
+        setItems(all.filter((item) => item.code_system === system));
       } catch {
-        // Aborted or offline: the doctor can still type a free-text diagnosis.
+        // Aborted or offline: the free-text "add as typed" path still works.
       } finally {
         setLoading(false);
       }
     }, 200);
     return () => clearTimeout(timer);
-  }, [query, termType]);
+  }, [open, query, system]);
 
-  const add = (value: string) => {
-    const text = value.trim();
-    if (!text || selected.includes(text)) return;
-    setSelected((rows) => [...rows, text]);
+  const add = (entry: DiagnosisEntry) => {
+    const text = entry.display_text.trim();
+    if (!text || entries.some((e) => e.display_text === text)) return;
+    setEntries((rows) => [...rows, { ...entry, display_text: text }]);
     setQuery("");
+    setNotes("");
     setOpen(false);
   };
+  const addFromDirectory = (item: ClinicalTerm) =>
+    add({
+      display_text: item.display_text,
+      code: item.code ?? undefined,
+      code_system: item.code_system ?? undefined,
+      status,
+      notes: notes.trim() || undefined,
+    });
+  const addTyped = () =>
+    add({
+      display_text: query,
+      code_system: system === "other" ? undefined : system,
+      status,
+      notes: notes.trim() || undefined,
+    });
+  const remove = (text: string) =>
+    setEntries((rows) => rows.filter((row) => row.display_text !== text));
+  const toggleCommon = (name: string) => {
+    if (entries.some((e) => e.display_text === name)) remove(name);
+    else add({ display_text: name, status: "provisional" });
+  };
+
+  const assessmentText = entries
+    .map((e) => (e.code ? `${e.display_text} (${e.code})` : e.display_text))
+    .join("\n");
+  const shownCommon = COMMON_DIAGNOSES.slice(0, COMMON_SHOWN);
+  const restCommon = COMMON_DIAGNOSES.slice(COMMON_SHOWN);
+  const usedSystems = [...new Set(entries.map((e) => e.code_system).filter(Boolean))] as string[];
 
   return (
-    <div className="space-y-2">
-      <input type="hidden" name={name} value={selected.join("\n")} />
-      {selected.length ? (
-        <div className="flex flex-wrap gap-1.5">
-          {selected.map((item) => (
-            <Badge key={item} variant="secondary" className="gap-1 py-1">
-              {item}
-              <button
-                type="button"
-                aria-label={`Remove ${item}`}
-                className="rounded-sm hover:text-destructive"
-                onClick={() => setSelected((rows) => rows.filter((row) => row !== item))}
-              >
-                <X className="size-3" />
-              </button>
-            </Badge>
+    <div className="space-y-3">
+      <input type="hidden" name={assessmentName} value={assessmentText} />
+      <input type="hidden" name={diagnosesName} value={JSON.stringify(entries)} />
+
+      <div className="flex flex-wrap items-center gap-2">
+        {shownCommon.map((name) => (
+          <label
+            key={name}
+            className="flex cursor-pointer items-center gap-1.5 rounded-md border px-2 py-1 text-sm has-[[data-checked]]:border-primary has-[[data-checked]]:bg-primary/5"
+          >
+            <Checkbox
+              checked={entries.some((e) => e.display_text === name)}
+              onCheckedChange={() => toggleCommon(name)}
+            />
+            {name}
+          </label>
+        ))}
+        {restCommon.length ? (
+          <Popover>
+            <PopoverTrigger render={<Button type="button" variant="outline" size="sm" />}>
+              +{restCommon.length} more
+            </PopoverTrigger>
+            <PopoverContent className="w-64 p-2" align="start">
+              <div className="max-h-72 space-y-0.5 overflow-y-auto">
+                {restCommon.map((name) => (
+                  <label
+                    key={name}
+                    className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-muted"
+                  >
+                    <Checkbox
+                      checked={entries.some((e) => e.display_text === name)}
+                      onCheckedChange={() => toggleCommon(name)}
+                    />
+                    {name}
+                  </label>
+                ))}
+              </div>
+            </PopoverContent>
+          </Popover>
+        ) : null}
+      </div>
+
+      <Tabs
+        value={system}
+        onValueChange={(value) => {
+          setSystem(value as CodeSystemTab);
+          setQuery("");
+          setOpen(false);
+        }}
+      >
+        <TabsList>
+          {TABS.map((tab) => (
+            <TabsTrigger key={tab.value} value={tab.value}>
+              {tab.label}
+            </TabsTrigger>
           ))}
+        </TabsList>
+      </Tabs>
+
+      <div className="grid gap-2 sm:grid-cols-[1fr_9rem_auto]">
+        {system === "other" ? (
+          <Input
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Enter Diagnosis"
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                event.preventDefault();
+                addTyped();
+              }
+            }}
+          />
+        ) : (
+          <Popover open={open} onOpenChange={setOpen}>
+            <PopoverTrigger
+              render={
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full justify-start font-normal"
+                />
+              }
+            >
+              <span className={query ? "truncate" : "truncate text-muted-foreground"}>
+                {query || `Search ${system}`}
+              </span>
+            </PopoverTrigger>
+            <PopoverContent className="w-[min(26rem,calc(100vw-2rem))] p-0" align="start">
+              <Command shouldFilter={false}>
+                <CommandInput value={query} onValueChange={setQuery} placeholder={`Search ${system}`} />
+                <CommandList>
+                  {loading ? (
+                    <div className="flex items-center justify-center gap-2 py-6 text-sm text-muted-foreground">
+                      <LoaderCircle className="size-4 animate-spin" /> Searching
+                    </div>
+                  ) : (
+                    <>
+                      <CommandEmpty>
+                        {query.trim().length < 2
+                          ? "Type at least 2 characters."
+                          : `No ${system} match. Switch to Other Diagnosis to add it as typed.`}
+                      </CommandEmpty>
+                      <CommandGroup>
+                        {(query.trim().length < 2 ? [] : items).map((item) => (
+                          <CommandItem
+                            key={item.display_text}
+                            value={item.display_text}
+                            onSelect={() => addFromDirectory(item)}
+                          >
+                            <span className="flex-1">{item.display_text}</span>
+                            {item.code ? (
+                              <span className="ml-2 font-mono text-xs text-muted-foreground">
+                                {item.code}
+                              </span>
+                            ) : null}
+                          </CommandItem>
+                        ))}
+                      </CommandGroup>
+                    </>
+                  )}
+                </CommandList>
+              </Command>
+            </PopoverContent>
+          </Popover>
+        )}
+        <Select value={status} onValueChange={(value) => setStatus(value as typeof status)}>
+          <SelectTrigger className="w-full">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="provisional">Provisional</SelectItem>
+            <SelectItem value="confirmed">Confirmed</SelectItem>
+          </SelectContent>
+        </Select>
+        <Button
+          type="button"
+          variant="outline"
+          size="icon"
+          aria-label="Add diagnosis"
+          disabled={system === "other" && !query.trim()}
+          onClick={system === "other" ? addTyped : undefined}
+        >
+          <Plus />
+        </Button>
+      </div>
+      <Input
+        value={notes}
+        onChange={(event) => setNotes(event.target.value)}
+        placeholder="Diagnosis Notes"
+      />
+
+      {entries.length ? (
+        <div className="space-y-2">
+          <div className="flex flex-wrap gap-1.5">
+            {entries.map((entry) => (
+              <Badge key={entry.display_text} variant="secondary" className="gap-1.5 py-1">
+                {entry.code_system && SYSTEM_DOT[entry.code_system] ? (
+                  <span className={`size-1.5 shrink-0 rounded-full ${SYSTEM_DOT[entry.code_system]}`} />
+                ) : null}
+                {entry.display_text}
+                {entry.code ? <span className="text-muted-foreground">({entry.code})</span> : null}
+                <span className="text-[10px] font-medium uppercase text-muted-foreground">
+                  {entry.status}
+                </span>
+                <button
+                  type="button"
+                  aria-label={`Remove ${entry.display_text}`}
+                  className="rounded-sm hover:text-destructive"
+                  onClick={() => remove(entry.display_text)}
+                >
+                  <X className="size-3" />
+                </button>
+              </Badge>
+            ))}
+          </div>
+          {usedSystems.length ? (
+            <div className="flex flex-wrap gap-3 text-xs text-muted-foreground">
+              {usedSystems.map((sys) => (
+                <span key={sys} className="flex items-center gap-1">
+                  <span className={`size-1.5 rounded-full ${SYSTEM_DOT[sys] ?? "bg-muted-foreground"}`} />
+                  {sys}
+                </span>
+              ))}
+            </div>
+          ) : null}
         </div>
       ) : null}
-      <Popover open={open} onOpenChange={setOpen}>
-        <PopoverTrigger
-          render={<Button type="button" variant="outline" className="w-full justify-start font-normal" />}
-        >
-          <Plus className="size-4" /> Add diagnosis
-        </PopoverTrigger>
-        <PopoverContent className="w-[min(28rem,calc(100vw-2rem))] p-0" align="start">
-          <Command shouldFilter={false}>
-            <CommandInput value={query} onValueChange={setQuery} placeholder={placeholder} />
-            <CommandList>
-              {loading ? (
-                <div className="flex items-center justify-center gap-2 py-6 text-sm text-muted-foreground">
-                  <LoaderCircle className="size-4 animate-spin" /> Searching
-                </div>
-              ) : (
-                <>
-                  <CommandEmpty>
-                    {query.trim().length < 2
-                      ? "Type at least 2 characters."
-                      : "No coded match. Press Add to record it as typed."}
-                  </CommandEmpty>
-                  <CommandGroup>
-                    {/* Derived, not cleared in an effect: a short query simply
-                        shows nothing rather than triggering a cascading render. */}
-                    {(query.trim().length < 2 ? [] : items).map((item) => {
-                      const label = item.code ? `${item.display_text} (${item.code})` : item.display_text;
-                      return (
-                        <CommandItem key={label} value={label} onSelect={() => add(label)}>
-                          <span className="flex-1">{item.display_text}</span>
-                          {item.code ? (
-                            <span className="ml-2 font-mono text-xs text-muted-foreground">
-                              {item.code}
-                            </span>
-                          ) : null}
-                        </CommandItem>
-                      );
-                    })}
-                    {query.trim().length >= 2 ? (
-                      <CommandItem value={`__free__${query}`} onSelect={() => add(query)}>
-                        <Plus className="size-4" />
-                        Add &ldquo;{query.trim()}&rdquo; as typed
-                      </CommandItem>
-                    ) : null}
-                  </CommandGroup>
-                </>
-              )}
-            </CommandList>
-          </Command>
-        </PopoverContent>
-      </Popover>
     </div>
   );
 }

@@ -70,6 +70,7 @@ export const ROLE_NAVIGATION: Record<AppRole, NavigationItem[]> = {
     { title: "Today OP", href: "/op", icon: "list-ordered" },
     { title: "Patient Assist", href: "/op/assist", icon: "route" },
     { title: "Reports", href: "/reports", icon: "files" },
+    { title: "Drug Stock", href: "/drug-stock", icon: "pill" },
   ],
   doctor: [
     shared.dashboard,
@@ -80,6 +81,9 @@ export const ROLE_NAVIGATION: Record<AppRole, NavigationItem[]> = {
     // result comes back; the notification bell links here too.
     { title: "Reports", href: "/reports", icon: "files" },
     { title: "Patient Search", href: "/patients", icon: "search" },
+    // Read-only stock check before writing a prescription -- not stock
+    // management, which stays pharmacy-only.
+    { title: "Drug Stock", href: "/drug-stock", icon: "pill" },
   ],
   ip: [
     shared.dashboard,

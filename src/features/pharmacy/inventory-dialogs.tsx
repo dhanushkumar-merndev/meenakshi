@@ -1,7 +1,8 @@
 "use client";
 
+import Link from "next/link";
 import { useActionState, useMemo, useState } from "react";
-import { LoaderCircle, Pencil, Plus, Receipt } from "lucide-react";
+import { CheckCircle2, LoaderCircle, Pencil, Plus, Printer, Receipt } from "lucide-react";
 import { createProcedureSale, saveInventoryItem } from "./inventory-actions";
 import type { ActionState } from "@/types/hospital";
 import { formatInr } from "@/lib/domain/money";
@@ -147,6 +148,34 @@ export function ProcedureBillDialog({
   );
   const feePaise = Math.round((Number(fee) || 0) * 100);
   const total = itemsTotal + feePaise;
+
+  if (state.ok && state.data?.saleId) {
+    return (
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogTrigger render={<Button />}>
+          <Receipt /> New Procedure Bill
+        </DialogTrigger>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <CheckCircle2 className="text-primary" /> Bill created
+            </DialogTitle>
+            <DialogDescription>
+              {formatInr(total)} billed for {patient?.label ?? "the patient"}.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter showCloseButton>
+            <Button
+              variant="outline"
+              render={<Link href={`/print/procedure-bill/${state.data.saleId}`} target="_blank" />}
+            >
+              <Printer /> Print Bill
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    );
+  }
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>

@@ -68,6 +68,9 @@ export const ROUTE_ROLES: Record<string, readonly AppRole[]> = {
   // action stays behind the uploadReport permission.
   "/reports": ["admin", "reception", "op", "ip", "doctor"],
   "/visits": ["admin", "reception", "op", "doctor", "pharmacy"],
+  // Read-only stock check for whoever is consulting a patient -- not stock
+  // management, which stays under /pharmacy.
+  "/drug-stock": ["admin", "doctor", "op"],
 };
 
 export function canAccessRoute(role: AppRole, pathname: string) {
