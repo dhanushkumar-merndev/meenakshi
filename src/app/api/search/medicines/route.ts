@@ -16,7 +16,7 @@ export async function GET(request: NextRequest) {
   // IP staff use this too, typing an item request against live stock (they
   // still cannot type anything not in the catalog and have it silently
   // "found" -- pharmacy always matches/prices at fulfilment regardless).
-  if (!["admin", "doctor", "pharmacy", "ip"].includes(profile.role))
+  if (!["admin", "doctor", "op", "pharmacy", "ip"].includes(profile.role))
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   const q = request.nextUrl.searchParams.get("q")?.trim().toLowerCase() ?? "";
   if (q.length < 2) return NextResponse.json({ items: [] });

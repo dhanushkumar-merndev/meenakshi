@@ -106,6 +106,12 @@ export function FulfillInventoryRequestDialog({
       }, 0),
     [lines, inventory],
   );
+  const needsManualPrice = lines.some(
+    (line) =>
+      !line.inventoryItemId &&
+      line.fulfilledQuantity > 0 &&
+      (!Number.isFinite(Number(line.customPriceRupees)) || Number(line.customPriceRupees) <= 0),
+  );
 
   if (state.ok) {
     // Whatever fell short of the requested quantity (unmatched entirely, or
@@ -220,7 +226,9 @@ export function FulfillInventoryRequestDialog({
                       </TableCell>
                       <TableCell>
                         {matched ? (
-                          <span className="text-sm tabular-nums">{formatInr(matched.selling_price_paise)}</span>
+                          <span className="text-sm tabular-nums" title="Auto-filled from the current stock price">
+                            {formatInr(matched.selling_price_paise)}
+                          </span>
                         ) : (
                           <Input
                             className="w-24"
@@ -245,7 +253,7 @@ export function FulfillInventoryRequestDialog({
             </p>
           </div>
           <DialogFooter showCloseButton>
-            <Button disabled={pending} type="submit">
+            <Button disabled={pending || needsManualPrice} type="submit">
               {pending ? <LoaderCircle className="animate-spin" /> : <PackageCheck />} Fulfill Request
             </Button>
           </DialogFooter>

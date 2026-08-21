@@ -54,13 +54,11 @@ export function ProgressNoteDialog({ticketId,defaultFee}:{ticketId:string;
       doctor may waive the charge, so the amount is typed here rather than
       always taken from their configured fee. */}
 {chargeable?<div className="max-w-xs space-y-2"><Label htmlFor="progress-fee">Visit charge (₹)</Label><Input id="progress-fee" name="fee" inputMode="decimal" value={fee} onChange={(event)=>setFee(event.target.value)} placeholder="500"/><p className="text-xs text-muted-foreground">Pre-filled with the configured IP visit fee. Enter 0 to record the visit without charging.</p><p className="text-xs text-destructive">{state.fieldErrors?.fee?.[0]}</p></div>:null}<DialogFooter showCloseButton><Button disabled={pending} type="submit">{pending?<LoaderCircle className="animate-spin"/>:<NotebookPen/>} Save Note</Button></DialogFooter></form></DialogContent></Dialog>}
-// Order matches the hospital's own discharge summary layout: diagnosis, then
-// (only when a procedure actually happened) what was done and the operative
-// note, then the narrative of the stay, treatment, medicines, advice and
-// follow-up. Procedure done / Operative Notes stay hidden -- and unsubmitted,
-// since an unrendered field is simply absent from FormData -- until the
-// "Procedure / surgery performed" checkbox is on, so a routine medical
-// admission's form doesn't carry two empty surgical fields nobody asked for.
+// This is the hospital's clinical discharge layout. A procedure adds only the
+// two surgical headings, in their documented positions; routine admissions
+// never submit empty procedure fields. Discharge medicines remain in the
+// historical schema for older summaries, but are deliberately not part of
+// this clinical summary template.
 export function DischargeSummaryDialog({ticketId,initialValues}:{ticketId:string;initialValues?:Record<string,string|null>}){
   const[state,action,pending]=useActionState(saveDischargeSummary,initial);
   const{open,setOpen}=useAutoCloseDialog(state,"Discharge summary saved.");
@@ -82,19 +80,18 @@ export function DischargeSummaryDialog({ticketId,initialValues}:{ticketId:string
         <input type="hidden" name="ticketId" value={ticketId}/>
         {state.message&&!state.ok?<Alert variant="destructive"><AlertDescription>{state.message}</AlertDescription></Alert>:null}
         <div className="grid gap-4 sm:grid-cols-2">
-          {field("finalDiagnosis","Final Diagnosis",{required:true})}
-          {field("chiefComplaint","Chief Complaint")}
+          {field("finalDiagnosis","Final Diagnosis",{required:true,span2:true})}
           <label className="flex items-center gap-2 text-sm sm:col-span-2">
             <Checkbox checked={procedurePerformed} onCheckedChange={(checked)=>setProcedurePerformed(checked===true)}/>
             Procedure / surgery performed
           </label>
-          {procedurePerformed?field("procedureDone","Procedure Done"):null}
-          {procedurePerformed?field("operativeNotes","Operative Notes",{span2:true,rows:4}):null}
+          {procedurePerformed?field("procedureDone","Procedure Done",{span2:true}):null}
+          {field("chiefComplaint","Chief Complaint",{span2:true})}
           {field("hospitalCourse","Course in the Hospital",{required:true,span2:true,rows:5})}
+          {procedurePerformed?field("operativeNotes","Operative Notes",{span2:true,rows:4}):null}
           {field("treatmentSummary","Treatment Given",{span2:true})}
-          {field("dischargeMedicines","Discharge Medicines")}
-          {field("dischargeAdvice","Discharge Advise",{required:true})}
-          {field("followUp","Follow-up")}
+          {field("dischargeAdvice","Discharge Advise",{required:true,span2:true})}
+          {field("followUp","Follow-up",{span2:true})}
         </div>
         <DialogFooter showCloseButton>
           <Button disabled={pending} type="submit">{pending?<LoaderCircle className="animate-spin"/>:<FileCheck2/>} Save Summary</Button>

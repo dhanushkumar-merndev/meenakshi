@@ -64,6 +64,17 @@ const fulfillLineSchema = z
       inventory_item_id: databaseIdSchema.optional().or(z.literal("")),
       fulfilled_quantity: z.number().int().min(0),
       unit_price_paise: z.number().int().min(0).optional(),
+    }).superRefine((line, context) => {
+      // A catalog item is priced by the locked server-side stock record. An
+      // off-catalog item has no such source, so its manually entered unit
+      // price is mandatory whenever any quantity is being billed.
+      if (!line.inventory_item_id && line.fulfilled_quantity > 0 && !(line.unit_price_paise && line.unit_price_paise > 0)) {
+        context.addIssue({
+          code: "custom",
+          path: ["unit_price_paise"],
+          message: "Enter a manual unit price for every off-catalog item being fulfilled.",
+        });
+      }
     }),
   )
   .max(30);
@@ -88,8 +99,11 @@ export async function fulfillIpInventoryRequest(_: ActionState, formData: FormDa
   let lines: z.infer<typeof fulfillLineSchema>;
   try {
     lines = fulfillLineSchema.parse(JSON.parse(parsed.data.lines));
-  } catch {
-    return { ok: false, message: "Check the fulfilled quantities and prices." };
+  } catch (error) {
+    const message = error instanceof z.ZodError
+      ? error.issues.find((issue) => issue.path.includes("unit_price_paise"))?.message
+      : undefined;
+    return { ok: false, message: message ?? "Check the fulfilled quantities and prices." };
   }
   const supabase = await createSupabaseServerClient();
   const { error } = await supabase.rpc("fulfill_ip_inventory_request", {
@@ -107,6 +121,8 @@ export async function fulfillIpInventoryRequest(_: ActionState, formData: FormDa
       ok: false,
       message: error.message.includes("insufficient inventory stock")
         ? error.message
+        : error.message.includes("manual unit price")
+          ? "Enter a manual unit price for every off-catalog item being fulfilled."
         : "The request could not be fulfilled; no stock or charge was changed.",
     };
   revalidatePath("/pharmacy/ip-requests");

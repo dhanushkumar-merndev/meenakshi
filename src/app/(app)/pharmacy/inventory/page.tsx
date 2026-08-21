@@ -199,7 +199,7 @@ export default async function InventoryPage({
                             variant="outline"
                             render={<Link href={`/print/procedure-bill/${sale.id}`} target="_blank" />}
                           >
-                            <Printer /> Print
+                            <Printer /> View / Print
                           </Button>
                         </TableCell>
                       </TableRow>
