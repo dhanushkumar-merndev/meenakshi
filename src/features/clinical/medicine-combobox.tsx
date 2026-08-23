@@ -25,12 +25,18 @@ export type MedicineSuggestion = {
   quantity: number;
   availability: string;
 };
+export type MedicineChoice = {
+  medicine_id?: string | undefined;
+  medicine_name: string;
+  /** Directory dosage form, so the row can prompt in the right unit. */
+  form?: string | undefined;
+};
 export function MedicineCombobox({
   value,
   onChange,
 }: {
-  value: { medicine_id?: string; medicine_name: string };
-  onChange: (value: { medicine_id?: string; medicine_name: string }) => void;
+  value: { medicine_id?: string | undefined; medicine_name: string };
+  onChange: (value: MedicineChoice) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState(value.medicine_name);
@@ -92,7 +98,10 @@ export function MedicineCombobox({
             value={query}
             onValueChange={(text) => {
               setQuery(text);
-              onChange({ medicine_name: text });
+              // Free text is no longer the directory medicine that was
+              // picked, so its id and dosage form go with it -- otherwise the
+              // dose box keeps prompting in the old medicine's unit.
+              onChange({ medicine_name: text, medicine_id: undefined, form: undefined });
             }}
             placeholder="Type at least 2 letters"
           />
@@ -116,6 +125,7 @@ export function MedicineCombobox({
                     onChange({
                       medicine_id: item.id,
                       medicine_name: item.name,
+                      form: item.form,
                     });
                     setQuery(item.name);
                     setOpen(false);

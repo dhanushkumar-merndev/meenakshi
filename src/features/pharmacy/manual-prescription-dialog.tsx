@@ -6,6 +6,7 @@ import { createManualPrescription } from "./manual-prescription-actions";
 import { MedicineCombobox } from "@/features/clinical/medicine-combobox";
 import { DURATION_PRESETS, FREQUENCY_PRESETS, PresetSelect } from "@/features/clinical/preset-select";
 import { calculatePrescriptionQuantity } from "@/lib/domain/medicine-quantity";
+import { dosageFormHints } from "@/lib/domain/dosage-form";
 import type { ActionState } from "@/types/hospital";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -67,8 +68,10 @@ type IpTicket = {
 };
 type MedicineLine = {
   key: string;
-  medicine_id?: string;
+  medicine_id?: string | undefined;
   medicine_name: string;
+  /** Dosage form of the picked directory medicine, if it came from there. */
+  form?: string | undefined;
   dose: string;
   frequency: string;
   duration: string;
@@ -243,6 +246,12 @@ export function ManualPrescriptionDialog({
       rows.map((row) => {
         if (row.key !== medKey) return row;
         const next = { ...row, ...patch };
+        // The route a form is actually given by -- see the consultation
+        // editor, which prescribes into the same table.
+        if (Object.prototype.hasOwnProperty.call(patch, "form")) {
+          const route = dosageFormHints(patch.form).route;
+          if (route) next.route = route;
+        }
         const dosageChanged = ["dose", "frequency", "duration"].some((field) =>
           Object.prototype.hasOwnProperty.call(patch, field),
         );
@@ -414,6 +423,7 @@ export function ManualPrescriptionDialog({
                 <TableBody>
                   {medicines.map((row) => {
                     const suggested = calculatePrescriptionQuantity(row);
+                    const hints = dosageFormHints(row.form);
                     return (
                       <TableRow key={row.key}>
                         <TableCell>
@@ -424,7 +434,7 @@ export function ManualPrescriptionDialog({
                             className="w-24"
                             value={row.dose}
                             onChange={(e) => updateMedicine(row.key, { dose: e.target.value })}
-                            placeholder="1 tablet"
+                            placeholder={hints.dosePlaceholder}
                           />
                         </TableCell>
                         <TableCell className="min-w-36">
@@ -457,7 +467,7 @@ export function ManualPrescriptionDialog({
                             }
                           />
                           {suggested !== null && row.quantityAuto && row.quantity === suggested ? (
-                            <p className="mt-1 text-[11px] text-muted-foreground">Auto: {suggested}</p>
+                            <p className="mt-1 text-[11px] text-muted-foreground">Auto: {suggested} {hints.quantityUnit}</p>
                           ) : null}
                         </TableCell>
                         <TableCell>

@@ -6,6 +6,7 @@ import { formatInr } from "@/lib/domain/money";
 import { containsSearchPattern, EMPTY_UUID } from "@/lib/domain/search";
 import { findMatchingPatientIds } from "@/lib/search/patients";
 import { AdmissionDialog } from "@/features/ip/ip-dialogs";
+import { AssignStaffDialog } from "@/features/ip/assign-staff-dialog";
 import { PageHeader } from "@/components/shared/page-header";
 import { FilterTabs } from "@/components/shared/filter-tabs";
 import { TablePager } from "@/components/shared/table-pager";
@@ -30,6 +31,7 @@ type Ticket = {
   room_bed_id: string | null;
   status: string;
   is_emergency: boolean;
+  assigned_ip_staff_id: string | null;
   patients: { name: string } | null;
   doctors: { display_name: string } | null;
   total_paise: number;
@@ -38,24 +40,28 @@ type Ticket = {
 type TicketFinancial = { ticket_id: string; total_paise: number; paid_paise: number };
 export default async function IpPage({ searchParams }: { searchParams: Promise<{ status?: string; page?: string; q?: string; view?: string }> }) {
   const profile = await requireRoute("/ip");
-  const params = await searchParams; const selectedStatus = params.status ?? "active"; const page = Math.max(1, Number(params.page) || 1); const size = 50; const q = params.q?.trim() ?? "";
+  const params = await searchParams; const selectedStatus = params.status === "mine" ? "active" : params.status ?? "active";
+  // "My Patients" narrows the same Current list rather than being a fifth
+  // status: a ticket is still admitted, it is just one of yours.
+  const mineOnly = params.status === "mine"; const page = Math.max(1, Number(params.page) || 1); const size = 50; const q = params.q?.trim() ?? "";
   // Grid shows live bed occupancy across every room, so it ignores the status
   // filter and paging that only make sense for the ticket list.
   const view = params.view === "grid" ? "grid" : "list";
   const supabase = await createSupabaseServerClient();
   const patientIds = q ? await findMatchingPatientIds(supabase, q) : [];
-  const [ticketsResult, doctorsResult, roomsResult, occupancyResult, referralResult] = await Promise.all([
+  const [ticketsResult, doctorsResult, roomsResult, occupancyResult, referralResult, ipStaffResult] = await Promise.all([
     (() => {
       let query = supabase
       .from("ip_tickets")
       .select(
-        "id,ticket_number,admission_at,room,bed,room_bed_id,status,is_emergency,patients(name),doctors(display_name)",
+        "id,ticket_number,admission_at,room,bed,room_bed_id,status,is_emergency,assigned_ip_staff_id,patients(name),doctors(display_name)",
         { count: "exact" },
       )
       // Newest admission first on every tab.
       .order("admission_at", { ascending: false })
       .range((page - 1) * size, page * size - 1);
       if (selectedStatus === "active") query = query.in("status", ["admitted", "discharge_pending"]);
+      if (mineOnly) query = query.eq("assigned_ip_staff_id", profile.id);
       else if (["admitted", "discharge_pending", "discharged", "cancelled"].includes(selectedStatus)) query = query.eq("status", selectedStatus as "admitted");
       if (q) query = query.or([
         `ticket_number.ilike.${containsSearchPattern(q)}`,
@@ -77,6 +83,7 @@ export default async function IpPage({ searchParams }: { searchParams: Promise<{
           .not("room_bed_id", "is", null)
       : Promise.resolve({ data: [] }),
     supabase.rpc("list_admission_referrals", { p_limit: 25 }),
+    supabase.rpc("list_ip_staff_workload"),
   ]);
   const canFinance = profile.role === "admin" || profile.role === "ip";
   const sourceTickets = (ticketsResult.data ?? []) as unknown as Omit<Ticket, "total_paise" | "paid_paise">[];
@@ -97,6 +104,21 @@ export default async function IpPage({ searchParams }: { searchParams: Promise<{
   const occupied = new Set(tickets.filter((ticket)=>["admitted","discharge_pending"].includes(ticket.status)).map((ticket)=>ticket.room_bed_id));
   // Shared by the page-level New Admission button and by each referral row.
   const doctorOptions = (doctorsResult.data ?? []).map((d) => ({ id: d.id, label: d.display_name }));
+  const ipStaffOptions = (
+    (ipStaffResult.data ?? []) as unknown as Array<{
+      id: string;
+      full_name: string;
+      active_patients: number;
+    }>
+  ).map((member) => ({
+    id: member.id,
+    label: member.full_name,
+    activePatients: Number(member.active_patients),
+  }));
+  // An IP staff member taking a referral is taking it for themselves; anyone
+  // else (admin, reception) picks the owner explicitly.
+  const selfIpStaffId = profile.role === "ip" ? profile.id : "";
+  const canAssign = profile.role === "admin" || profile.role === "ip";
   const roomOptions = (roomsResult.data ?? [])
     .filter((room) => !occupied.has(room.id))
     .map((room) => ({ id: room.id, label: `Floor ${room.floor} · Room ${room.room_number} · Bed ${room.bed_number}` }));
@@ -119,7 +141,12 @@ export default async function IpPage({ searchParams }: { searchParams: Promise<{
               className="mb-0"
             />
             {profile.role === "admin" || profile.role === "ip" ? (
-              <AdmissionDialog doctors={doctorOptions} rooms={roomOptions} />
+              <AdmissionDialog
+                doctors={doctorOptions}
+                rooms={roomOptions}
+                ipStaff={ipStaffOptions}
+                initialIpStaffId={selfIpStaffId}
+              />
             ) : null}
           </>
         }
@@ -177,9 +204,11 @@ export default async function IpPage({ searchParams }: { searchParams: Promise<{
                           referral sitting here for ever. */}
                       <TableCell className="text-right">
                         <AdmissionDialog
-                          triggerLabel="Admit"
+                          triggerLabel={profile.role === "ip" ? "Take & Admit" : "Admit"}
                           doctors={doctorOptions}
                           rooms={roomOptions}
+                          ipStaff={ipStaffOptions}
+                          initialIpStaffId={selfIpStaffId}
                           initialPatient={{
                             id: referral.patient_id,
                             label: `${referral.patient_name} · ${referral.patient_phone}`,
@@ -207,10 +236,13 @@ export default async function IpPage({ searchParams }: { searchParams: Promise<{
       <>
       <FilterTabs
         ariaLabel="Filter IP tickets by status"
-        active={selectedStatus}
+        active={params.status ?? "active"}
         params={{ q, view }}
         tabs={[
           { label: "Current", value: "active" },
+          ...(profile.role === "ip"
+            ? [{ label: "My Patients", value: "mine" }]
+            : []),
           { label: "Pending Discharge", value: "discharge_pending" },
           { label: "Discharged", value: "discharged" },
           { label: "All Tickets", value: "all" },
@@ -230,6 +262,7 @@ export default async function IpPage({ searchParams }: { searchParams: Promise<{
                   <TableHead>Patient details</TableHead>
                   <TableHead>IP days</TableHead>
                   <TableHead>Doctor</TableHead>
+                  <TableHead>IP Staff</TableHead>
                   <TableHead>Admitted</TableHead>
                   {canFinance ? <><TableHead>Total</TableHead><TableHead>Paid</TableHead><TableHead>Balance</TableHead></> : null}
                   <TableHead>Status</TableHead>
@@ -255,6 +288,13 @@ export default async function IpPage({ searchParams }: { searchParams: Promise<{
                         <TableCell>{ipDaysSince(ticket.admission_at)}</TableCell>
                         <TableCell>{ticket.doctors?.display_name}</TableCell>
                         <TableCell>
+                          {ipStaffOptions.find(
+                            (member) => member.id === ticket.assigned_ip_staff_id,
+                          )?.label ?? (
+                            <span className="text-muted-foreground">Unassigned</span>
+                          )}
+                        </TableCell>
+                        <TableCell>
                           {formatHospitalDate(ticket.admission_at)}
                         </TableCell>
                         {canFinance ? <><TableCell>{formatInr(total)}</TableCell><TableCell>{formatInr(paid)}</TableCell><TableCell>
@@ -264,13 +304,24 @@ export default async function IpPage({ searchParams }: { searchParams: Promise<{
                           <StatusBadge status={ticket.status} />
                         </TableCell>
                         <TableCell className="text-right">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            render={<Link href={`/ip/${ticket.id}`} />}
-                          >
-                            Open
-                          </Button>
+                          <div className="flex justify-end gap-2">
+                            {canAssign &&
+                            ["admitted", "discharge_pending"].includes(ticket.status) ? (
+                              <AssignStaffDialog
+                                ticketId={ticket.id}
+                                ticketNumber={ticket.ticket_number}
+                                currentStaffId={ticket.assigned_ip_staff_id}
+                                staff={ipStaffOptions}
+                              />
+                            ) : null}
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              render={<Link href={`/ip/${ticket.id}`} />}
+                            >
+                              Open
+                            </Button>
+                          </div>
                         </TableCell>
                       </TableRow>
                     );
@@ -278,7 +329,7 @@ export default async function IpPage({ searchParams }: { searchParams: Promise<{
                 ) : (
                   <TableRow>
                     <TableCell
-                      colSpan={canFinance ? 14 : 11}
+                      colSpan={canFinance ? 15 : 12}
                       className="h-32 text-center text-muted-foreground"
                     >
                       {q ? "No IP tickets match this search." : "No patients currently admitted."}

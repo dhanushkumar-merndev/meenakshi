@@ -18,16 +18,23 @@ test.describe("printed documents", () => {
     // any given day may belong to another consultant, and the doctor queue only
     // ever shows their own patients.
     await signIn(page, "admin");
-    await page.goto("/reception");
-    // A prescription only exists once the consultation is completed, so the row
-    // is picked by its status rather than by position in the queue.
-    const completed = page.getByRole("row").filter({ hasText: /Completed/i }).first();
-    await completed.waitFor({ timeout: 30_000 });
-    await completed.getByRole("button", { name: /Open|View/ }).first().click();
-    await page.waitForURL(/\/visits\/[0-9a-f-]{36}/, { timeout: 30_000 });
 
-    const prescriptionLink = page.getByRole("button", { name: /^Prescription$/ }).first();
-    await prescriptionLink.waitFor({ timeout: 30_000 });
+    // A prescription only exists once a consultation is completed. Today's
+    // queue is the usual source, but on a quiet day there may be none, so the
+    // pharmacy's pending list is tried before giving up -- both link straight
+    // to the same printed document.
+    await page.goto("/reception");
+    const completed = page.getByRole("row").filter({ hasText: /Completed/i }).first();
+    let prescriptionLink = page.getByRole("button", { name: /^Prescription$/ }).first();
+    if (await completed.count()) {
+      await completed.getByRole("button", { name: /Open|View/ }).first().click();
+      await page.waitForURL(/\/visits\/[0-9a-f-]{36}/, { timeout: 30_000 });
+    }
+    if (!(await prescriptionLink.count())) {
+      await page.goto("/pharmacy");
+      prescriptionLink = page.getByRole("link", { name: /Prescription/ }).first();
+      test.skip(!(await prescriptionLink.count()), "No prescription exists to print today.");
+    }
     await prescriptionLink.click();
     await expect(page).toHaveURL(/print\/prescription/);
 

@@ -23,7 +23,7 @@ export function IpBillDocument({
   );
 
   return (
-    <article className="min-h-[270mm] border border-black/20 p-7">
+    <article className="min-h-[270mm] border border-black/20 p-7 print:min-h-0 print:border-0 print:p-0">
       {/* Hospital banner first, document title under it: three columns across
           the top squeezed the title into one word per line. */}
       <header className="border-b-2 border-primary pb-3">

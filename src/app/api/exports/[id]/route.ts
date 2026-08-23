@@ -1,10 +1,12 @@
 import { NextResponse } from "next/server";
-import { requirePermission } from "@/lib/auth/dal";
+import { requireApiPermission } from "@/lib/auth/dal";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { databaseIdSchema } from "@/lib/validation/database-id";
 
 export async function GET(_: Request, { params }: { params: Promise<{ id: string }> }) {
-  const actor = await requirePermission("manageUsers");
+  const guard = await requireApiPermission("manageUsers");
+  if (guard.response) return guard.response;
+  const actor = guard.profile;
   const parsedId = databaseIdSchema.safeParse((await params).id);
   if (!parsedId.success)
     return NextResponse.json({ error: "Export unavailable" }, { status: 404 });

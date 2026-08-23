@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { DoctorLoad } from "@/features/reception/doctor-load";
 import {
   Select,
   SelectContent,
@@ -27,6 +28,9 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 
 type DoctorOption = {
+  /** Current load, when the caller fetched it (list_doctor_workload). */
+  opActive?: number | undefined;
+  ipActive?: number | undefined;
   id: string;
   displayName: string;
   department: string;
@@ -197,7 +201,13 @@ export function CreateVisitDialog({
                         value={item.id}
                         label={item.displayName}
                       >
-                        {item.displayName}
+                        <span className="flex w-full items-center justify-between gap-3">
+                          <span>{item.displayName}</span>
+                          <DoctorLoad
+                            opActive={item.opActive}
+                            ipActive={item.ipActive}
+                          />
+                        </span>
                       </SelectItem>
                     ))}
                   </SelectContent>

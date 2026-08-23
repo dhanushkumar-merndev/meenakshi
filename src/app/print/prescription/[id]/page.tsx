@@ -119,7 +119,7 @@ export default async function PrescriptionPrintPage({
       <div data-print-hidden className="mb-4 flex justify-end">
         <PrintButton label="Print Prescription" />
       </div>
-      <article className="min-h-[270mm] border border-black/20 p-7">
+      <article className="min-h-[270mm] border border-black/20 p-7 print:min-h-0 print:border-0 print:p-0">
         <header>
           <HospitalLetterhead identity={identity} logoSize={56} />
           <div className="my-3 h-1 bg-primary" />

@@ -4,10 +4,13 @@
 -- performed" -- a routine medical admission has no operative note to write).
 begin;
 
+-- if not exists: an earlier hotfix added these same three columns directly
+-- when the IP print routes were 404ing, so this migration has to be able to
+-- land on a database that already has them.
 alter table public.ip_tickets
-  add column chief_complaint text,
-  add column procedure_done text,
-  add column operative_notes text;
+  add column if not exists chief_complaint text,
+  add column if not exists procedure_done text,
+  add column if not exists operative_notes text;
 
 -- protect_ip_discharge_workflow guards every clinical discharge field against
 -- being changed outside save_ip_discharge_summary's controlled workflow --

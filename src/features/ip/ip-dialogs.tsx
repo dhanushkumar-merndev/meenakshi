@@ -43,15 +43,21 @@ const modes = [
 export function AdmissionDialog({
   doctors,
   rooms = [],
+  ipStaff = [],
   initialPatient = null,
   initialDoctorId = "",
+  initialIpStaffId = "",
   sourceVisitId = "",
   triggerLabel = "New Admission",
 }: {
   doctors: Array<{ id: string; label: string }>;
   rooms?: Array<{ id: string; label: string }>;
+  /** IP staff who can own the admission, with their current ward load. */
+  ipStaff?: Array<{ id: string; label: string; activePatients: number }>;
   initialPatient?: PatientOption | null;
   initialDoctorId?: string;
+  /** Pre-selected owner -- the IP staff member taking a referral is themselves. */
+  initialIpStaffId?: string;
   sourceVisitId?: string;
   triggerLabel?: string;
 }) {
@@ -60,6 +66,7 @@ export function AdmissionDialog({
   const [emergency, setEmergency] = useState(false);
   const [doctor, setDoctor] = useState(initialDoctorId);
   const [roomBedId, setRoomBedId] = useState("");
+  const [ipStaffId, setIpStaffId] = useState(initialIpStaffId);
   const [mode, setMode] = useState("cash");
   const [key] = useState(() => crypto.randomUUID());
   const { open, setOpen } = useAutoCloseDialog(state, "Patient admitted.");
@@ -82,6 +89,7 @@ export function AdmissionDialog({
           <input type="hidden" name="doctorId" value={doctor} />
           <input type="hidden" name="sourceVisitId" value={sourceVisitId} />
           <input type="hidden" name="roomBedId" value={roomBedId} />
+          <input type="hidden" name="assignedIpStaffId" value={ipStaffId} />
           <input type="hidden" name="paymentMode" value={mode} />
           <input type="hidden" name="idempotencyKey" value={key} />
           {state.message && !state.ok ? (
@@ -147,6 +155,42 @@ export function AdmissionDialog({
                 </SelectContent>
               </Select>
             </div>
+            {ipStaff.length ? (
+              <div className="space-y-2 sm:col-span-2">
+                <Label htmlFor="admission-ip-staff">IP staff</Label>
+                <Select
+                  value={ipStaffId}
+                  onValueChange={(v) => setIpStaffId(String(v))}
+                >
+                  <SelectTrigger id="admission-ip-staff" className="w-full">
+                    <SelectValue placeholder="Unassigned">
+                      {() =>
+                        ipStaff.find((member) => member.id === ipStaffId)?.label ??
+                        "Unassigned"
+                      }
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    {ipStaff.map((member) => (
+                      <SelectItem key={member.id} value={member.id} label={member.label}>
+                        <span className="flex w-full items-center justify-between gap-3">
+                          <span>{member.label}</span>
+                          <span className="text-xs text-muted-foreground">
+                            {member.activePatients
+                              ? `${member.activePatients} patients`
+                              : "free"}
+                          </span>
+                        </span>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  Who looks after this patient on the ward. Can be left
+                  unassigned and claimed later.
+                </p>
+              </div>
+            ) : null}
             <div className="space-y-2 sm:col-span-2">
               <Label htmlFor="admission-room-bed">Available room / bed</Label>
               <Select value={roomBedId} onValueChange={(v)=>setRoomBedId(String(v))}><SelectTrigger id="admission-room-bed" className="w-full"><SelectValue placeholder="Select available room / bed">{() => rooms.find((room) => room.id === roomBedId)?.label ?? "Select available room / bed"}</SelectValue></SelectTrigger><SelectContent>{rooms.map(room=><SelectItem key={room.id} value={room.id} label={room.label}>{room.label}</SelectItem>)}</SelectContent></Select>

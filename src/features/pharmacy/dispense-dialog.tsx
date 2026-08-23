@@ -190,6 +190,17 @@ export function DispenseDialog({
           >
             <Printer /> Prescription
           </Button>
+          {/* Partially dispensed means something is still owed to the
+              patient: hand them the slip for it at the same counter. */}
+          {completed ? null : (
+            <Button
+              size="sm"
+              variant="outline"
+              render={<Link href={`/print/outside-purchase/${prescriptionId}`} target="_blank" />}
+            >
+              <Printer /> Outside Purchase
+            </Button>
+          )}
         </div>
       </div>
     );

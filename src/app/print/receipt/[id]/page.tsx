@@ -17,6 +17,7 @@ type Receipt = {
   patient_uhid: string | null;
   visit_id: string | null;
   token_number: number | null;
+  prescription_id: string | null;
   prescription_number: number | null;
   doctor_name: string | null;
   medicines_paise: number;
@@ -27,6 +28,14 @@ type Receipt = {
     quantity: number;
     unit_price_paise: number;
     amount_paise: number;
+  }>;
+  /** Prescribed but not handed over -- the family buys these outside. */
+  unsupplied: Array<{
+    name: string;
+    dose: string | null;
+    frequency: string | null;
+    duration: string | null;
+    pending: number;
   }>;
 };
 
@@ -61,10 +70,19 @@ export default async function ReceiptPrintPage({
   const at = new Date(receipt.created_at);
   const total = Number(receipt.medicines_paise) + Number(receipt.consultation_paise);
   const items = receipt.items ?? [];
+  const unsupplied = receipt.unsupplied ?? [];
 
   return (
     <main className="mx-auto min-h-screen max-w-[210mm] bg-white p-4 text-black sm:p-8">
-      <div data-print-hidden className="mb-4 flex justify-end">
+      <div data-print-hidden className="mb-4 flex justify-end gap-2">
+        {unsupplied.length && receipt.prescription_id ? (
+          <a
+            className="inline-flex items-center rounded-md border px-3 py-2 text-sm font-medium"
+            href={`/print/outside-purchase/${receipt.prescription_id}`}
+          >
+            Outside Purchase Slip
+          </a>
+        ) : null}
         <PrintButton label="Print Receipt" />
       </div>
       <article className="mx-auto max-w-md border border-black p-6 font-sans">
@@ -171,6 +189,36 @@ export default async function ReceiptPrintPage({
             <dd>{MODE_LABELS[receipt.payment_mode] ?? receipt.payment_mode}</dd>
           </div>
         </dl>
+
+        {/* Nothing is charged for these -- the hospital never gave them. They
+            are named on the receipt so the family leaves knowing exactly what
+            is still to be bought, and the slip beside it is what they hand to
+            an outside chemist. */}
+        {unsupplied.length ? (
+          <section className="mt-5 border border-dashed border-black p-3">
+            <p className="text-sm font-semibold uppercase">
+              Not supplied · purchase outside
+            </p>
+            <ul className="mt-2 space-y-1 text-sm">
+              {unsupplied.map((item, index) => (
+                <li key={`${item.name}-${index}`}>
+                  <span className="font-medium">{item.name}</span>
+                  <span className="tabular-nums"> · {item.pending}</span>
+                  {item.dose || item.frequency || item.duration ? (
+                    <span className="block text-xs">
+                      {[item.dose, item.frequency, item.duration]
+                        .filter(Boolean)
+                        .join(" · ")}
+                    </span>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+            <p className="mt-2 text-xs">
+              Not charged on this receipt.
+            </p>
+          </section>
+        ) : null}
 
         <p className="mt-6 border-t border-dashed border-black pt-3 text-xs">
           {receipt.source === "ip"

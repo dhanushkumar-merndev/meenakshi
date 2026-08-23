@@ -20,6 +20,8 @@ const admission = z.object({
   deposit: z.string(),
   paymentMode: z.enum(["cash", "upi", "card", "bank_transfer", "other"]),
   idempotencyKey: databaseIdSchema,
+  // Optional: an unclaimed ticket is a real state, not an error.
+  assignedIpStaffId: databaseIdSchema.optional().or(z.literal("")),
 }).superRefine((value, context) => {
   if (value.isEmergency === "false" && !value.patientId) {
     context.addIssue({
@@ -56,6 +58,7 @@ export async function createAdmission(
     p_is_emergency: parsed.data.isEmergency === "true",
     p_idempotency_key: parsed.data.idempotencyKey,
     p_room_bed_id: parsed.data.roomBedId || null,
+    p_assigned_ip_staff_id: parsed.data.assignedIpStaffId || null,
   });
   const result = Array.isArray(data) ? data[0] : data;
   if (error || !result) {
@@ -68,6 +71,8 @@ export async function createAdmission(
       return { ok: false, message: "The admission database function is being updated. Refresh and retry." };
     if (message.includes("already admitted") || error?.code === "23505")
       return { ok: false, message: "This patient or room already has an active admission." };
+    if (message.includes("not ip staff"))
+      return { ok: false, message: "That staff member is no longer IP staff. Pick another." };
     if (message.includes("outstanding op consultation fee"))
       return {
         ok: false,
@@ -235,3 +240,37 @@ const summarySchema=z.object({ticketId:databaseIdSchema,finalDiagnosis:z.string(
 export async function saveDischargeSummary(_:ActionState,formData:FormData):Promise<ActionState>{await requirePermission("writeConsultation");const parsed=summarySchema.safeParse(Object.fromEntries(formData));if(!parsed.success)return{ok:false,fieldErrors:parsed.error.flatten().fieldErrors};const supabase=await createSupabaseServerClient();const{error}=await supabase.rpc("save_ip_discharge_summary",{p_ticket_id:parsed.data.ticketId,p_final_diagnosis:parsed.data.finalDiagnosis,p_hospital_course:parsed.data.hospitalCourse,p_treatment_summary:parsed.data.treatmentSummary||null,p_discharge_medicines:parsed.data.dischargeMedicines||null,p_discharge_advice:parsed.data.dischargeAdvice,p_follow_up:parsed.data.followUp||null,p_chief_complaint:parsed.data.chiefComplaint||null,p_procedure_done:parsed.data.procedureDone||null,p_operative_notes:parsed.data.operativeNotes||null});if(error)return{ok:false,message:"Discharge summary could not be saved."};revalidatePath(`/ip/${parsed.data.ticketId}`);revalidatePath("/ip");return{ok:true,message:"Clinical discharge summary saved; IP staff may complete discharge."}}
 const completeSchema=z.object({ticketId:databaseIdSchema});
 export async function completeDischarge(_:ActionState,formData:FormData):Promise<ActionState>{await requirePermission("manageIp");const parsed=completeSchema.safeParse(Object.fromEntries(formData));if(!parsed.success)return{ok:false,message:"Invalid IP ticket."};const supabase=await createSupabaseServerClient();const{error}=await supabase.rpc("complete_ip_discharge",{p_ticket_id:parsed.data.ticketId});if(error)return{ok:false,message:error.message.includes("patient assignment")?"Assign the emergency IP ticket to a patient before discharge.":error.message.includes("outstanding")?"Collect the outstanding balance before discharge.":error.message.includes("summary")?"Doctor must complete the clinical discharge summary first.":"Discharge could not be completed."};revalidatePath(`/ip/${parsed.data.ticketId}`);revalidatePath("/ip");return{ok:true,message:"Patient discharged successfully."}}
+
+/**
+ * Hands an open ticket to an IP staff member -- a shift handover, or an IP
+ * staff member claiming one nobody took. Passing an empty id unassigns it.
+ */
+export async function assignIpTicket(
+  _: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  await requirePermission("admitIp");
+  const parsed = z
+    .object({
+      ticketId: databaseIdSchema,
+      staffId: databaseIdSchema.optional().or(z.literal("")),
+    })
+    .safeParse(Object.fromEntries(formData));
+  if (!parsed.success)
+    return { ok: false, fieldErrors: parsed.error.flatten().fieldErrors };
+  const supabase = await createSupabaseServerClient();
+  const { error } = await supabase.rpc("assign_ip_ticket", {
+    p_ticket_id: parsed.data.ticketId,
+    p_staff_id: parsed.data.staffId || null,
+  });
+  if (error) {
+    const message = error.message.toLowerCase();
+    if (message.includes("not ip staff"))
+      return { ok: false, message: "That staff member is no longer IP staff." };
+    if (message.includes("ticket is not open"))
+      return { ok: false, message: "This ticket is already discharged or cancelled." };
+    return { ok: false, message: "The assignment could not be saved." };
+  }
+  revalidatePath("/ip");
+  return { ok: true, message: "Assignment updated." };
+}

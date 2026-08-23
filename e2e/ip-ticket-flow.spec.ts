@@ -30,7 +30,7 @@ test.describe("IP ticket charges and payments", () => {
     // Item and Rate are read-only while a configured preset is selected; a
     // free-text charge needs the Custom option.
     await chargeDialog.getByLabel("Charge preset").click();
-    await page.getByRole("option", { name: "Custom charge" }).click();
+    await page.getByRole("option", { name: /^Custom/ }).click();
     await chargeDialog.getByLabel("Item").fill(chargeItem);
     await chargeDialog.getByLabel("Quantity").fill("1");
     await chargeDialog.getByLabel("Rate").fill("400");

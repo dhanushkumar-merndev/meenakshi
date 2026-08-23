@@ -51,10 +51,30 @@ export default async function ReceptionPage({
   // Independent of each other -- the doctor picker doesn't need the search
   // match, so both go over the wire together instead of one after the other.
   const [{ data: doctorRows }, patientIds] = await Promise.all([
-    supabase.from("doctors").select("id,display_name,op_fee_paise,follow_up_fee_paise,departments(name)").eq("active", true).order("display_name"),
+    // Same list as before plus each consultant's current OP queue and IP
+    // load, so reception can spread patients instead of guessing who is free.
+    supabase.rpc("list_doctor_workload"),
     q ? findMatchingPatientIds(supabase, q) : Promise.resolve([]),
   ]);
-  const doctors = ((doctorRows ?? []) as unknown as Array<{ id: string; display_name: string; op_fee_paise: number; follow_up_fee_paise: number; departments: { name: string } | null }>).map((doctor) => ({ id: doctor.id, displayName: doctor.display_name, department: doctor.departments?.name ?? "—", opFeePaise: doctor.op_fee_paise, followUpFeePaise: doctor.follow_up_fee_paise }));
+  const doctors = (
+    (doctorRows ?? []) as unknown as Array<{
+      id: string;
+      display_name: string;
+      department: string | null;
+      op_fee_paise: number;
+      follow_up_fee_paise: number;
+      op_active: number;
+      ip_active: number;
+    }>
+  ).map((doctor) => ({
+    id: doctor.id,
+    displayName: doctor.display_name,
+    department: doctor.department ?? "—",
+    opFeePaise: Number(doctor.op_fee_paise),
+    followUpFeePaise: Number(doctor.follow_up_fee_paise),
+    opActive: Number(doctor.op_active),
+    ipActive: Number(doctor.ip_active),
+  }));
   let visitsQuery = supabase
     .from("visits")
     .select(

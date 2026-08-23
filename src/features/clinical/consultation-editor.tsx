@@ -1,5 +1,5 @@
 "use client";
-import { useActionState, useEffect, useState } from "react";
+import { useActionState, useEffect, useRef, useState } from "react";
 import { FileCheck2, History, LoaderCircle, Plus, Save, Trash2 } from "lucide-react";
 import { saveConsultation, startConsultation } from "./actions";
 import { MedicineCombobox } from "./medicine-combobox";
@@ -30,6 +30,7 @@ import {
 } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import { calculatePrescriptionQuantity } from "@/lib/domain/medicine-quantity";
+import { dosageFormHints } from "@/lib/domain/dosage-form";
 import {
   DURATION_PRESETS,
   FREQUENCY_PRESETS,
@@ -55,8 +56,10 @@ const WARD_TYPE_LABELS: Record<string, string> = {
 
 type MedicineLine = {
   key: string;
-  medicine_id?: string;
+  medicine_id?: string | undefined;
   medicine_name: string;
+  /** Dosage form of the picked directory medicine, if it came from there. */
+  form?: string | undefined;
   dose: string;
   frequency: string;
   duration: string;
@@ -65,7 +68,9 @@ type MedicineLine = {
   quantity: number;
   quantityAuto: boolean;
 };
-type SavedMedicineLine = Omit<MedicineLine, "key" | "quantityAuto">;
+// `form` is a UI hint only -- prescription_items stores the dose text the
+// doctor confirmed, not the directory's form.
+type SavedMedicineLine = Omit<MedicineLine, "key" | "quantityAuto" | "form">;
 type TestLine = { key: string; test_name: string; category: string; notes: string };
 type InitialConsultation = {
   symptoms?: string | null;
@@ -129,7 +134,14 @@ export function ConsultationEditor({
   // them from this moment, and reception and the OP desk need to see that
   // without waiting for a draft to be saved. The RPC ignores a visit that is
   // already in progress, completed or cancelled, so this is safe to re-run.
+  // Once per visit, not once per effect run: React double-invokes effects in
+  // development, which fired this mutation twice on every consultation opened.
+  // The RPC ignores an already-started visit, so the duplicate was harmless --
+  // it was still a wasted round trip on the doctor's critical path.
+  const startedVisit = useRef<string | null>(null);
   useEffect(() => {
+    if (startedVisit.current === visitId) return;
+    startedVisit.current = visitId;
     void startConsultation(visitId);
   }, [visitId]);
   const [medicines, setMedicines] = useState<MedicineLine[]>(
@@ -157,6 +169,13 @@ export function ConsultationEditor({
       rows.map((row) => {
         if (row.key !== key) return row;
         const next = { ...row, ...patch };
+        // Picking a medicine sets the route its form is actually given by --
+        // an injection is not "Oral", an ointment is not either -- and the
+        // doctor can still change it afterwards.
+        if (Object.prototype.hasOwnProperty.call(patch, "form")) {
+          const route = dosageFormHints(patch.form).route;
+          if (route) next.route = route;
+        }
         const dosageChanged = ["dose", "frequency", "duration"].some((field) =>
           Object.prototype.hasOwnProperty.call(patch, field),
         );
@@ -312,6 +331,7 @@ export function ConsultationEditor({
                 {medicines.length ? (
                   medicines.map((row) => {
                     const suggestedQuantity = calculatePrescriptionQuantity(row);
+                    const hints = dosageFormHints(row.form);
                     return (
                       <TableRow key={row.key}>
                       <TableCell>
@@ -326,7 +346,8 @@ export function ConsultationEditor({
                           onChange={(e) =>
                             updateMedicine(row.key, { dose: e.target.value })
                           }
-                          placeholder="1 tablet"
+                          placeholder={hints.dosePlaceholder}
+                          aria-label={`Dose${row.form ? ` in ${hints.quantityUnit}` : ""}`}
                         />
                       </TableCell>
                       <TableCell>
@@ -384,7 +405,7 @@ export function ConsultationEditor({
                           </p>
                         ) : row.quantityAuto && row.quantity === suggestedQuantity ? (
                           <p className="mt-1 text-[11px] text-muted-foreground">
-                            Auto: {suggestedQuantity}
+                            Auto: {suggestedQuantity} {hints.quantityUnit}
                           </p>
                         ) : (
                           <Button
@@ -399,7 +420,7 @@ export function ConsultationEditor({
                               })
                             }
                           >
-                            Use suggested {suggestedQuantity}
+                            Use suggested {suggestedQuantity} {hints.quantityUnit}
                           </Button>
                         )}
                       </TableCell>

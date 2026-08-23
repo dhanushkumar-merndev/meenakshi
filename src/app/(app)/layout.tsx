@@ -2,12 +2,14 @@ import { AppHeader } from "@/components/layout/app-header";
 import { AppSidebar } from "@/components/layout/app-sidebar";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { OperationalLiveSync } from "@/components/layout/operational-live-sync";
+import { PageTitleProvider } from "@/components/layout/page-title";
 import { getCurrentProfile } from "@/lib/auth/dal";
 
 export default async function AppLayout({ children }: LayoutProps<"/">) {
   const profile = await getCurrentProfile();
   return (
     <SidebarProvider className="h-svh min-h-0 overflow-hidden" data-app-viewport>
+      <PageTitleProvider>
       <OperationalLiveSync role={profile.role} />
       <AppSidebar profile={profile} />
       <SidebarInset className="h-svh min-h-0 overflow-hidden">
@@ -24,6 +26,7 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
           {children}
         </div>
       </SidebarInset>
+      </PageTitleProvider>
     </SidebarProvider>
   );
 }

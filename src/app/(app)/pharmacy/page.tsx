@@ -276,6 +276,22 @@ export default async function PharmacyPage({
                           >
                             <Printer /> Prescription
                           </Button>
+                          {/* What the counter could not supply, as a
+                              prescription the family can take to an outside
+                              chemist. Only offered when something is actually
+                              short. */}
+                          {rx.items.some(
+                            (item) =>
+                              item.requested_quantity - item.dispensed_quantity > 0,
+                          ) ? (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              render={<Link href={`/print/outside-purchase/${rx.id}`} target="_blank" />}
+                            >
+                              <Printer /> Outside Purchase
+                            </Button>
+                          ) : null}
                           </div>
                         </TableCell>
                       </TableRow>

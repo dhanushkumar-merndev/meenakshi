@@ -115,7 +115,10 @@ test.describe("OP visit through to pharmacy", () => {
     // Assessment comes from the local clinical directory (ICD-10 coded or free
     // text) and is required to complete.
     await doctor.getByRole("button", { name: "Add diagnosis" }).click();
-    await doctor.getByPlaceholder(/Search diagnosis/).fill("Viral fever");
+    // The picker opens a popover whose search box is labelled by the active
+    // coding system ("Search ICD-10"), not the word "diagnosis".
+    await doctor.getByRole("button", { name: /^Search / }).first().click();
+    await doctor.getByPlaceholder(/^Search /).fill("Viral fever");
     const diagnosis = doctor.getByRole("option").first();
     await diagnosis.waitFor({ timeout: 15_000 });
     await diagnosis.click();

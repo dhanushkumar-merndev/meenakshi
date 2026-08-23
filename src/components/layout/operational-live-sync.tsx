@@ -44,6 +44,7 @@ export function OperationalLiveSync({ role }: { role: AppRole }) {
 
   useEffect(() => {
     const supabase = createSupabaseBrowserClient();
+    let cancelled = false;
     let channel = supabase.channel(`operations:${role}`);
     // router.refresh() re-runs the whole server component tree, so firing it
     // per row was expensive: one pharmacy dispense touches prescriptions,
@@ -65,8 +66,23 @@ export function OperationalLiveSync({ role }: { role: AppRole }) {
         scheduleRefresh,
       );
     }
-    channel.subscribe();
+    // Realtime evaluates row level security as whoever the SOCKET is
+    // authenticated as, not as whoever is signed in to the app. Without this
+    // the socket stays on the anon key: it connects, it reports "Subscribed to
+    // PostgreSQL", and then every row is filtered out by RLS, so no change
+    // ever arrives and the screen only updates on the 10-minute safety poll.
+    // Handing realtime the user's access token first is what makes the
+    // subscription actually deliver anything.
+    void (async () => {
+      const { data } = await supabase.auth.getSession();
+      const token = data.session?.access_token;
+      if (cancelled) return;
+      if (token) supabase.realtime.setAuth(token);
+      channel.subscribe();
+    })();
+
     return () => {
+      cancelled = true;
       if (timer) clearTimeout(timer);
       void supabase.removeChannel(channel);
     };

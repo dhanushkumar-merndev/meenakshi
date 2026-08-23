@@ -285,5 +285,15 @@
      by default, which would erase the letterhead rule and the primary divider
      bars, so those are forced on -- text stays black either way. */
   article, article * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-  @page { margin: 12mm; }
+  /* The screen wrapper's padding, width cap and min-height exist so a document
+     is readable in a browser tab. On paper they only shrink the printable area
+     -- the sheet already has the @page margin -- so the document starts at the
+     page margin and uses the full width of the paper. */
+  main {
+    padding: 0 !important;
+    margin: 0 !important;
+    max-width: none !important;
+    min-height: 0 !important;
+  }
+  @page { size: A4; margin: 10mm; }
 }

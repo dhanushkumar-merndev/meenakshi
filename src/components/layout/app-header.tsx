@@ -1,4 +1,5 @@
 import { SidebarTrigger } from "@/components/ui/sidebar";
+import { HeaderPageTitle } from "./page-title";
 import { NotificationMenu } from "./notification-menu";
 
 export function AppHeader() {
@@ -10,6 +11,9 @@ export function AppHeader() {
       <div className="flex shrink-0 items-center">
         <SidebarTrigger className="size-9" />
       </div>
+      {/* The page's own heading sits here on a phone, where the bar is
+          otherwise empty and vertical space is scarce. */}
+      <HeaderPageTitle />
       <div className="ml-auto shrink-0">
         <NotificationMenu />
       </div>

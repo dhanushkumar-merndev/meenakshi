@@ -27,11 +27,17 @@ import {
 import { useAutoCloseDialog } from "@/hooks/use-auto-close-dialog";
 import { DeleteMasterButton } from "@/features/admin/delete-master-button";
 import { calculateStockUnits } from "@/lib/domain/medicine-quantity";
+import { LearningField } from "./learning-field";
+import {
+  emptyFieldOptions,
+  type MedicineFieldOptions,
+} from "./medicine-field-options";
 
 const initial: ActionState = { ok: false };
 export function MedicineDialog({
   item,
   canDelete = false,
+  fieldOptions,
 }: {
   item?: {
     id: string;
@@ -43,7 +49,10 @@ export function MedicineDialog({
     active: boolean;
   };
   canDelete?: boolean;
+  /** Values the pharmacy has used before, offered as dropdown choices. */
+  fieldOptions?: MedicineFieldOptions | undefined;
 }) {
+  const options = fieldOptions ?? emptyFieldOptions();
   const [state, action, pending] = useActionState(saveMedicine, initial);
   const { open, setOpen } = useAutoCloseDialog(state, "Medicine saved.");
   return (
@@ -74,22 +83,46 @@ export function MedicineDialog({
             </p>
           ) : null}
           <div className="grid gap-4 sm:grid-cols-2">
-            {[
-              ["brandName", "Medicine name", item?.brandName ?? ""],
-              ["genericName", "Generic name", item?.genericName ?? ""],
-              ["strength", "Strength", item?.strength ?? ""],
-              ["dosageForm", "Dosage form", item?.dosageForm ?? ""],
-              ["manufacturer", "Manufacturer", item?.manufacturer ?? ""],
-            ].map(([name, label, value]) => (
-              <div className="space-y-2" key={name}>
-                <Label>{label}</Label>
-                <Input
-                  name={name}
-                  defaultValue={value}
-                  required={["brandName", "dosageForm"].includes(name)}
-                />
-              </div>
-            ))}
+            {/* Brand name is the one field with nothing to suggest -- every
+                medicine has its own, so a list of previous ones is only in
+                the way. The rest repeat across the directory, so they are
+                type-or-pick and learn whatever gets typed. */}
+            <div className="space-y-2">
+              <Label htmlFor="medicine-brandName">Medicine name</Label>
+              <Input
+                id="medicine-brandName"
+                name="brandName"
+                defaultValue={item?.brandName ?? ""}
+                required
+              />
+            </div>
+            <LearningField
+              name="genericName"
+              label="Generic name"
+              options={options.generic_name}
+              defaultValue={item?.genericName ?? ""}
+            />
+            <LearningField
+              name="strength"
+              label="Strength"
+              options={options.strength}
+              defaultValue={item?.strength ?? ""}
+              placeholder="500 mg"
+            />
+            <LearningField
+              name="dosageForm"
+              label="Dosage form"
+              options={options.dosage_form}
+              defaultValue={item?.dosageForm ?? ""}
+              placeholder="Tablet"
+              required
+            />
+            <LearningField
+              name="manufacturer"
+              label="Manufacturer"
+              options={options.manufacturer}
+              defaultValue={item?.manufacturer ?? ""}
+            />
             <label className="flex items-center gap-2 self-end text-sm">
               <Checkbox name="active" defaultChecked={item?.active ?? true} />{" "}
               Active
@@ -273,20 +306,6 @@ export function BatchDialog({
             ) : (
               <>
                 <div className="space-y-2">
-                  <Label htmlFor="unitsPerPack">Units per pack</Label>
-                  <Input
-                    id="unitsPerPack"
-                    type="number"
-                    min={1}
-                    step={1}
-                    value={unitsPerPack}
-                    onChange={(event) =>
-                      setUnitsPerPack(Number(event.target.value))
-                    }
-                    required
-                  />
-                </div>
-                <div className="space-y-2">
                   <Label htmlFor="packCount">Number of packs</Label>
                   <Input
                     id="packCount"
@@ -296,6 +315,20 @@ export function BatchDialog({
                     value={packCount}
                     onChange={(event) =>
                       setPackCount(Number(event.target.value))
+                    }
+                    required
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="unitsPerPack">Units per pack</Label>
+                  <Input
+                    id="unitsPerPack"
+                    type="number"
+                    min={1}
+                    step={1}
+                    value={unitsPerPack}
+                    onChange={(event) =>
+                      setUnitsPerPack(Number(event.target.value))
                     }
                     required
                   />
@@ -337,19 +370,6 @@ export function BatchDialog({
                 </div>
                 <div className="grid gap-3 sm:grid-cols-3">
                   <div className="space-y-2">
-                    <Label htmlFor="adjustUnitsPerPack">Units per pack</Label>
-                    <Input
-                      id="adjustUnitsPerPack"
-                      type="number"
-                      min={1}
-                      step={1}
-                      value={unitsPerPack}
-                      onChange={(event) =>
-                        setUnitsPerPack(Number(event.target.value))
-                      }
-                    />
-                  </div>
-                  <div className="space-y-2">
                     <Label htmlFor="adjustPackCount">Packs to add</Label>
                     <Input
                       id="adjustPackCount"
@@ -359,6 +379,19 @@ export function BatchDialog({
                       value={packCount}
                       onChange={(event) =>
                         setPackCount(Number(event.target.value))
+                      }
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="adjustUnitsPerPack">Units per pack</Label>
+                    <Input
+                      id="adjustUnitsPerPack"
+                      type="number"
+                      min={1}
+                      step={1}
+                      value={unitsPerPack}
+                      onChange={(event) =>
+                        setUnitsPerPack(Number(event.target.value))
                       }
                     />
                   </div>

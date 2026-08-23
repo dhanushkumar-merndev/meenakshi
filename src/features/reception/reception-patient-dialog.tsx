@@ -32,6 +32,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { DoctorLoad } from "./doctor-load";
 import {
   Select,
   SelectContent,
@@ -48,6 +49,9 @@ type Doctor = {
   department: string;
   opFeePaise: number;
   followUpFeePaise: number;
+  /** Current load, when the caller fetched it (list_doctor_workload). */
+  opActive?: number | undefined;
+  ipActive?: number | undefined;
 };
 type Patient = {
   id: string;
@@ -213,7 +217,10 @@ export function ReceptionPatientDialog({ doctors }: { doctors: Doctor[] }) {
             <SelectContent>
               {doctors.map((item) => (
                 <SelectItem key={item.id} value={item.id} label={item.displayName}>
-                  {item.displayName}
+                  <span className="flex w-full items-center justify-between gap-3">
+                    <span>{item.displayName}</span>
+                    <DoctorLoad opActive={item.opActive} ipActive={item.ipActive} />
+                  </span>
                 </SelectItem>
               ))}
             </SelectContent>

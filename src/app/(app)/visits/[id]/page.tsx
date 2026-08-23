@@ -278,14 +278,68 @@ export default async function VisitPage({
         notes: vitals.notes,
       }
     : undefined;
-  const canConvertToIp=(profile.role==="doctor"||profile.role==="admin")&&(profile.role==="admin"||profile.doctorId===visit.doctor_id);
+  // Doctors refer for admission -- they tick "admission recommended" on the
+  // consultation, it lands in IP's referral queue, and IP staff are the ones
+  // who create the ticket (they own the ward, the bed and the register).
+  // Admitting straight from here is kept for admin alone, as the override it
+  // is; a doctor sees where their referral has got to instead.
+  // Reception converts an OP visit the doctor referred -- they own the
+  // register, and the ward staff member who will look after the patient is
+  // named at the same time.
+  const canConvertToIp = profile.role === "admin" || profile.role === "reception";
+  const showsAdmissionState =
+    canConvertToIp ||
+    (profile.role === "doctor" && profile.doctorId === visit.doctor_id);
+  const { data: ipStaffRows } = canConvertToIp
+    ? await supabase.rpc("list_ip_staff_workload")
+    : { data: null };
+  const ipStaffOptions = (
+    (ipStaffRows ?? []) as unknown as Array<{
+      id: string;
+      full_name: string;
+      active_patients: number;
+    }>
+  ).map((member) => ({
+    id: member.id,
+    label: member.full_name,
+    activePatients: Number(member.active_patients),
+  }));
   const canRecordAllergies = ["admin", "doctor", "reception", "ip", "op"].includes(profile.role);
   const testCategories = ((categoriesResult.data ?? []) as Array<{ name: string }>)
     .map((row) => row.name);
   // These three are independent of each other; running them in one Promise.all
   // removes a round-trip from the critical path.
-  const [{data:availableRooms},{data:existingAdmission},occupiedResult]=canConvertToIp?await Promise.all([supabase.from("room_beds").select("id,room_number,bed_number,floor").eq("active",true).order("floor").order("room_number"),supabase.from("ip_tickets").select("id").eq("source_visit_id",visit.id).in("status",["admitted","discharge_pending"]).maybeSingle(),supabase.from("ip_tickets").select("room_bed_id").in("status",["admitted","discharge_pending"]).not("room_bed_id","is",null)]):[{data:[]},{data:null},{data:[]}];
-  const occupiedBeds=new Set((occupiedResult.data??[]).map(row=>row.room_bed_id));
+  const [{ data: availableRooms }, { data: existingAdmission }, occupiedResult] =
+    await Promise.all([
+      canConvertToIp
+        ? supabase
+            .from("room_beds")
+            .select("id,room_number,bed_number,floor")
+            .eq("active", true)
+            .order("floor")
+            .order("room_number")
+        : Promise.resolve({ data: null }),
+      // The doctor needs this too, to be told whether the ward has picked
+      // their referral up yet.
+      showsAdmissionState
+        ? supabase
+            .from("ip_tickets")
+            .select("id,ticket_number")
+            .eq("source_visit_id", visit.id)
+            .in("status", ["admitted", "discharge_pending"])
+            .maybeSingle()
+        : Promise.resolve({ data: null }),
+      canConvertToIp
+        ? supabase
+            .from("ip_tickets")
+            .select("room_bed_id")
+            .in("status", ["admitted", "discharge_pending"])
+            .not("room_bed_id", "is", null)
+        : Promise.resolve({ data: null }),
+    ]);
+  const occupiedBeds = new Set(
+    (occupiedResult.data ?? []).map((row) => row.room_bed_id),
+  );
   return (
     <div>
       <PageHeader
@@ -306,7 +360,7 @@ export default async function VisitPage({
                 <Printer /> Prescription
               </Button>
             ) : null}
-            {canConvertToIp&&!existingAdmission?<AdmissionDialog triggerLabel="Convert to IP" doctors={[{id:visit.doctor_id,label:visit.doctors?.display_name??"Doctor"}]} rooms={(availableRooms??[]).filter(room=>!occupiedBeds.has(room.id)).map(room=>({id:room.id,label:`Floor ${room.floor} · Room ${room.room_number} · Bed ${room.bed_number}`}))} initialPatient={{id:visit.patient_id,label:`${patient.name} · ${patient.phone_normalized}`}} initialDoctorId={visit.doctor_id} sourceVisitId={visit.id}/>:null}
+            {canConvertToIp&&!existingAdmission?<AdmissionDialog triggerLabel="Convert to IP" ipStaff={ipStaffOptions} doctors={[{id:visit.doctor_id,label:visit.doctors?.display_name??"Doctor"}]} rooms={(availableRooms??[]).filter(room=>!occupiedBeds.has(room.id)).map(room=>({id:room.id,label:`Floor ${room.floor} · Room ${room.room_number} · Bed ${room.bed_number}`}))} initialPatient={{id:visit.patient_id,label:`${patient.name} · ${patient.phone_normalized}`}} initialDoctorId={visit.doctor_id} sourceVisitId={visit.id}/>:null}
           </>
         }
       />
@@ -324,6 +378,18 @@ export default async function VisitPage({
         ) : null}
         {patient.allergies ? (
           <Badge variant="destructive">Allergies: {patient.allergies}</Badge>
+        ) : null}
+        {/* Where the admission referral has got to. Without this the doctor
+            ticks "admission recommended" and never learns whether the ward
+            acted on it. */}
+        {showsAdmissionState && existingAdmission ? (
+          <Badge variant="outline" className="font-mono">
+            Admitted · {existingAdmission.ticket_number}
+          </Badge>
+        ) : showsAdmissionState && consultation?.admission_recommended ? (
+          <Badge variant="secondary">
+            Referred for admission · awaiting IP staff
+          </Badge>
         ) : null}
         {/* The doctor is usually the one who finds out about an allergy, so it
             is recorded here rather than only from Edit Patient. */}

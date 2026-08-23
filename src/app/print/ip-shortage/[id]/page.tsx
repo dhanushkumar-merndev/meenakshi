@@ -57,7 +57,7 @@ export default async function IpShortagePrintPage({
       <div data-print-hidden className="mb-4 flex justify-end">
         <PrintButton label="Print Shortage Note" />
       </div>
-      <article className="mx-auto max-w-md border border-black p-6 font-sans">
+      <article className="border border-black/20 p-7 font-sans print:border-0 print:p-0">
         <HospitalLetterhead identity={identity} logoSize={48} />
         <p className="mt-4 border-y border-black py-2 text-center text-sm font-semibold uppercase">
           Items Not Available In-House

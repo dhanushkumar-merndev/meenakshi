@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requirePermission } from "@/lib/auth/dal";
+import { requireApiPermission } from "@/lib/auth/dal";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 type PatientSearchRow = {
@@ -12,7 +12,8 @@ type PatientSearchRow = {
 };
 
 export async function GET(request: NextRequest) {
-  await requirePermission("viewPatients");
+  const guard = await requireApiPermission("viewPatients");
+  if (guard.response) return guard.response;
   const raw = request.nextUrl.searchParams.get("q")?.trim() ?? "";
   if (raw.length < 2) return NextResponse.json({ items: [] });
   if (raw.length > 120)

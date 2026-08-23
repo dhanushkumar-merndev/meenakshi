@@ -2,6 +2,7 @@ import Link from "next/link";
 import { requireRoute } from "@/lib/auth/dal";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { MedicineDialog } from "@/features/pharmacy/medicine-dialogs";
+import { groupFieldOptions } from "@/features/pharmacy/medicine-field-options";
 import { PageHeader } from "@/components/shared/page-header";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { DebouncedSearchInput } from "@/components/shared/debounced-search-input";
@@ -38,11 +39,19 @@ export default async function MedicinesPage({
   const page = Math.max(1, Number(params.page) || 1);
   const size = 20;
   const supabase = await createSupabaseServerClient();
-  const { data } = await supabase.rpc("list_medicine_directory", {
-    p_query: q,
-    p_limit: size,
-    p_offset: (page - 1) * size,
-  });
+  // The learned dropdown values come from their own small table, so this is a
+  // few hundred rows regardless of how large the directory itself grows.
+  const [{ data }, { data: optionRows }] = await Promise.all([
+    supabase.rpc("list_medicine_directory", {
+      p_query: q,
+      p_limit: size,
+      p_offset: (page - 1) * size,
+    }),
+    supabase.rpc("get_medicine_field_options", { p_limit: 200 }),
+  ]);
+  const fieldOptions = groupFieldOptions(
+    optionRows as Array<{ field: string; value: string }> | null,
+  );
   const rows = (data ?? []) as unknown as Medicine[];
   const count = Number(rows[0]?.total_count ?? 0);
   const pages = Math.max(1, Math.ceil(count / size));
@@ -51,7 +60,12 @@ export default async function MedicinesPage({
       <PageHeader
         title="Medicine Master"
         description={`${count} medicine definitions · quantities and batches are managed under Stock & Batches`}
-        actions={<MedicineDialog canDelete={profile.role === "admin"} />}
+        actions={
+          <MedicineDialog
+            canDelete={profile.role === "admin"}
+            fieldOptions={fieldOptions}
+          />
+        }
       />
       <DebouncedSearchInput
         className="mb-4 max-w-md"
@@ -91,6 +105,7 @@ export default async function MedicinesPage({
                       <TableCell className="text-right">
                         <MedicineDialog
                           canDelete={profile.role === "admin"}
+                          fieldOptions={fieldOptions}
                           item={{
                             id: item.id,
                             brandName: item.brand_name,

@@ -25,7 +25,11 @@ export const PERMISSIONS = {
   // pending queue and dispense screen ("Dispense as Per Rx").
   dispenseAsPerRx: ["admin", "pharmacy"],
   manageIp: ["admin", "ip"],
-  admitIp: ["admin", "ip", "doctor"],
+  // Reception owns the register, so an OP visit the doctor referred is
+  // converted at their counter; doctors refer rather than admit (their button
+  // was removed), but the permission stays for the audited RPC path they
+  // still hold for their own visit.
+  admitIp: ["admin", "ip", "doctor", "reception"],
   // IP staff or the treating doctor can ask pharmacy for consumables; only
   // pharmacy (via `dispense`) actually fulfils the request and touches stock.
   requestIpInventory: ["admin", "ip", "doctor"],

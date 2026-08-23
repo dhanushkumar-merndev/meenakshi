@@ -27,7 +27,10 @@ test.describe("mobile", () => {
       test.setTimeout(120_000);
       await signIn(page, role);
       await page.goto(route);
-      await expect(page.locator("h1").first()).toBeVisible({ timeout: 30_000 });
+      // The heading moves into the app bar on a phone and stays in the page on
+      // wider screens, so the assertion is that a VISIBLE h1 exists -- the
+      // other copy is display:none and out of the accessibility tree.
+      await expect(page.locator("h1:visible").first()).toBeVisible({ timeout: 30_000 });
 
       // Wide tables are allowed to scroll inside their own container, but the
       // page itself must never scroll sideways.

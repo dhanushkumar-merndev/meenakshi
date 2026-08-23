@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requirePermission } from "@/lib/auth/dal";
+import { requireApiPermission } from "@/lib/auth/dal";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 type TicketRow = {
@@ -16,7 +16,8 @@ type TicketRow = {
 };
 
 export async function GET(request: NextRequest) {
-  await requirePermission("dispenseAsPerRx");
+  const guard = await requireApiPermission("dispenseAsPerRx");
+  if (guard.response) return guard.response;
   const q = request.nextUrl.searchParams.get("q")?.trim() ?? "";
   if (q.length > 120)
     return NextResponse.json({ error: "Search is too long" }, { status: 400 });

@@ -49,7 +49,9 @@ test.describe("role isolation", () => {
         const response = await page.goto(route);
         expect(response?.status(), route).toBe(200);
         await expect(page, `${role} should reach ${route}`).not.toHaveURL(/forbidden=1/);
-        await expect(page.locator("h1").first(), route).toBeVisible();
+        // ":visible": the app bar carries its own <h1> for the phone layout
+        // (hidden from sm: up), and it comes first in the DOM.
+        await expect(page.locator("h1:visible").first(), route).toBeVisible();
       }
     });
   }
