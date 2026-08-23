@@ -16,7 +16,7 @@ read-only Drug Stock availability page as OP staff. API callers were audited as 
 whole: closed controls no longer issue hidden searches, duplicate notification
 work is removed, and the service worker caches only public static assets—not
 private pages, RSC payloads, API responses, stock, or patient data. The timing
-tests were updated; 78/78 unit tests, lint, `tsc`, the production build, the IP
+tests were updated; 81/81 unit tests, lint, `tsc`, the production build, the IP
 billing flow, and the complete six-role surface audit all pass.
 
 ## Done and verified this session
@@ -51,6 +51,7 @@ of the 55 RPCs the code calls is present.
 | Service-worker data cache | It previously cached `/api`, RSC, patient, stock, and authenticated page responses. V2 deletes those old caches and stores only the offline shell plus public versioned assets |
 | IP role navigation | IP staff now have separate Current Patients, My Patients, Pending Discharge, Discharged, and All Tickets sidebar pages. Admin and doctor retain the combined tabbed IP page |
 | IP drug stock | IP staff now have the same read-only Drug Stock lookup as OP staff, showing availability without prices, batch costs, editing, dispensing, or stock reduction |
+| Investigation report type | Doctor test orders no longer mix in document-only upload categories. HIV/lab tests default to Lab Report, X-rays to X-Ray / Radiology, and CT/MRI/USG/Doppler to Scan; the doctor can still override the suggestion |
 
 **Full surface audit** (`e2e/full-surface-audit.spec.ts`): all 6 roles × every
 page, every print document and every API route — **passing**. This is new; it

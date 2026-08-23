@@ -32,6 +32,10 @@ import { Textarea } from "@/components/ui/textarea";
 import { calculatePrescriptionQuantity } from "@/lib/domain/medicine-quantity";
 import { dosageFormHints } from "@/lib/domain/dosage-form";
 import {
+  inferInvestigationReportCategory,
+  investigationReportCategories,
+} from "@/lib/domain/investigation-category";
+import {
   DURATION_PRESETS,
   FREQUENCY_PRESETS,
   NOTES_PRESETS,
@@ -120,7 +124,7 @@ export function ConsultationEditor({
    */
   carriedForwardFrom?: string;
   initialTests?: Omit<TestLine, "key">[];
-  /** Report categories the hospital configures; the kind of test being ordered. */
+  /** Active report categories configured by the hospital. */
   testCategories?: string[];
   /** Doctor's configured fee in rupees, pre-filled but always editable. */
   defaultFee?: string;
@@ -151,8 +155,20 @@ export function ConsultationEditor({
       quantityAuto: false,
     })),
   );
+  const investigationCategories = investigationReportCategories(testCategories);
   const [tests, setTests] = useState<TestLine[]>(
-    initialTests.map((line) => ({ ...line, key: crypto.randomUUID() })),
+    initialTests.map((line) => ({
+      ...line,
+      category: investigationCategories.some(
+        (category) => category === line.category,
+      )
+        ? line.category
+        : inferInvestigationReportCategory(
+            line.test_name,
+            investigationCategories,
+          ),
+      key: crypto.randomUUID(),
+    })),
   );
   const [admissionRecommended, setAdmissionRecommended] = useState(
     initial?.admission_recommended ?? false,
@@ -471,7 +487,10 @@ export function ConsultationEditor({
                 {
                   key: crypto.randomUUID(),
                   test_name: "",
-                  category: testCategories[0] ?? "",
+                  category: inferInvestigationReportCategory(
+                    "",
+                    investigationCategories,
+                  ),
                   notes: "",
                 },
               ])
@@ -496,7 +515,16 @@ export function ConsultationEditor({
                 onChange={(test_name) =>
                   setTests((rows) =>
                     rows.map((item) =>
-                      item.key === row.key ? { ...item, test_name } : item,
+                      item.key === row.key
+                        ? {
+                            ...item,
+                            test_name,
+                            category: inferInvestigationReportCategory(
+                              test_name,
+                              investigationCategories,
+                            ),
+                          }
+                        : item,
                     ),
                   )
                 }
@@ -514,13 +542,13 @@ export function ConsultationEditor({
                   )
                 }
               >
-                <SelectTrigger className="w-full" aria-label="Investigation type">
+                <SelectTrigger className="w-full" aria-label="Expected report type">
                   <SelectValue placeholder="Type">
                     {() => row.category || "Type"}
                   </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
-                  {testCategories.map((category) => (
+                  {investigationCategories.map((category) => (
                     <SelectItem key={category} value={category} label={category}>
                       {category}
                     </SelectItem>
