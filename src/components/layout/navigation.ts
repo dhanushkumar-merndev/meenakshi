@@ -6,6 +6,8 @@ export type NavigationItem = {
   icon: string;
   /** Sidebar section. Defaults to the role's primary workspace group. */
   group?: string;
+  /** Used only when no declared destination directly matches a detail route. */
+  fallbackPrefixes?: string[];
 };
 
 /** Groups nav items by their `group`, preserving declaration order. */
@@ -27,13 +29,19 @@ export function getActiveNavigationHref(
   items: NavigationItem[],
   pathname: string,
 ) {
-  return items
+  const directMatch = items
     .filter(
       (item) =>
         pathname === item.href ||
         (item.href !== "/dashboard" && pathname.startsWith(`${item.href}/`)),
     )
     .sort((a, b) => b.href.length - a.href.length)[0]?.href;
+  if (directMatch) return directMatch;
+  return items.find((item) =>
+    item.fallbackPrefixes?.some(
+      (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`),
+    ),
+  )?.href;
 }
 
 const shared = {
@@ -87,7 +95,19 @@ export const ROLE_NAVIGATION: Record<AppRole, NavigationItem[]> = {
   ],
   ip: [
     shared.dashboard,
-    { title: "IP Patients", href: "/ip", icon: "bed" },
+    { title: "Current Patients", href: "/ip/current", icon: "bed" },
+    { title: "My Patients", href: "/ip/my-patients", icon: "user-round-check" },
+    { title: "Pending Discharge", href: "/ip/pending-discharge", icon: "clock-3" },
+    { title: "Discharged", href: "/ip/discharged", icon: "clipboard-check" },
+    {
+      title: "All Tickets",
+      href: "/ip/all-tickets",
+      icon: "files",
+      fallbackPrefixes: ["/ip"],
+    },
+    // Availability only. IP staff cannot manage batches, prices, or dispense
+    // stock from this route.
+    { title: "Drug Stock", href: "/drug-stock", icon: "pill" },
   ],
   pharmacy: [
     shared.dashboard,

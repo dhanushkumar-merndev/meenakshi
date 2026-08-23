@@ -2,7 +2,7 @@
 
 import { useEffect } from "react";
 
-/** Registers the offline-viewing service worker once the page has loaded. */
+/** Registers the static-asset/offline-shell service worker once loaded. */
 export function ServiceWorkerRegister() {
   useEffect(() => {
     if (!("serviceWorker" in navigator)) return;

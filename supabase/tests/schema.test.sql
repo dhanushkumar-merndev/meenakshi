@@ -1,5 +1,5 @@
 begin;
-select plan(44);
+select plan(46);
 select has_table('public','patients','patients table exists');
 select has_table('public','visits','visits table exists');
 select has_table('public','medicine_batches','stock table exists');
@@ -11,6 +11,7 @@ select has_function('public','record_visit_vitals',array['uuid','numeric','numer
 select has_function('public','save_visit_consultation',array['uuid','text','text','text','text','text','follow_up_type','date','integer','jsonb','jsonb','boolean'],'consultation workflow RPC exists');
 select has_function('public','create_ip_ticket',array['uuid','uuid','uuid','text','text','text','bigint','payment_mode','boolean','uuid'],'emergency-capable IP admission RPC exists');
 select has_function('public','assign_ip_ticket_patient',array['uuid','uuid'],'controlled emergency patient assignment exists');
+select has_function('public','add_configured_ip_charge',array['uuid','uuid','integer','uuid'],'configured IP charge workflow exists');
 select has_column('public','ip_tickets','is_emergency','IP tickets record emergency admission state');
 select has_trigger('public','consultations','protect_completed_consultation','completed consultations are immutable');
 select has_trigger('public','prescription_items','protect_prescription_content','completed prescription content is immutable');
@@ -44,5 +45,6 @@ select col_is_pk('public','patients','id','patient internal identity is UUID pri
 select col_has_check('public','medicine_batches','quantity','stock has a non-negative check');
 select isnt_empty($$select policyname from pg_policies where schemaname='public' and tablename='patients'$$,'patients have RLS policies');
 select isnt_empty($$select policyname from pg_policies where schemaname='public' and tablename='notification_reads'$$,'notification reads have RLS policies');
+select is((select count(*) from pg_policies where schemaname='public' and tablename='ip_charges' and cmd='INSERT'),0::bigint,'IP charges cannot be inserted outside controlled workflows');
 select * from finish();
 rollback;

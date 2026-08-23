@@ -33,5 +33,7 @@ export async function GET(
       entity_type: "patient_report",
       entity_id: id,
     });
-  return NextResponse.redirect(signed.signedUrl);
+  const response = NextResponse.redirect(signed.signedUrl);
+  response.headers.set("Cache-Control", "private, no-store");
+  return response;
 }

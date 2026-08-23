@@ -48,11 +48,11 @@ describe("PatientCombobox", () => {
     expect(fetchMock).not.toHaveBeenCalled();
     const input = screen.getByPlaceholderText("Type phone number or patient name");
     fireEvent.change(input, { target: { value: "7" } });
-    act(() => vi.advanceTimersByTime(300));
+    act(() => vi.advanceTimersByTime(400));
     expect(fetchMock).not.toHaveBeenCalled();
 
     fireEvent.change(input, { target: { value: "70" } });
-    act(() => vi.advanceTimersByTime(224));
+    act(() => vi.advanceTimersByTime(499));
     expect(fetchMock).not.toHaveBeenCalled();
     await act(async () => {
       vi.advanceTimersByTime(1);

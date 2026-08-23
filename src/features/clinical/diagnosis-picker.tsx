@@ -23,6 +23,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { SEARCH_DEBOUNCE_MS } from "@/lib/domain/search";
 
 export type ClinicalTerm = {
   display_text: string;
@@ -115,11 +116,11 @@ export function DiagnosisPicker({
   const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
+    abortRef.current?.abort();
     if (system === "other" || !open || query.trim().length < 2) return;
+    const controller = new AbortController();
+    abortRef.current = controller;
     const timer = setTimeout(async () => {
-      abortRef.current?.abort();
-      const controller = new AbortController();
-      abortRef.current = controller;
       setLoading(true);
       try {
         const response = await fetch(
@@ -134,8 +135,11 @@ export function DiagnosisPicker({
       } finally {
         setLoading(false);
       }
-    }, 200);
-    return () => clearTimeout(timer);
+    }, SEARCH_DEBOUNCE_MS);
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
   }, [open, query, system]);
 
   const add = (entry: DiagnosisEntry) => {

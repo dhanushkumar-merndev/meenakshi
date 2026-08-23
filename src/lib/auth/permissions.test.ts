@@ -15,4 +15,9 @@ describe("role authorization matrix", () => {
     expect(canAccessRoute("reception", "/admin/users")).toBe(false);
     expect(canAccessRoute("pharmacy", "/patients")).toBe(false);
   });
+
+  it("lets IP staff view drug availability without pharmacy access", () => {
+    expect(canAccessRoute("ip", "/drug-stock")).toBe(true);
+    expect(canAccessRoute("ip", "/pharmacy/stock")).toBe(false);
+  });
 });

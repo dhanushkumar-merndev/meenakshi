@@ -15,6 +15,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import { SEARCH_DEBOUNCE_MS } from "@/lib/domain/search";
 
 export type MedicineSuggestion = {
   id: string;
@@ -44,7 +45,7 @@ export function MedicineCombobox({
   const [loading, setLoading] = useState(false);
   const [searchError, setSearchError] = useState(false);
   useEffect(() => {
-    if (query.trim().length < 2) {
+    if (!open || query.trim().length < 2) {
       return;
     }
     const controller = new AbortController();
@@ -66,12 +67,12 @@ export function MedicineCombobox({
       } finally {
         if (!controller.signal.aborted) setLoading(false);
       }
-    }, 200);
+    }, SEARCH_DEBOUNCE_MS);
     return () => {
       clearTimeout(timer);
       controller.abort();
     };
-  }, [query]);
+  }, [open, query]);
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger

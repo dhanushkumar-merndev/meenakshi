@@ -16,6 +16,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import { SEARCH_DEBOUNCE_MS } from "@/lib/domain/search";
 
 export type PatientOption = {
   id: string;
@@ -70,7 +71,7 @@ export function PatientCombobox({
       } finally {
         if (!controller.signal.aborted) setLoading(false);
       }
-    }, 225);
+    }, SEARCH_DEBOUNCE_MS);
 
     return () => {
       window.clearTimeout(timer);

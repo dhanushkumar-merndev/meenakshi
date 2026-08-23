@@ -55,7 +55,7 @@ describe("LocationAutocomplete", () => {
     expect(fetchMock).not.toHaveBeenCalled();
 
     fireEvent.change(field, { target: { value: "Ind" } });
-    act(() => vi.advanceTimersByTime(999));
+    act(() => vi.advanceTimersByTime(499));
     expect(fetchMock).not.toHaveBeenCalled();
     await act(async () => {
       vi.advanceTimersByTime(1);

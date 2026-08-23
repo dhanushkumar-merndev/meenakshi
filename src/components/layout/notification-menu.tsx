@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { useState } from "react";
 import { ArrowRight, Bell, CheckCheck, CircleAlert, Clock3 } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -33,9 +34,14 @@ async function markNotificationsRead(ids: string[]) {
 
 export function NotificationMenu() {
   const [open, setOpen] = useState(false);
+  const pathname = usePathname();
   const queryClient = useQueryClient();
   const { data, isLoading } = useQuery({
     queryKey,
+    // The full notifications page owns the same data while it is mounted.
+    // Keeping the global menu query active there doubled dashboard-summary
+    // work for no additional information.
+    enabled: pathname !== "/notifications",
     queryFn: async ({ signal }) => {
       const response = await fetch("/api/notifications?scope=unread&page=1&pageSize=10", {
         signal,

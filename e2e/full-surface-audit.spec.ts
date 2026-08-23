@@ -2,6 +2,10 @@ import { expect, test, type Page } from "@playwright/test";
 import { credentialsConfigured, missingCredentials, signIn, type Role } from "./support/auth";
 
 test.skip(!credentialsConfigured, missingCredentials);
+// Six simultaneous role crawls can saturate a development server and turn a
+// capacity artifact into random navigation failures. The production surface
+// is still fully covered, one authenticated role at a time.
+test.describe.configure({ mode: "serial" });
 
 /**
  * Every role against every page, every print document and every API route.
@@ -43,8 +47,15 @@ const PAGES: Array<{ path: string; roles: Role[] }> = [
   { path: "/op/assist", roles: ["admin", "op"] },
   { path: "/doctor", roles: ["admin", "doctor"] },
   { path: "/doctor/follow-ups", roles: ["admin", "doctor"] },
-  { path: "/drug-stock", roles: ["admin", "doctor", "op"] },
-  { path: "/ip", roles: ["admin", "ip", "doctor"] },
+  { path: "/drug-stock", roles: ["admin", "doctor", "op", "ip"] },
+  // Admin and doctor retain the combined IP page. IP staff use dedicated
+  // sidebar pages for each operational queue.
+  { path: "/ip", roles: ["admin", "doctor"] },
+  { path: "/ip/current", roles: ["ip"] },
+  { path: "/ip/my-patients", roles: ["ip"] },
+  { path: "/ip/pending-discharge", roles: ["ip"] },
+  { path: "/ip/discharged", roles: ["ip"] },
+  { path: "/ip/all-tickets", roles: ["ip"] },
   // Not "doctor": this ticket belongs to another consultant, and a doctor
   // only sees their own IP patients.
   { path: `/ip/${IDS.ipTicket}`, roles: ["admin", "ip"] },
@@ -130,6 +141,8 @@ async function auditRole(page: Page, role: Role) {
     // 200 with that body, which is how RLS correctly refuses a record.
     if (/We could not load this page|Application error/i.test(body))
       failures.push(`${entry.path} -> error boundary rendered`);
+    if (/You're offline|This page hasn't been saved yet/i.test(body))
+      failures.push(`${entry.path} -> offline fallback rendered`);
     if (/could not be found/i.test(body))
       failures.push(`${entry.path} -> rendered Next 404 body`);
     if (consoleErrors.length)
@@ -138,10 +151,10 @@ async function auditRole(page: Page, role: Role) {
 
   for (const api of APIS) {
     const allowed = api.roles.includes(role);
-    const result = await page.evaluate(async (path) => {
-      const response = await fetch(path);
-      return response.status;
-    }, api.path);
+    // Playwright's request context shares this page's authenticated cookies but
+    // is not intercepted by a browser service worker, so this measures the API
+    // route itself instead of CacheStorage behavior.
+    const result = (await page.request.get(api.path)).status();
     if (allowed && result >= 400) {
       failures.push(`${api.path} -> HTTP ${result}`);
     } else if (!allowed && api.restricted && result !== 403) {

@@ -5,6 +5,7 @@ import { Plus, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { SEARCH_DEBOUNCE_MS } from "@/lib/domain/search";
 
 /**
  * Starter chips for a hospital with no history yet. Once patients are on file,
@@ -52,13 +53,15 @@ export function AllergyTagInput({
   const [tags, setTags] = useState<string[]>(() => splitStored(initialValue));
   const [draft, setDraft] = useState("");
   const [known, setKnown] = useState<string[]>([]);
+  const [focused, setFocused] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
+    abortRef.current?.abort();
+    if (!focused) return;
+    const controller = new AbortController();
+    abortRef.current = controller;
     const timer = setTimeout(async () => {
-      abortRef.current?.abort();
-      const controller = new AbortController();
-      abortRef.current = controller;
       try {
         const response = await fetch(`/api/search/allergies?q=${encodeURIComponent(draft.trim())}`, {
           signal: controller.signal,
@@ -70,9 +73,12 @@ export function AllergyTagInput({
         // can be typed by hand.
         setKnown([]);
       }
-    }, 200);
-    return () => clearTimeout(timer);
-  }, [draft]);
+    }, SEARCH_DEBOUNCE_MS);
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
+  }, [draft, focused]);
 
   const add = (value: string) => {
     const text = value.replace(/\s+/g, " ").trim();
@@ -118,6 +124,8 @@ export function AllergyTagInput({
         <Input
           id={id}
           value={draft}
+          onFocus={() => setFocused(true)}
+          onBlur={() => setFocused(false)}
           onChange={(event) => setDraft(event.target.value)}
           onKeyDown={(event) => {
             // Enter must add the allergy, not submit the patient form.

@@ -7,7 +7,6 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { databaseIdSchema } from "@/lib/validation/database-id";
 import type { ActionState } from "@/types/hospital";
 import { isIdempotentReplay } from "@/lib/domain/idempotency";
-import { IP_CHARGE_CATEGORY_MAP, type ChargeMasterCategory } from "@/lib/domain/charge-categories";
 const admission = z.object({
   patientId: databaseIdSchema.optional().or(z.literal("")),
   isEmergency: z.enum(["true", "false"]),
@@ -122,17 +121,10 @@ export async function assignIpPatient(
   revalidatePath("/ip");
   return { ok: true, message: "Patient assigned to the IP ticket." };
 }
-const IP_CHARGE_CATEGORIES = ["doctor","ward","room","bed","treatment","test","pharmacy","other"] as const;
 const charge = z.object({
   ticketId: databaseIdSchema,
-  chargePresetId: z.string().optional(),
-  // Only used (and re-validated below) when no preset is selected -- a preset's
-  // category always overrides this with the mapped value from the Charges
-  // master, which uses its own, different-looking vocabulary (e.g. "IP Doctor").
-  category: z.string().optional(),
-  item: z.string().min(2),
+  chargePresetId: databaseIdSchema,
   quantity: z.coerce.number().int().positive(),
-  rate: z.string(),
   idempotencyKey: databaseIdSchema,
 });
 export async function addIpCharge(
@@ -142,43 +134,28 @@ export async function addIpCharge(
   await requirePermission("manageIp");
   const parsed = charge.safeParse(Object.fromEntries(formData));
   if (!parsed.success)
-    return { ok: false, fieldErrors: parsed.error.flatten().fieldErrors };
+    return {
+      ok: false,
+      message: "Select a valid configured charge.",
+      fieldErrors: parsed.error.flatten().fieldErrors,
+    };
   const supabase = await createSupabaseServerClient();
-  let category: (typeof IP_CHARGE_CATEGORIES)[number];
-  let item = parsed.data.item;
-  let rate: number;
-  if (parsed.data.chargePresetId && parsed.data.chargePresetId !== "custom") {
-    const presetId = databaseIdSchema.safeParse(parsed.data.chargePresetId);
-    if (!presetId.success) return { ok: false, message: "Select a valid configured charge." };
-    const { data: preset, error: presetError } = await supabase.from("charges").select("category,charge_name,amount_paise").eq("id", presetId.data).eq("active", true).single();
-    const mappedCategory = preset ? IP_CHARGE_CATEGORY_MAP[preset.category as ChargeMasterCategory] : undefined;
-    if (presetError || !preset || !mappedCategory) return { ok: false, message: "That configured charge is no longer available." };
-    category = mappedCategory;
-    item = preset.charge_name;
-    rate = preset.amount_paise;
-  } else {
-    const customCategory = z.enum(IP_CHARGE_CATEGORIES).safeParse(parsed.data.category);
-    if (!customCategory.success) return { ok: false, message: "Select a valid charge category." };
-    category = customCategory.data;
-    try {
-      rate = rupeesToPaise(parsed.data.rate);
-    } catch (error) {
-      return { ok: false, message: (error as Error).message };
-    }
-  }
-  const { error } = await supabase
-    .from("ip_charges")
-    .insert({
-      ip_ticket_id: parsed.data.ticketId,
-      category,
-      item,
-      quantity: parsed.data.quantity,
-      rate_paise: rate,
-      idempotency_key: parsed.data.idempotencyKey,
-    });
+  const { error } = await supabase.rpc("add_configured_ip_charge", {
+    p_ticket_id: parsed.data.ticketId,
+    p_charge_id: parsed.data.chargePresetId,
+    p_quantity: parsed.data.quantity,
+    p_idempotency_key: parsed.data.idempotencyKey,
+  });
   if (isIdempotentReplay(error))
     return { ok: true, message: "Charge already recorded." };
-  if (error) return { ok: false, message: "Charge could not be added." };
+  if (error) {
+    const message = error.message.toLowerCase();
+    if (message.includes("no longer active"))
+      return { ok: false, message: "That configured charge is no longer available." };
+    if (message.includes("ticket is not open"))
+      return { ok: false, message: "Charges can only be added to an open IP ticket." };
+    return { ok: false, message: "Charge could not be added." };
+  }
   revalidatePath(`/ip/${parsed.data.ticketId}`);
   return { ok: true, message: "Charge added." };
 }

@@ -16,6 +16,7 @@ import { createVisit } from "@/features/visits/actions";
 import type { ActionState } from "@/types/hospital";
 import { AllergyTagInput } from "@/features/patients/allergy-tag-input";
 import { calculateAge } from "@/lib/domain/date";
+import { SEARCH_DEBOUNCE_MS } from "@/lib/domain/search";
 import { DatePickerField } from "@/components/shared/date-picker-field";
 import { LocationAutocomplete } from "@/components/shared/location-autocomplete";
 import { Badge } from "@/components/ui/badge";
@@ -123,7 +124,7 @@ export function ReceptionPatientDialog({ doctors }: { doctors: Doctor[] }) {
       } finally {
         if (!controller.signal.aborted) setSearching(false);
       }
-    }, 500);
+    }, SEARCH_DEBOUNCE_MS);
     return () => {
       window.clearTimeout(timer);
       if (!controller.signal.aborted) controller.abort();

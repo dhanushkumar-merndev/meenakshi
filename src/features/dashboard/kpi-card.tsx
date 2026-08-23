@@ -85,6 +85,7 @@ export function KpiCard({
   useEffect(() => {
     if (!open) return;
     let cancelled = false;
+    const controller = new AbortController();
     // Kicked off in a microtask so the effect body itself does not setState
     // synchronously, which would cause a cascading render.
     const run = Promise.resolve().then(() => {
@@ -93,7 +94,10 @@ export function KpiCard({
       setError(null);
     });
     void run;
-    fetch(`/api/dashboard/metric?metric=${encodeURIComponent(metricKey)}`)
+    fetch(`/api/dashboard/metric?metric=${encodeURIComponent(metricKey)}`, {
+      signal: controller.signal,
+      cache: "no-store",
+    })
       .then(async (response) => {
         const body = await response.json();
         if (cancelled) return;
@@ -101,13 +105,15 @@ export function KpiCard({
         else setRows(body.items ?? []);
       })
       .catch(() => {
-        if (!cancelled) setError("Detail could not be loaded.");
+        if (!cancelled && !controller.signal.aborted)
+          setError("Detail could not be loaded.");
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
       });
     return () => {
       cancelled = true;
+      controller.abort();
     };
   }, [open, metricKey]);
 

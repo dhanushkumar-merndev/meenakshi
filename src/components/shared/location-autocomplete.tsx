@@ -4,10 +4,10 @@ import * as React from "react";
 import { LoaderCircle, MapPin } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Textarea } from "@/components/ui/textarea";
+import { SEARCH_DEBOUNCE_MS } from "@/lib/domain/search";
 import type { LocationDetails, LocationSuggestion } from "@/types/location";
 
 const MIN_QUERY_LENGTH = 3;
-const DEBOUNCE_MS = 1_000;
 const MAX_SUGGESTIONS = 3;
 const suggestionCache = new Map<string, LocationSuggestion[]>();
 
@@ -116,7 +116,7 @@ export function LocationAutocomplete({
         setStatus("error");
         setOpen(focusedRef.current);
       }
-    }, DEBOUNCE_MS);
+    }, SEARCH_DEBOUNCE_MS);
 
     return () => {
       window.clearTimeout(timer);

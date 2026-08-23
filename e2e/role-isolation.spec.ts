@@ -20,7 +20,7 @@ const allowed: Array<[Role, string[]]> = [
   ["reception", ["/reception", "/patients", "/reception/payments", "/reception/follow-ups"]],
   ["op", ["/op", "/op/assist"]],
   ["doctor", ["/doctor", "/doctor/follow-ups"]],
-  ["ip", ["/ip"]],
+  ["ip", ["/ip", "/drug-stock"]],
   ["pharmacy", ["/pharmacy", "/pharmacy/stock", "/pharmacy/medicines", "/pharmacy/sales"]],
   ["admin", ["/admin/users", "/admin/settings", "/audit", "/pharmacy/stock", "/reception", "/ip"]],
 ];

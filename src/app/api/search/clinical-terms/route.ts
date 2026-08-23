@@ -58,6 +58,13 @@ export async function GET(request: NextRequest) {
 
   return NextResponse.json(
     { items },
-    { headers: { "Cache-Control": "private, no-store" } },
+    {
+      // Clinical directory entries are non-patient reference data. A short
+      // browser-private cache avoids repeating the exact same code/text query
+      // while keeping admin edits visible quickly.
+      headers: {
+        "Cache-Control": "private, max-age=60, stale-while-revalidate=300",
+      },
+    },
   );
 }

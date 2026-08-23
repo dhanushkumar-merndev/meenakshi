@@ -22,26 +22,28 @@ test.describe("IP ticket charges and payments", () => {
     await row.getByRole("button", { name: /Open/ }).first().click();
     await page.waitForURL(/\/ip\/[0-9a-f-]{36}/, { timeout: 30_000 });
 
-    const chargeItem = `E2E dressing ${Date.now().toString().slice(-5)}`;
-
-    // --- Add a treatment charge -------------------------------------------
+    // --- Add a configured treatment charge --------------------------------
+    const chargeTable = page.getByRole("table").filter({
+      has: page.getByRole("columnheader", { name: "Category", exact: true }),
+    });
+    const chargeRowsBefore = await chargeTable.getByRole("row").count();
     await page.getByRole("button", { name: "Add Charge" }).click();
     const chargeDialog = page.getByRole("dialog");
-    // Item and Rate are read-only while a configured preset is selected; a
-    // free-text charge needs the Custom option.
-    await chargeDialog.getByLabel("Charge preset").click();
-    await page.getByRole("option", { name: /^Custom/ }).click();
-    await chargeDialog.getByLabel("Item").fill(chargeItem);
+    const chargeItem = await chargeDialog.getByLabel("Item").inputValue();
+    const chargeRate = await chargeDialog.getByLabel("Rate").inputValue();
+    expect(chargeItem, "an active IP charge must be configured").not.toBe("");
+    expect(Number(chargeRate), "the configured charge must have a rate").toBeGreaterThan(0);
     await chargeDialog.getByLabel("Quantity").fill("1");
-    await chargeDialog.getByLabel("Rate").fill("400");
     await chargeDialog.getByRole("button", { name: "Add Charge" }).click();
     await expect(page.getByRole("dialog")).toHaveCount(0, { timeout: 30_000 });
-    await expect(page.getByText(chargeItem)).toBeVisible({ timeout: 30_000 });
+    await expect(chargeTable.getByRole("row")).toHaveCount(chargeRowsBefore + 1, {
+      timeout: 30_000,
+    });
 
     // --- Add an offline payment -------------------------------------------
     await page.getByRole("button", { name: "Add Payment" }).click();
     const paymentDialog = page.getByRole("dialog");
-    await paymentDialog.getByLabel("Amount").fill("400");
+    await paymentDialog.getByLabel("Amount").fill(chargeRate);
     await paymentDialog.getByRole("button", { name: "Record Payment" }).click();
     await expect(page.getByRole("dialog")).toHaveCount(0, { timeout: 30_000 });
 

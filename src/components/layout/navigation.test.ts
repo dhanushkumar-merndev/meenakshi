@@ -14,7 +14,19 @@ describe("getActiveNavigationHref", () => {
   it("keeps a module root active for an unlisted detail page", () => {
     expect(
       getActiveNavigationHref(ROLE_NAVIGATION.ip, "/ip/ticket-id"),
-    ).toBe("/ip");
+    ).toBe("/ip/all-tickets");
+  });
+
+  it("prefers an IP role destination over its detail-page fallback", () => {
+    expect(
+      getActiveNavigationHref(ROLE_NAVIGATION.ip, "/ip/pending-discharge"),
+    ).toBe("/ip/pending-discharge");
+  });
+
+  it("gives IP staff a direct drug-stock destination", () => {
+    expect(
+      ROLE_NAVIGATION.ip.find((item) => item.href === "/drug-stock")?.title,
+    ).toBe("Drug Stock");
   });
 
   it("does not treat dashboard as a parent route", () => {

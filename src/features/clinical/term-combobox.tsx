@@ -12,6 +12,7 @@ import {
   CommandList,
 } from "@/components/ui/command";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { SEARCH_DEBOUNCE_MS } from "@/lib/domain/search";
 
 type Term = { display_text: string; code: string | null };
 
@@ -42,11 +43,11 @@ export function TermCombobox({
   const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
+    abortRef.current?.abort();
     if (!open || query.trim().length < 2) return;
+    const controller = new AbortController();
+    abortRef.current = controller;
     const timer = setTimeout(async () => {
-      abortRef.current?.abort();
-      const controller = new AbortController();
-      abortRef.current = controller;
       setLoading(true);
       try {
         const response = await fetch(
@@ -60,8 +61,11 @@ export function TermCombobox({
       } finally {
         setLoading(false);
       }
-    }, 200);
-    return () => clearTimeout(timer);
+    }, SEARCH_DEBOUNCE_MS);
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
   }, [open, query, termType]);
 
   const choose = (next: string) => {

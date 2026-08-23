@@ -7,6 +7,7 @@ import { MedicineCombobox } from "@/features/clinical/medicine-combobox";
 import { DURATION_PRESETS, FREQUENCY_PRESETS, PresetSelect } from "@/features/clinical/preset-select";
 import { calculatePrescriptionQuantity } from "@/lib/domain/medicine-quantity";
 import { dosageFormHints } from "@/lib/domain/dosage-form";
+import { SEARCH_DEBOUNCE_MS } from "@/lib/domain/search";
 import type { ActionState } from "@/types/hospital";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -107,8 +108,9 @@ function PatientSearch({
   const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
-    const controller = new AbortController();
     abortRef.current?.abort();
+    if (!open) return;
+    const controller = new AbortController();
     abortRef.current = controller;
     const url =
       mode === "op"
@@ -126,9 +128,12 @@ function PatientSearch({
       } finally {
         setLoading(false);
       }
-    }, 200);
-    return () => clearTimeout(timer);
-  }, [query, mode]);
+    }, SEARCH_DEBOUNCE_MS);
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
+  }, [open, query, mode]);
 
   return (
     <Popover open={open} onOpenChange={setOpen}>

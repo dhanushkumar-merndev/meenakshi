@@ -4,13 +4,14 @@ import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { LoaderCircle, Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
+import { SEARCH_DEBOUNCE_MS } from "@/lib/domain/search";
 
 export function DebouncedSearchInput({
   initialValue = "",
   placeholder,
   ariaLabel = "Search",
   paramName = "q",
-  delay = 225,
+  delay = SEARCH_DEBOUNCE_MS,
   className,
 }: {
   initialValue?: string;
