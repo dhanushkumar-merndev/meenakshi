@@ -32,7 +32,7 @@ type QueueRow = {
   vitals: {
     weight_kg: number | null;
     height_cm: number | null;
-    temperature_c: number | null;
+    temperature_f: number | null;
     bp_systolic: number | null;
     bp_diastolic: number | null;
     pulse: number | null;
@@ -56,7 +56,7 @@ export default async function OpQueuePage({
   let queueQuery = supabase
     .from("visits")
     .select(
-      "id,token_number,created_at,status,patients(name,dob,gender),doctors(display_name),vitals(weight_kg,height_cm,temperature_c,bp_systolic,bp_diastolic,pulse,spo2,respiratory_rate,notes)",
+      "id,token_number,created_at,status,patients(name,dob,gender),doctors(display_name),vitals(weight_kg,height_cm,temperature_f,bp_systolic,bp_diastolic,pulse,spo2,respiratory_rate,notes)",
     )
     .eq("visit_date", today)
     .neq("status", "cancelled")
@@ -108,7 +108,7 @@ export default async function OpQueuePage({
                       ? {
                           weight: vitals.weight_kg,
                           height: vitals.height_cm,
-                          temperature: vitals.temperature_c,
+                          temperature: vitals.temperature_f,
                           systolic: vitals.bp_systolic,
                           diastolic: vitals.bp_diastolic,
                           pulse: vitals.pulse,

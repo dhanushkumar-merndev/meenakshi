@@ -8,7 +8,7 @@ import type { AppRole } from "@/types/hospital";
 
 const roleTables: Record<AppRole, string[]> = {
   admin: ["visits", "patient_reports", "prescriptions", "ip_tickets", "medicine_batches"],
-  reception: ["visits", "visit_payments", "patient_reports", "consultations"],
+  reception: ["visits", "vitals", "visit_payments", "patient_reports", "consultations"],
   op: ["visits", "vitals", "patient_reports"],
   doctor: ["visits", "consultations", "patient_reports", "ip_tickets"],
   ip: ["ip_tickets", "ip_charges", "ip_payments", "patient_reports"],
@@ -59,6 +59,21 @@ export function OperationalLiveSync({ role }: { role: AppRole }) {
         if (document.visibilityState === "visible") router.refresh();
       }, 2_000);
     };
+    // A stock tab can be hidden while dispensing happens in another tab. The
+    // realtime event above still invalidates its signature, but intentionally
+    // avoids rendering a hidden page. Recheck on focus/visibility so the old
+    // quantity can never remain on screen when staff return to that tab. The
+    // signature comparison refreshes the page only when operational data
+    // actually changed.
+    const syncWhenVisible = () => {
+      if (document.visibilityState !== "visible") return;
+      void queryClient.invalidateQueries({ queryKey });
+      void queryClient.invalidateQueries({
+        queryKey: ["hospital-notifications"],
+      });
+    };
+    document.addEventListener("visibilitychange", syncWhenVisible);
+    window.addEventListener("focus", syncWhenVisible);
     for (const table of roleTables[role]) {
       channel = channel.on(
         "postgres_changes",
@@ -84,6 +99,8 @@ export function OperationalLiveSync({ role }: { role: AppRole }) {
     return () => {
       cancelled = true;
       if (timer) clearTimeout(timer);
+      document.removeEventListener("visibilitychange", syncWhenVisible);
+      window.removeEventListener("focus", syncWhenVisible);
       void supabase.removeChannel(channel);
     };
   }, [pathname, queryClient, queryKey, role, router]);

@@ -36,7 +36,7 @@ export const METRIC_HELP: Record<string, { what: string; note?: string }> = {
   },
   visits_today: { what: "Consultations booked today across all doctors. One patient seeing two doctors counts twice." },
   waiting: { what: "Patients who have a token but have not yet been seen by the doctor." },
-  vitals_pending: { what: "Patients waiting for OP staff to record their vitals." },
+  vitals_pending: { what: "Patients waiting for reception staff to record their vitals." },
   ready: { what: "Vitals recorded and waiting for the doctor to call them in." },
   completed: { what: "Consultations the doctor has finished today." },
   current_ip: { what: "Patients currently admitted, including those pending discharge." },
@@ -47,7 +47,9 @@ export const METRIC_HELP: Record<string, { what: string; note?: string }> = {
     what: "Prescriptions waiting at the pharmacy counter.",
     note: "Prescribing never reduces stock — only an actual dispense does.",
   },
-  dispensed_today: { what: "Pharmacy sales completed today." },
+  dispensed_today: {
+    what: "Prescription sales and IP item requests fulfilled by pharmacy today.",
+  },
   low_stock: { what: "Medicine batches at or below their reorder level, but not yet empty." },
   out_of_stock: { what: "Active medicine batches with zero quantity left." },
   expiring_soon: { what: "Batches with stock remaining that expire within 30 days." },
@@ -60,7 +62,10 @@ export const METRIC_HELP: Record<string, { what: string; note?: string }> = {
   op_collection_paise: { what: "Consultation fees collected today at reception and the pharmacy counter." },
   ip_collection_paise: { what: "Payments collected today against IP tickets." },
   ip_balance_paise: { what: "Total unpaid balance across all currently admitted patients." },
-  pharmacy_sales_today_paise: { what: "Value of medicines dispensed today." },
+  pharmacy_sales_today_paise: {
+    what: "Value of prescriptions and IP items dispensed today.",
+    note: "IP items are billed to the patient's IP ticket; they become collected money only when an IP payment is recorded.",
+  },
 };
 
 export function KpiCard({

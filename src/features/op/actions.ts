@@ -14,7 +14,14 @@ const schema = z.object({
   visitId: databaseIdSchema,
   weight: optionalNumber,
   height: optionalNumber,
-  temperature: optionalNumber,
+  temperature: z.preprocess(
+    (value) => (value === "" || value == null ? null : Number(value)),
+    z
+      .number()
+      .min(80, "Temperature must be at least 80 °F.")
+      .max(115, "Temperature cannot exceed 115 °F.")
+      .nullable(),
+  ),
   systolic: optionalNumber,
   diastolic: optionalNumber,
   pulse: optionalNumber,
@@ -40,7 +47,7 @@ export async function saveVitals(
     p_visit_id: parsed.data.visitId,
     p_weight_kg: parsed.data.weight,
     p_height_cm: parsed.data.height,
-    p_temperature_c: parsed.data.temperature,
+    p_temperature_f: parsed.data.temperature,
     p_bp_systolic: small(parsed.data.systolic),
     p_bp_diastolic: small(parsed.data.diastolic),
     p_pulse: small(parsed.data.pulse),

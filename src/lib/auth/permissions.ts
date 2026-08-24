@@ -13,7 +13,7 @@ export const PERMISSIONS = {
   // exist, so two desks cannot create the same person twice.
   createPatient: ["admin", "reception"],
   createVisit: ["admin", "reception"],
-  recordVitals: ["admin", "op", "doctor"],
+  recordVitals: ["admin", "reception", "op", "doctor"],
   writeConsultation: ["admin", "doctor"],
   // Narrower than writeConsultation on purpose: only the consultation form
   // itself (entering exactly what the doctor wrote on paper), not progress
@@ -32,12 +32,12 @@ export const PERMISSIONS = {
   admitIp: ["admin", "ip", "doctor", "reception"],
   // IP staff or the treating doctor can ask pharmacy for consumables; only
   // pharmacy (via `dispense`) actually fulfils the request and touches stock.
-  requestIpInventory: ["admin", "ip", "doctor"],
+  requestIpInventory: ["admin", "reception", "ip", "doctor"],
   // Reading a request's outcome (incl. printing a shortage note for items
   // pharmacy could not fully supply) -- same role set as the RLS read policy
   // on ip_inventory_requests, since nothing here is more sensitive than what
   // is already shown in-app.
-  viewIpInventoryRequest: ["admin", "ip", "doctor", "pharmacy"],
+  viewIpInventoryRequest: ["admin", "reception", "ip", "doctor", "pharmacy"],
   configureRooms: ["admin"],
   viewFullFinance: ["admin"],
   viewVisitFinance: ["admin", "reception"],
@@ -64,17 +64,17 @@ export const ROUTE_ROLES: Record<string, readonly AppRole[]> = {
   // patient directory itself and matches the bulk_import_patients RPC guard.
   "/patients/import": ["admin", "reception"],
   "/reception": ["admin", "reception"],
-  "/op": ["admin", "op"],
+  "/op": ["admin", "reception", "op"],
   "/doctor": ["admin", "doctor"],
   "/pharmacy": ["admin", "pharmacy"],
-  "/ip": ["admin", "ip", "doctor"],
+  "/ip": ["admin", "reception", "ip", "doctor"],
   // Doctors read only: they review the results they ordered. The upload
   // action stays behind the uploadReport permission.
   "/reports": ["admin", "reception", "op", "ip", "doctor"],
   "/visits": ["admin", "reception", "op", "doctor", "pharmacy"],
   // Read-only stock check for clinical/IP care -- not stock management, which
   // stays under /pharmacy.
-  "/drug-stock": ["admin", "doctor", "op", "ip"],
+  "/drug-stock": ["admin", "reception", "doctor", "op", "ip"],
 };
 
 export function canAccessRoute(role: AppRole, pathname: string) {

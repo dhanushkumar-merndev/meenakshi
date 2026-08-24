@@ -93,7 +93,7 @@ const { data: profiles } = await db.from("profiles").select("id,full_name,role,d
 const byRole = (r) => profiles.filter((p) => p.role === r);
 const admin = byRole("admin")[0];
 const reception = byRole("reception")[0] ?? admin;
-const opStaff = byRole("op")[0] ?? admin;
+const opStaff = byRole("reception")[0] ?? admin;
 const ipStaff = byRole("ip")[0] ?? admin;
 if (!admin) throw new Error("No admin profile found — create staff accounts first.");
 
@@ -326,7 +326,7 @@ const done = visits.filter((v) => v.status === "completed");
 const withVitals = visits.filter((v) => v.status !== "waiting");
 await bulkInsert("vitals", withVitals.map((v) => ({
   visit_id: v.id, weight_kg: 45 + rand(45), height_cm: 145 + rand(40),
-  temperature_c: [36.8, 37.2, 38.4, 39.1][rand(4)], bp_systolic: 105 + rand(45), bp_diastolic: 65 + rand(25),
+  temperature_f: [98.2, 99.0, 101.1, 102.4][rand(4)], bp_systolic: 105 + rand(45), bp_diastolic: 65 + rand(25),
   pulse: 62 + rand(40), spo2: 95 + rand(5), respiratory_rate: 14 + rand(6), recorded_by: opStaff.id,
 })), "id");
 console.log(`  ${withVitals.length} vitals`);

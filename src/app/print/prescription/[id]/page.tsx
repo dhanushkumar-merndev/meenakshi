@@ -41,7 +41,7 @@ type Rx = {
     departments: { name: string } | null;
     vitals: {
       weight_kg: number | null;
-      temperature_c: number | null;
+      temperature_f: number | null;
       bp_systolic: number | null;
       bp_diastolic: number | null;
     } | null;
@@ -78,7 +78,7 @@ export default async function PrescriptionPrintPage({
   const { data, error } = await supabase
     .from("prescriptions")
     .select(
-      "prescription_number,created_at,doctors(display_name,qualification,registration_number,specialization),prescription_items(medicine_name,dose,frequency,duration,route,notes),visits(created_at,patients(name,uhid,phone_normalized,dob,gender),departments(name),vitals(weight_kg,temperature_c,bp_systolic,bp_diastolic),consultations(symptoms,history,examination,assessment,advice,admission_recommended,admission_ward_type,admission_reason),test_orders(test_name,notes,created_at)),ip_tickets(admission_at,patients(name,uhid,phone_normalized,dob,gender))",
+      "prescription_number,created_at,doctors(display_name,qualification,registration_number,specialization),prescription_items(medicine_name,dose,frequency,duration,route,notes),visits(created_at,patients(name,uhid,phone_normalized,dob,gender),departments(name),vitals(weight_kg,temperature_f,bp_systolic,bp_diastolic),consultations(symptoms,history,examination,assessment,advice,admission_recommended,admission_ward_type,admission_reason),test_orders(test_name,notes,created_at)),ip_tickets(admission_at,patients(name,uhid,phone_normalized,dob,gender))",
     )
     .eq("id", id)
     .single();
@@ -149,7 +149,7 @@ export default async function PrescriptionPrintPage({
           </p>
           <p>
             <b>Temperature:</b>{" "}
-            {v?.temperature_c ? `${v.temperature_c} °C` : "—"}
+            {v?.temperature_f != null ? `${v.temperature_f} °F` : "—"}
           </p>
           <p>
             <b>BP:</b>{" "}

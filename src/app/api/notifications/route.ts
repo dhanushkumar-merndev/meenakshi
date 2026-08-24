@@ -107,7 +107,17 @@ export async function GET(request: NextRequest) {
   } else if (profile.role === "reception") {
     const followups = value(summary, "followups_due");
     const ready = value(summary, "reports_ready");
+    const vitals = value(summary, "vitals_pending");
+    const reportsPending = value(summary, "reports_pending");
     notices.push(
+      notification(
+        "reception-vitals",
+        vitals,
+        "Vitals pending",
+        `${vitals} visit${vitals === 1 ? " needs" : "s need"} vitals or readiness action.`,
+        "/op",
+        "warning",
+      ),
       notification(
         "reception-followups",
         followups,
@@ -121,6 +131,13 @@ export async function GET(request: NextRequest) {
         ready,
         "Reports ready",
         `${ready} uploaded report${ready === 1 ? " is" : "s are"} ready for the next workflow step.`,
+        "/reports",
+      ),
+      notification(
+        "reception-reports-pending",
+        reportsPending,
+        "Reports pending",
+        `${reportsPending} investigation report${reportsPending === 1 ? " is" : "s are"} pending.`,
         "/reports",
       ),
     );
@@ -146,6 +163,8 @@ export async function GET(request: NextRequest) {
       ),
     );
   } else if (profile.role === "op") {
+    // Legacy compatibility only. The migration converts all OP profiles to
+    // reception, which now receives these notices in its combined workspace.
     const vitals = value(summary, "vitals_pending");
     const reports = value(summary, "reports_pending");
     notices.push(

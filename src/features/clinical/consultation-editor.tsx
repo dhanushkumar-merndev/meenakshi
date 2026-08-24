@@ -126,7 +126,7 @@ export function ConsultationEditor({
   initialTests?: Omit<TestLine, "key">[];
   /** Active report categories configured by the hospital. */
   testCategories?: string[];
-  /** Doctor's configured fee in rupees, pre-filled but always editable. */
+  /** Configured fee, or the fee saved in this draft, always editable. */
   defaultFee?: string;
 }) {
   const [state, action, pending] = useActionState(
@@ -180,6 +180,11 @@ export function ConsultationEditor({
   const [followUpDate, setFollowUpDate] = useState(
     initial?.follow_up_date ?? "",
   );
+  // Keep the fee controlled while the consultation is open. Operational
+  // realtime can refresh the surrounding server-component tree; an
+  // uncontrolled defaultValue could then visibly snap back to the doctor's
+  // configured fee while pharmacy is transcribing a paper prescription.
+  const [fee, setFee] = useState(defaultFee ?? "");
   const updateMedicine = (key: string, patch: Partial<MedicineLine>) =>
     setMedicines((rows) =>
       rows.map((row) => {
@@ -710,9 +715,13 @@ export function ConsultationEditor({
             <Input
               id="consultation-fee"
               name="fee"
+              type="number"
+              min="0"
+              step="0.01"
               inputMode="decimal"
               placeholder="500"
-              defaultValue={defaultFee ?? ""}
+              value={fee}
+              onChange={(event) => setFee(event.target.value)}
               aria-describedby="consultation-fee-help"
             />
             <p

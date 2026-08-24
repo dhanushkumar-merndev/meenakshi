@@ -53,7 +53,7 @@ of the 55 RPCs the code calls is present.
 | IP drug stock | IP staff now have the same read-only Drug Stock lookup as OP staff, showing availability without prices, batch costs, editing, dispensing, or stock reduction |
 | Investigation report type | Doctor test orders no longer mix in document-only upload categories. HIV/lab tests default to Lab Report, X-rays to X-Ray / Radiology, and CT/MRI/USG/Doppler to Scan; the doctor can still override the suggestion |
 
-**Full surface audit** (`e2e/full-surface-audit.spec.ts`): all 6 roles × every
+**Full surface audit** (`e2e/full-surface-audit.spec.ts`): all 5 account types × every
 page, every print document and every API route — **passing**. This is new; it
 exists because feature-by-feature testing kept missing whole-surface breakage.
 
@@ -64,7 +64,7 @@ exists because feature-by-feature testing kept missing whole-surface breakage.
    configured Supabase project, so the database is ahead of git until the
    repository changes are committed.
 2. **Deploy.** Still localhost only.
-3. **Passwords.** All six role accounts share `Meenakshi@2026`. Must change
+3. **Passwords.** All five account types share `Meenakshi@2026`. Must change
    before handover.
 4. **Import the real medicine list.** The directory holds ~29 demo entries.
 5. Print QA on real paper, and one restore-from-backup drill.

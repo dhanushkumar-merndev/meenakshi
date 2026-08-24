@@ -1,9 +1,9 @@
 import { expect, type Page } from "@playwright/test";
 
-export type Role = "admin" | "reception" | "op" | "doctor" | "ip" | "pharmacy";
+export type Role = "admin" | "reception" | "doctor" | "ip" | "pharmacy";
 
 /**
- * Staff sign-in for E2E. All six accounts share one password in the test
+ * Staff sign-in for E2E. All five account types share one password in the test
  * project; each email can be overridden with E2E_<ROLE>_EMAIL.
  */
 const password = process.env.E2E_PASSWORD ?? process.env.E2E_ADMIN_PASSWORD;

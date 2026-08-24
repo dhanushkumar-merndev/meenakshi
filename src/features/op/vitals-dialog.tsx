@@ -31,14 +31,14 @@ export function VitalsDialog({
   const [state, action, pending] = useActionState(saveVitals, initial);
   const { open, setOpen } = useAutoCloseDialog(state, "Vitals saved and patient marked ready.");
   const fields = [
-    ["weight", "Weight (kg)", "0.1"],
-    ["height", "Height (cm)", "0.1"],
-    ["temperature", "Temperature (°C)", "0.1"],
-    ["systolic", "BP systolic", "1"],
-    ["diastolic", "BP diastolic", "1"],
-    ["pulse", "Pulse / min", "1"],
-    ["spo2", "SpO₂ (%)", "1"],
-    ["respiratoryRate", "Respiratory rate", "1"],
+    ["weight", "Weight (kg)", "0.1", "0.1", undefined],
+    ["height", "Height (cm)", "0.1", "0.1", undefined],
+    ["temperature", "Temperature (°F)", "0.1", "80", "115"],
+    ["systolic", "BP systolic", "1", "1", undefined],
+    ["diastolic", "BP diastolic", "1", "1", undefined],
+    ["pulse", "Pulse / min", "1", "1", undefined],
+    ["spo2", "SpO₂ (%)", "1", "1", "100"],
+    ["respiratoryRate", "Respiratory rate", "1", "1", undefined],
   ] as const;
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -60,14 +60,15 @@ export function VitalsDialog({
             </p>
           ) : null}
           <div className="grid gap-4 sm:grid-cols-2">
-            {fields.map(([name, label, step]) => (
+            {fields.map(([name, label, step, min, max]) => (
               <div className="space-y-2" key={name}>
                 <Label htmlFor={`${visitId}-${name}`}>{label}</Label>
                 <Input
                   id={`${visitId}-${name}`}
                   name={name}
                   type="number"
-                  min="0"
+                  min={min}
+                  max={max}
                   step={step}
                   defaultValue={initialVitals?.[name] ?? ""}
                 />

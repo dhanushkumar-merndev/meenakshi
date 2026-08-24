@@ -20,4 +20,17 @@ describe("role authorization matrix", () => {
     expect(canAccessRoute("ip", "/drug-stock")).toBe(true);
     expect(canAccessRoute("ip", "/pharmacy/stock")).toBe(false);
   });
+
+  it("gives reception the complete OP workflow", () => {
+    expect(canAccessRoute("reception", "/op")).toBe(true);
+    expect(canAccessRoute("reception", "/op/assist")).toBe(true);
+    expect(canAccessRoute("reception", "/drug-stock")).toBe(true);
+    expect(hasPermission("reception", "recordVitals")).toBe(true);
+  });
+
+  it("lets reception request IP items without pharmacy fulfilment rights", () => {
+    expect(canAccessRoute("reception", "/ip/current")).toBe(true);
+    expect(hasPermission("reception", "requestIpInventory")).toBe(true);
+    expect(hasPermission("reception", "dispense")).toBe(false);
+  });
 });

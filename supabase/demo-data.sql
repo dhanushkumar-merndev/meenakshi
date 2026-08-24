@@ -335,13 +335,13 @@ with admin_user as (
   select id from public.profiles where email = 'admin@meenakshihospital.com' limit 1
 )
 insert into public.vitals(
-  id, visit_id, weight_kg, height_cm, temperature_c,
+  id, visit_id, weight_kg, height_cm, temperature_f,
   bp_systolic, bp_diastolic, pulse, spo2, respiratory_rate,
   notes, recorded_by, recorded_at
 )
 select
   md5('meenakshi-demo-vitals-' || i)::uuid,
-  v.id, 45 + (i % 45), 145 + (i % 40), 36.4 + ((i % 15)::numeric / 10),
+  v.id, 45 + (i % 45), 145 + (i % 40), 97.5 + ((i % 15)::numeric / 5),
   105 + (i % 35), 65 + (i % 25), 68 + (i % 35), 94 + (i % 7),
   14 + (i % 8), 'Demo vitals', a.id, v.created_at + interval '25 minutes'
 from generate_series(1, 11000) i

@@ -121,43 +121,107 @@ export async function assignIpPatient(
   revalidatePath("/ip");
   return { ok: true, message: "Patient assigned to the IP ticket." };
 }
-const charge = z.object({
-  ticketId: databaseIdSchema,
-  chargePresetId: databaseIdSchema,
-  quantity: z.coerce.number().int().positive(),
+const chargeLineBase = z.object({
+  quantity: z.coerce.number().int().positive().max(100_000),
   idempotencyKey: databaseIdSchema,
+});
+const chargeLine = z.discriminatedUnion("chargeMode", [
+  chargeLineBase.extend({
+    chargeMode: z.literal("preset"),
+    chargePresetId: databaseIdSchema,
+  }),
+  chargeLineBase.extend({
+    chargeMode: z.literal("custom"),
+    chargePresetId: z.string().optional(),
+    item: z
+      .string()
+      .trim()
+      .min(1, "Enter the charge item name.")
+      .max(200, "Item name cannot exceed 200 characters."),
+    rate: z.string().trim().min(1, "Enter the fee.").max(15),
+  }),
+]);
+const chargeBatch = z.object({
+  ticketId: databaseIdSchema,
+  charges: z.string().min(2),
 });
 export async function addIpCharge(
   _: ActionState,
   formData: FormData,
 ): Promise<ActionState> {
   await requirePermission("manageIp");
-  const parsed = charge.safeParse(Object.fromEntries(formData));
-  if (!parsed.success)
+  const parsedBatch = chargeBatch.safeParse(Object.fromEntries(formData));
+  if (!parsedBatch.success)
     return {
       ok: false,
-      message: "Select a valid configured charge.",
-      fieldErrors: parsed.error.flatten().fieldErrors,
+      message: "Enter at least one valid charge.",
+      fieldErrors: parsedBatch.error.flatten().fieldErrors,
     };
+
+  let parsedLines: z.infer<typeof chargeLine>[];
+  try {
+    parsedLines = z.array(chargeLine).min(1).max(25).parse(
+      JSON.parse(parsedBatch.data.charges),
+    );
+  } catch {
+    return { ok: false, message: "Check every charge item, quantity, and fee." };
+  }
+
+  const lines: Array<Record<string, string | number | null>> = [];
+  for (const line of parsedLines) {
+    if (line.chargeMode === "preset") {
+      lines.push({
+        charge_mode: "preset",
+        charge_preset_id: line.chargePresetId,
+        item: null,
+        quantity: line.quantity,
+        rate_paise: null,
+        idempotency_key: line.idempotencyKey,
+      });
+      continue;
+    }
+
+    let ratePaise: number;
+    try {
+      ratePaise = rupeesToPaise(line.rate);
+    } catch (error) {
+      return { ok: false, message: (error as Error).message };
+    }
+    if (ratePaise <= 0)
+      return { ok: false, message: "Every custom fee must be greater than zero." };
+    lines.push({
+      charge_mode: "custom",
+      charge_preset_id: null,
+      item: line.item,
+      quantity: line.quantity,
+      rate_paise: ratePaise,
+      idempotency_key: line.idempotencyKey,
+    });
+  }
+
   const supabase = await createSupabaseServerClient();
-  const { error } = await supabase.rpc("add_configured_ip_charge", {
-    p_ticket_id: parsed.data.ticketId,
-    p_charge_id: parsed.data.chargePresetId,
-    p_quantity: parsed.data.quantity,
-    p_idempotency_key: parsed.data.idempotencyKey,
+  const { error } = await supabase.rpc("add_ip_charges", {
+    p_ticket_id: parsedBatch.data.ticketId,
+    p_lines: lines,
   });
   if (isIdempotentReplay(error))
-    return { ok: true, message: "Charge already recorded." };
+    return { ok: true, message: "Charges already recorded." };
   if (error) {
     const message = error.message.toLowerCase();
     if (message.includes("no longer active"))
       return { ok: false, message: "That configured charge is no longer available." };
     if (message.includes("ticket is not open"))
       return { ok: false, message: "Charges can only be added to an open IP ticket." };
-    return { ok: false, message: "Charge could not be added." };
+    if (message.includes("idempotency key was reused"))
+      return { ok: false, message: "Start a new charge entry and try again." };
+    return { ok: false, message: "Charges could not be added. No charge was recorded." };
   }
-  revalidatePath(`/ip/${parsed.data.ticketId}`);
-  return { ok: true, message: "Charge added." };
+  revalidatePath(`/ip/${parsedBatch.data.ticketId}`);
+  return {
+    ok: true,
+    message: `${parsedLines.length} ${parsedLines.length === 1 ? "charge" : "charges"} added.`,
+    data: { count: parsedLines.length },
+  };
 }
 const payment = z.object({
   ticketId: databaseIdSchema,
@@ -192,7 +256,13 @@ export async function addIpPayment(
     });
   if (isIdempotentReplay(error))
     return { ok: true, message: "Payment already recorded." };
-  if (error) return { ok: false, message: "Payment could not be added." };
+  if (error)
+    return {
+      ok: false,
+      message: error.message.toLowerCase().includes("exceeds outstanding")
+        ? "Payment exceeds the current pending balance. Refresh and enter a smaller amount."
+        : "Payment could not be added.",
+    };
   revalidatePath(`/ip/${parsed.data.ticketId}`);
   return { ok: true, message: "Payment recorded." };
 }

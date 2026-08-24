@@ -75,19 +75,19 @@ test.describe("OP visit through to pharmacy", () => {
     expect(tokenText).toMatch(/Ramanathapuram/);
 
     // --- OP: record vitals, which marks the patient ready -------------------
-    const op = await browser.newPage();
-    await signIn(op, "op");
-    await op.goto("/op");
-    const opRow = op.getByRole("row").filter({ hasText: patientName });
+    // Reception and OP are one account/workspace: the same signed-in staff
+    // member who registered the visit records its vitals from the OP queue.
+    await reception.goto("/op");
+    const opRow = reception.getByRole("row").filter({ hasText: patientName });
     await expect(opRow).toBeVisible({ timeout: 30_000 });
     await opRow.getByRole("button", { name: "Record Vitals" }).click();
-    await op.getByLabel("Weight (kg)").fill("68");
-    await op.getByLabel("Temperature (°C)").fill("38.2");
-    await op.getByLabel("BP systolic").fill("120");
-    await op.getByLabel("BP diastolic").fill("80");
-    await op.getByLabel("Pulse / min").fill("82");
-    await op.getByRole("button", { name: /Save/ }).click();
-    await expect(op.getByRole("dialog")).toHaveCount(0, { timeout: 30_000 });
+    await reception.getByLabel("Weight (kg)").fill("68");
+    await reception.getByLabel("Temperature (°F)").fill("100.8");
+    await reception.getByLabel("BP systolic").fill("120");
+    await reception.getByLabel("BP diastolic").fill("80");
+    await reception.getByLabel("Pulse / min").fill("82");
+    await reception.getByRole("button", { name: /Save/ }).click();
+    await expect(reception.getByRole("dialog")).toHaveCount(0, { timeout: 30_000 });
 
     // --- Pick a medicine the pharmacy genuinely stocks ---------------------
     // Chosen from the stock screen rather than guessed, so the dispense step
@@ -112,16 +112,18 @@ test.describe("OP visit through to pharmacy", () => {
     await doctor.getByLabel("Symptoms / Chief Complaint").fill("Fever for three days, body ache");
     await doctor.getByLabel("Examination").fill("Throat congested, chest clear");
 
-    // Assessment comes from the local clinical directory (ICD-10 coded or free
-    // text) and is required to complete.
+    // Assessment comes from the seeded local SNOMED-ready directory and is
+    // required to complete. The supplied bundle is intentionally unmapped, so
+    // the selected phrase must remain local rather than claim a SNOMED code.
     await doctor.getByRole("button", { name: "Add diagnosis" }).click();
-    // The picker opens a popover whose search box is labelled by the active
-    // coding system ("Search ICD-10"), not the word "diagnosis".
-    await doctor.getByRole("button", { name: /^Search / }).first().click();
-    await doctor.getByPlaceholder(/^Search /).fill("Viral fever");
-    const diagnosis = doctor.getByRole("option").first();
+    await doctor.getByRole("tab", { name: "SNOMED-CT" }).click();
+    await doctor.getByRole("button", { name: "Search SNOMED-CT" }).click();
+    await doctor.getByPlaceholder("Search SNOMED-CT").fill("fever");
+    const diagnosis = doctor.getByRole("option").filter({ hasText: /^Fever/i }).first();
     await diagnosis.waitFor({ timeout: 15_000 });
+    await expect(diagnosis).toContainText("mapping pending");
     await diagnosis.click();
+    await expect(doctor.getByText("Fever", { exact: true })).toBeVisible();
 
     // Prescribe from the local directory: type, then take a suggestion.
     await doctor.getByRole("button", { name: "Add Medicine" }).click();
@@ -133,7 +135,17 @@ test.describe("OP visit through to pharmacy", () => {
     await suggestion.click();
     await doctor.getByPlaceholder("1 tablet").first().fill("1 tablet");
 
-    // The doctor sets the fee; the pharmacy counter collects it.
+    // A changed fee must survive the draft/reload path. This is also the form
+    // Pharmacy uses when transcribing a consultant's paper prescription; it
+    // previously snapped back to the doctor's configured master fee and staff
+    // tried repeated tab refreshes to make the override appear.
+    await doctor.locator("#consultation-fee").fill("450");
+    await doctor.getByRole("button", { name: "Save Draft" }).click();
+    await expect(doctor.getByText("Draft saved.")).toBeVisible({ timeout: 30_000 });
+    await doctor.reload();
+    await expect(doctor.locator("#consultation-fee")).toHaveValue("450.00");
+
+    // The doctor sets the final fee; the pharmacy counter collects it.
     await doctor.locator("#consultation-fee").fill("500");
 
     await doctor.getByRole("button", { name: "Complete Consultation" }).click();
@@ -168,7 +180,6 @@ test.describe("OP visit through to pharmacy", () => {
     await stockPage.close();
     await pharmacy.close();
     await doctor.close();
-    await op.close();
     await reception.close();
   });
 });

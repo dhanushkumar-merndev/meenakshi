@@ -26,9 +26,12 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { SEARCH_DEBOUNCE_MS } from "@/lib/domain/search";
 
 export type ClinicalTerm = {
+  id?: string;
   display_text: string;
   code: string | null;
   code_system: string | null;
+  source?: string | null;
+  mapped?: boolean;
 };
 
 export type DiagnosisEntry = {
@@ -82,9 +85,10 @@ const COMMON_SHOWN = 3;
 /**
  * Assessment/Diagnosis entry. Redesigned around the three coding contexts a
  * diagnosis can come from: ICD-10 and SNOMED-CT are each searched against the
- * local clinical_terms directory, filtered to that one code_system (SNOMED-CT
- * stays empty until the hospital loads codes for it through Admin > Clinical
- * Directory -- nothing is bundled, see that page); "Other Diagnosis" is
+ * local clinical_terms directory, filtered by the database before its result
+ * limit is applied. SNOMED-CT also includes the hospital's local SNOMED-ready
+ * terms, clearly marked as mapping pending when they have no verified concept
+ * ID; "Other Diagnosis" is
  * always free text, no directory lookup. A shortlist of common diagnoses
  * above the tabs adds a name in one click without a code system at all.
  * Every added diagnosis carries a Provisional/Confirmed status and an
@@ -124,12 +128,11 @@ export function DiagnosisPicker({
       setLoading(true);
       try {
         const response = await fetch(
-          `/api/search/clinical-terms?type=diagnosis&q=${encodeURIComponent(query)}`,
+          `/api/search/clinical-terms?type=diagnosis&codeSystem=${encodeURIComponent(system)}&q=${encodeURIComponent(query)}`,
           { signal: controller.signal },
         );
         const body = await response.json();
-        const all = (body.items ?? []) as ClinicalTerm[];
-        setItems(all.filter((item) => item.code_system === system));
+        setItems((body.items ?? []) as ClinicalTerm[]);
       } catch {
         // Aborted or offline: the free-text "add as typed" path still works.
       } finally {
@@ -144,7 +147,7 @@ export function DiagnosisPicker({
 
   const add = (entry: DiagnosisEntry) => {
     const text = entry.display_text.trim();
-    if (!text || entries.some((e) => e.display_text === text)) return;
+    if (!text || entries.some((e) => e.display_text.toLowerCase() === text.toLowerCase())) return;
     setEntries((rows) => [...rows, { ...entry, display_text: text }]);
     setQuery("");
     setNotes("");
@@ -152,6 +155,7 @@ export function DiagnosisPicker({
   };
   const addFromDirectory = (item: ClinicalTerm) =>
     add({
+      term_id: item.id,
       display_text: item.display_text,
       code: item.code ?? undefined,
       code_system: item.code_system ?? undefined,
@@ -161,7 +165,9 @@ export function DiagnosisPicker({
   const addTyped = () =>
     add({
       display_text: query,
-      code_system: system === "other" ? undefined : system,
+      // Typed text is a hospital-local diagnosis, not an ICD/SNOMED code.
+      // It becomes searchable after save, but is never falsely labelled as
+      // coded terminology merely because that tab happened to be open.
       status,
       notes: notes.trim() || undefined,
     });
@@ -280,7 +286,7 @@ export function DiagnosisPicker({
                       <CommandEmpty>
                         {query.trim().length < 2
                           ? "Type at least 2 characters."
-                          : `No ${system} match. Switch to Other Diagnosis to add it as typed.`}
+                          : `No ${system} match. Use + to add it as a local diagnosis.`}
                       </CommandEmpty>
                       <CommandGroup>
                         {(query.trim().length < 2 ? [] : items).map((item) => (
@@ -293,6 +299,10 @@ export function DiagnosisPicker({
                             {item.code ? (
                               <span className="ml-2 font-mono text-xs text-muted-foreground">
                                 {item.code}
+                              </span>
+                            ) : system === "SNOMED-CT" ? (
+                              <span className="ml-2 text-xs text-muted-foreground">
+                                Local term · mapping pending
                               </span>
                             ) : null}
                           </CommandItem>
@@ -319,8 +329,8 @@ export function DiagnosisPicker({
           variant="outline"
           size="icon"
           aria-label="Add diagnosis"
-          disabled={system === "other" && !query.trim()}
-          onClick={system === "other" ? addTyped : undefined}
+          disabled={!query.trim()}
+          onClick={addTyped}
         >
           <Plus />
         </Button>

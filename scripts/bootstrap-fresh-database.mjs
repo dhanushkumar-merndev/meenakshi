@@ -3,7 +3,7 @@
  * seed-demo-data.mjs assumes already exists ("Staff, doctors, departments,
  * rooms and hospital settings are preserved") but a fresh project has none
  * of yet -- hospital identity, departments, rooms/beds, report categories,
- * a starter charges master, and real login accounts for every role plus a
+ * a starter charges master, and real login accounts for every active role plus a
  * handful of doctors across departments.
  *
  * Safe to re-run: every insert is keyed to a natural unique column and
@@ -99,7 +99,6 @@ const DOCTORS = [
 const STAFF = [
   ["admin", "Hospital Admin", "admin@meenakshihospital.com"],
   ["reception", "Reception Desk", "reception@meenakshihospital.com"],
-  ["op", "OP Desk", "op@meenakshihospital.com"],
   ["ip", "IP Desk", "ip@meenakshihospital.com"],
   ["pharmacy", "Pharmacy Counter", "pharmacy@meenakshihospital.com"],
 ];

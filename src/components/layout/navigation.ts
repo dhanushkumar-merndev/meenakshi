@@ -69,9 +69,13 @@ export const ROLE_NAVIGATION: Record<AppRole, NavigationItem[]> = {
   reception: [
     shared.dashboard, shared.patients,
     { title: "Today's Visits", href: "/reception", icon: "calendar-days" },
+    { title: "OP Queue & Vitals", href: "/op", icon: "stethoscope" },
+    { title: "Patient Assist", href: "/op/assist", icon: "route" },
     { title: "Follow-ups", href: "/reception/follow-ups", icon: "calendar-check" },
     { title: "Reports Ready", href: "/reports", icon: "file-check" },
     { title: "Fees & Payments", href: "/reception/payments", icon: "indian-rupee" },
+    { title: "IP Patients", href: "/ip/current", icon: "bed" },
+    { title: "Drug Stock", href: "/drug-stock", icon: "pill" },
   ],
   op: [
     shared.dashboard,

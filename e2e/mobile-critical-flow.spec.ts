@@ -10,7 +10,7 @@ import { credentialsConfigured, missingCredentials, signIn, type Role } from "./
 const pages: Array<[Role, string]> = [
   ["reception", "/reception"],
   ["reception", "/patients"],
-  ["op", "/op"],
+  ["reception", "/op"],
   ["doctor", "/doctor"],
   ["ip", "/ip"],
   ["pharmacy", "/pharmacy"],

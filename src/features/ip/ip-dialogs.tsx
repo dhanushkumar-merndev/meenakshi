@@ -26,13 +26,35 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { useAutoCloseDialog } from "@/hooks/use-auto-close-dialog";
-import { formatInr } from "@/lib/domain/money";
+import { formatInr, rupeesToPaise } from "@/lib/domain/money";
 import {
   PatientCombobox,
   type PatientOption,
 } from "@/components/shared/patient-combobox";
 const initial: ActionState = { ok: false };
+const CUSTOM_CHARGE_VALUE = "custom";
+type IpChargeRow = {
+  id: string;
+  presetId: string;
+  item: string;
+  quantity: string;
+  rate: string;
+};
+
+function newChargeRow(
+  preset?: { id: string; name: string; rate: string },
+  custom = false,
+): IpChargeRow {
+  return {
+    id: crypto.randomUUID(),
+    presetId: custom || !preset ? CUSTOM_CHARGE_VALUE : preset.id,
+    item: custom || !preset ? "" : preset.name,
+    quantity: "1",
+    rate: custom || !preset ? "" : preset.rate,
+  };
+}
 const modes = [
   ["cash", "Cash"],
   ["upi", "UPI"],
@@ -240,110 +262,229 @@ export function AdmissionDialog({
     </Dialog>
   );
 }
-export function ChargeDialog({ ticketId, presets }: { ticketId: string; presets: Array<{ id: string; category: string; name: string; rate: string }> }) {
+export function ChargeDialog({
+  ticketId,
+  presets,
+}: {
+  ticketId: string;
+  presets: Array<{ id: string; category: string; name: string; rate: string }>;
+}) {
   const [state, action, pending] = useActionState(addIpCharge, initial);
-  // IP billing is deliberately restricted to the hospital's active Charges
-  // master. The action re-reads the selected row, so neither its description
-  // nor its price is trusted from browser form data.
   const initialPreset = presets[0];
-  const [presetId, setPresetId] = useState(initialPreset?.id ?? "");
-  const [item, setItem] = useState(initialPreset?.name ?? "");
-  const [rate, setRate] = useState(initialPreset?.rate ?? "");
-  const [key] = useState(() => crypto.randomUUID());
-  const { open, setOpen } = useAutoCloseDialog(state, "IP charge added.");
-  if (!initialPreset) {
-    return (
-      <Button
-        size="sm"
-        variant="outline"
-        disabled
-        title="Configure an active IP charge in Administration → Charges first."
-      >
-        <Plus /> Add Charge
-      </Button>
+  const [rows, setRows] = useState<IpChargeRow[]>(() => [
+    newChargeRow(initialPreset),
+  ]);
+  const { open, setOpen } = useAutoCloseDialog(state, "IP charges added.");
+  const handleOpenChange = (nextOpen: boolean) => {
+    if (nextOpen && !open) {
+      // A retry within one opening keeps every row key. Reopening starts a
+      // new batch, so consecutive additions never replay old rows.
+      setRows([newChargeRow(initialPreset)]);
+    }
+    setOpen(nextOpen);
+  };
+  const updateRow = (id: string, patch: Partial<IpChargeRow>) =>
+    setRows((current) =>
+      current.map((row) => (row.id === id ? { ...row, ...patch } : row)),
     );
-  }
+  const invalid = rows.some((row) => {
+    const custom = row.presetId === CUSTOM_CHARGE_VALUE;
+    return (
+      !row.presetId ||
+      !/^\d+$/.test(row.quantity) ||
+      Number(row.quantity) < 1 ||
+      (custom && (!row.item.trim() || !row.rate.trim()))
+    );
+  });
+  const serializedRows = JSON.stringify(
+    rows.map((row) => ({
+      chargeMode: row.presetId === CUSTOM_CHARGE_VALUE ? "custom" : "preset",
+      chargePresetId:
+        row.presetId === CUSTOM_CHARGE_VALUE ? "" : row.presetId,
+      item: row.item,
+      quantity: row.quantity,
+      rate: row.rate,
+      idempotencyKey: row.id,
+    })),
+  );
+
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger render={<Button size="sm" variant="outline" />}>
         <Plus /> Add Charge
       </DialogTrigger>
-      <DialogContent>
+      <DialogContent className="sm:max-w-3xl">
         <form action={action} className="contents">
           <DialogHeader>
-            <DialogTitle>Add IP charge</DialogTitle>
+            <DialogTitle>Add IP charges</DialogTitle>
             <DialogDescription>
-              Charges remain traceable and are never overwritten.
+              Add up to 25 items together. Each item remains a separate,
+              traceable charge row.
             </DialogDescription>
           </DialogHeader>
           <input type="hidden" name="ticketId" value={ticketId} />
-          <input type="hidden" name="chargePresetId" value={presetId} />
-          <input type="hidden" name="idempotencyKey" value={key} />
-          {state.message && !state.ok ? <p className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">{state.message}</p> : null}
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="charge-preset">Charge preset</Label>
-              <Select
-                value={presetId}
-                onValueChange={(value) => {
-                  const id = String(value);
-                  setPresetId(id);
-                  const preset = presets.find((entry) => entry.id === id);
-                  if (preset) {
-                    setItem(preset.name);
-                    setRate(preset.rate);
-                  }
-                }}
+          <input type="hidden" name="charges" value={serializedRows} />
+          {state.message && !state.ok ? (
+            <p className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">
+              {state.message}
+            </p>
+          ) : null}
+          <ScrollArea className="max-h-[60vh] pr-3">
+            <div className="space-y-3">
+              {rows.map((row, index) => {
+                const custom = row.presetId === CUSTOM_CHARGE_VALUE;
+                const preset = presets.find((entry) => entry.id === row.presetId);
+                return (
+                  <div
+                    key={row.id}
+                    data-charge-row
+                    className="space-y-3 rounded-lg border p-3"
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-sm font-medium">Charge {index + 1}</p>
+                      {rows.length > 1 ? (
+                        <Button
+                          type="button"
+                          size="icon-sm"
+                          variant="ghost"
+                          aria-label={`Remove charge ${index + 1}`}
+                          onClick={() =>
+                            setRows((current) =>
+                              current.filter((entry) => entry.id !== row.id),
+                            )
+                          }
+                        >
+                          <Trash2 />
+                        </Button>
+                      ) : null}
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor={`charge-preset-${row.id}`}>
+                        Charge option
+                      </Label>
+                      <Select
+                        value={row.presetId}
+                        onValueChange={(value) => {
+                          const id = String(value);
+                          if (id === CUSTOM_CHARGE_VALUE) {
+                            updateRow(row.id, {
+                              presetId: id,
+                              item: "",
+                              rate: "",
+                            });
+                            return;
+                          }
+                          const selected = presets.find(
+                            (entry) => entry.id === id,
+                          );
+                          if (selected)
+                            updateRow(row.id, {
+                              presetId: id,
+                              item: selected.name,
+                              rate: selected.rate,
+                            });
+                        }}
+                      >
+                        <SelectTrigger
+                          id={`charge-preset-${row.id}`}
+                          className="w-full"
+                        >
+                          <SelectValue placeholder="Select charge">
+                            {() =>
+                              custom
+                                ? "Custom charge"
+                                : preset
+                                  ? `${preset.name} · ₹${preset.rate}`
+                                  : "Select charge"
+                            }
+                          </SelectValue>
+                        </SelectTrigger>
+                        <SelectContent>
+                          {presets.map((entry) => (
+                            <SelectItem
+                              key={entry.id}
+                              value={entry.id}
+                              label={`${entry.name} · ₹${entry.rate}`}
+                            >
+                              {entry.name} · ₹{entry.rate}
+                            </SelectItem>
+                          ))}
+                          <SelectItem
+                            value={CUSTOM_CHARGE_VALUE}
+                            label="Custom charge"
+                          >
+                            Custom charge
+                          </SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="grid gap-3 sm:grid-cols-[1fr_7rem_9rem]">
+                      <div className="space-y-2">
+                        <Label htmlFor={`charge-item-${row.id}`}>Item</Label>
+                        <Input
+                          id={`charge-item-${row.id}`}
+                          value={row.item}
+                          onChange={(event) =>
+                            updateRow(row.id, { item: event.target.value })
+                          }
+                          readOnly={!custom}
+                          required={custom}
+                          placeholder={custom ? "Enter item name" : undefined}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor={`charge-quantity-${row.id}`}>
+                          Quantity
+                        </Label>
+                        <Input
+                          id={`charge-quantity-${row.id}`}
+                          type="number"
+                          min={1}
+                          max={100000}
+                          value={row.quantity}
+                          onChange={(event) =>
+                            updateRow(row.id, { quantity: event.target.value })
+                          }
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor={`charge-rate-${row.id}`}>Rate</Label>
+                        <Input
+                          id={`charge-rate-${row.id}`}
+                          inputMode="decimal"
+                          value={row.rate}
+                          onChange={(event) =>
+                            updateRow(row.id, { rate: event.target.value })
+                          }
+                          readOnly={!custom}
+                          required={custom}
+                          placeholder={custom ? "0.00" : undefined}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full"
+                disabled={rows.length >= 25}
+                onClick={() =>
+                  setRows((current) => [
+                    ...current,
+                    newChargeRow(undefined, true),
+                  ])
+                }
               >
-                <SelectTrigger id="charge-preset" className="w-full">
-                  {/* Without a render function the trigger shows the stored
-                      preset id rather than its name. */}
-                  <SelectValue placeholder="Select configured charge">
-                    {() => {
-                      const preset = presets.find((entry) => entry.id === presetId);
-                      return preset ? `${preset.name} · ₹${preset.rate}` : "Select configured charge";
-                    }}
-                  </SelectValue>
-                </SelectTrigger>
-                <SelectContent>
-                  {presets.map((preset) => <SelectItem key={preset.id} value={preset.id} label={`${preset.name} · ₹${preset.rate}`}>{preset.name} · ₹{preset.rate}</SelectItem>)}
-                </SelectContent>
-              </Select>
+                <Plus /> Add another charge
+              </Button>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="item">Item</Label>
-              <Input
-                id="item"
-                value={item}
-                readOnly
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-2">
-                <Label htmlFor="quantity">Quantity</Label>
-                <Input
-                  id="quantity"
-                  name="quantity"
-                  type="number"
-                  min={1}
-                  defaultValue={1}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="rate">Rate</Label>
-                <Input
-                  id="rate"
-                  inputMode="decimal"
-                  value={rate}
-                  readOnly
-                />
-              </div>
-            </div>
-          </div>
+          </ScrollArea>
           <DialogFooter showCloseButton>
-            <Button disabled={pending || !presetId} type="submit">
-              {pending ? <LoaderCircle className="animate-spin" /> : <Plus />}{" "}
-              Add Charge
+            <Button disabled={pending || invalid} type="submit">
+              {pending ? <LoaderCircle className="animate-spin" /> : <Plus />} {" "}
+              {rows.length === 1 ? "Add Charge" : `Add ${rows.length} Charges`}
             </Button>
           </DialogFooter>
         </form>
@@ -351,6 +492,7 @@ export function ChargeDialog({ ticketId, presets }: { ticketId: string; presets:
     </Dialog>
   );
 }
+
 export function IpPaymentDialog({
   ticketId,
   totalPaise = 0,
@@ -362,14 +504,36 @@ export function IpPaymentDialog({
 }) {
   const [state, action, pending] = useActionState(addIpPayment, initial);
   const [mode, setMode] = useState("cash");
-  const [key] = useState(() => crypto.randomUUID());
+  const [key, setKey] = useState(() => crypto.randomUUID());
   const balance = Math.max(0, totalPaise - paidPaise);
   // Pre-filled with what is outstanding, which is what is collected most of the
   // time; a part payment is just typed over it.
   const [amount, setAmount] = useState(() => (balance > 0 ? (balance / 100).toFixed(2) : ""));
   const { open, setOpen } = useAutoCloseDialog(state, "IP payment recorded.");
+  const handleOpenChange = (nextOpen: boolean) => {
+    if (nextOpen && !open) {
+      // One key represents one intended payment. Keep it for retries while the
+      // dialog remains open, then rotate it for the next separate collection.
+      setKey(crypto.randomUUID());
+      setAmount(balance > 0 ? (balance / 100).toFixed(2) : "");
+    }
+    setOpen(nextOpen);
+  };
+  let enteredPaise: number | null = null;
+  if (amount.trim()) {
+    try {
+      enteredPaise = rupeesToPaise(amount);
+    } catch {
+      enteredPaise = null;
+    }
+  }
+  const remainingAfterPayment =
+    enteredPaise === null ? balance : balance - enteredPaise;
+  const exceedsBalance = enteredPaise !== null && enteredPaise > balance;
+  const validPayment =
+    enteredPaise !== null && enteredPaise > 0 && enteredPaise <= balance;
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger render={<Button size="sm" />}>
         <IndianRupee /> Add Payment
       </DialogTrigger>
@@ -412,13 +576,44 @@ export function IpPaymentDialog({
                 inputMode="decimal"
                 value={amount}
                 onChange={(event) => setAmount(event.target.value)}
+                aria-invalid={Boolean(amount.trim()) && !validPayment}
+                aria-describedby="payment-balance-preview"
                 required
               />
-              <p className="text-xs text-muted-foreground">
-                {balance > 0
-                  ? `${formatInr(balance)} is still pending. Type a smaller amount for a part payment.`
-                  : "This ticket is fully settled; any amount recorded here is an extra payment."}
-              </p>
+              <div
+                id="payment-balance-preview"
+                aria-live="polite"
+                className={`rounded-md border p-3 text-sm ${exceedsBalance ? "border-destructive/40 bg-destructive/5" : "bg-muted/40"}`}
+              >
+                {!amount.trim() ? (
+                  <p>
+                    Pending balance: <strong>{formatInr(balance)}</strong>
+                  </p>
+                ) : enteredPaise === null ? (
+                  <p className="text-destructive">
+                    Enter a valid amount with up to two decimal places.
+                  </p>
+                ) : enteredPaise <= 0 ? (
+                  <p className="text-destructive">
+                    Payment amount must be greater than zero.
+                  </p>
+                ) : exceedsBalance ? (
+                  <p className="text-destructive">
+                    Amount exceeds the pending balance by{" "}
+                    <strong>{formatInr(Math.abs(remainingAfterPayment))}</strong>.
+                  </p>
+                ) : remainingAfterPayment === 0 ? (
+                  <p className="font-medium text-primary">
+                    Paid in full — no balance will remain.
+                  </p>
+                ) : (
+                  <p>
+                    After this payment,{" "}
+                    <strong>{formatInr(remainingAfterPayment)}</strong> will
+                    remain pending.
+                  </p>
+                )}
+              </div>
             </div>
             <div className="space-y-2">
               <Label>Mode</Label>
@@ -441,7 +636,7 @@ export function IpPaymentDialog({
             </div>
           </div>
           <DialogFooter showCloseButton>
-            <Button disabled={pending} type="submit">
+            <Button disabled={pending || !validPayment} type="submit">
               {pending ? (
                 <LoaderCircle className="animate-spin" />
               ) : (
@@ -560,6 +755,8 @@ export function RequestInventoryDialog({ ticketId }: { ticketId: string }) {
                 <div className="flex-1">
                   <MedicineCombobox
                     value={{ medicine_name: line.name }}
+                    searchEndpoint="/api/search/pharmacy-items"
+                    emptyMessage="No stocked medicine or inventory item found. Typed text can still be requested."
                     onChange={(next) =>
                       setLines((rows) =>
                         rows.map((row, i) => (i === index ? { ...row, name: next.medicine_name } : row)),

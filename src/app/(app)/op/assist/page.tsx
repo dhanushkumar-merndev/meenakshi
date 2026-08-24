@@ -31,12 +31,12 @@ type Row = {
 };
 
 /**
- * Screen for the OP assistant who walks consulted patients to the next counter.
+ * Screen for reception staff who guide consulted patients to the next counter.
  *
  * Deliberately shows no amounts. The assistant carries the prescription to the
  * pharmacy and guides the patient; billing is done by reception or pharmacy, so
- * showing money here would serve no purpose (AGENTS.md 7.3 keeps financial data
- * out of the OP role).
+ * The merged reception account already has a dedicated Fees & Payments page,
+ * so this operational queue stays focused on the patient's next stop.
  */
 export default async function OpAssistPage({
   searchParams,

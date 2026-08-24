@@ -26,8 +26,8 @@ const IDS = {
 };
 
 const PAGES: Array<{ path: string; roles: Role[] }> = [
-  { path: "/dashboard", roles: ["admin", "reception", "op", "doctor", "ip", "pharmacy"] },
-  { path: "/notifications", roles: ["admin", "reception", "op", "doctor", "ip", "pharmacy"] },
+  { path: "/dashboard", roles: ["admin", "reception", "doctor", "ip", "pharmacy"] },
+  { path: "/notifications", roles: ["admin", "reception", "doctor", "ip", "pharmacy"] },
   { path: "/admin/analytics", roles: ["admin"] },
   { path: "/admin/clinical-directory", roles: ["admin"] },
   { path: "/admin/clinical-directory/import", roles: ["admin"] },
@@ -37,28 +37,28 @@ const PAGES: Array<{ path: string; roles: Role[] }> = [
   { path: "/admin/settings", roles: ["admin"] },
   { path: "/admin/users", roles: ["admin"] },
   { path: "/audit", roles: ["admin"] },
-  { path: "/patients", roles: ["admin", "reception", "op", "doctor", "ip"] },
-  { path: `/patients/${IDS.patient}`, roles: ["admin", "reception", "op", "doctor", "ip"] },
+  { path: "/patients", roles: ["admin", "reception", "doctor", "ip"] },
+  { path: `/patients/${IDS.patient}`, roles: ["admin", "reception", "doctor", "ip"] },
   { path: "/patients/import", roles: ["admin", "reception"] },
   { path: "/reception", roles: ["admin", "reception"] },
   { path: "/reception/follow-ups", roles: ["admin", "reception"] },
   { path: "/reception/payments", roles: ["admin", "reception"] },
-  { path: "/op", roles: ["admin", "op"] },
-  { path: "/op/assist", roles: ["admin", "op"] },
+  { path: "/op", roles: ["admin", "reception"] },
+  { path: "/op/assist", roles: ["admin", "reception"] },
   { path: "/doctor", roles: ["admin", "doctor"] },
   { path: "/doctor/follow-ups", roles: ["admin", "doctor"] },
-  { path: "/drug-stock", roles: ["admin", "doctor", "op", "ip"] },
+  { path: "/drug-stock", roles: ["admin", "reception", "doctor", "ip"] },
   // Admin and doctor retain the combined IP page. IP staff use dedicated
   // sidebar pages for each operational queue.
-  { path: "/ip", roles: ["admin", "doctor"] },
-  { path: "/ip/current", roles: ["ip"] },
+  { path: "/ip", roles: ["admin", "reception", "doctor"] },
+  { path: "/ip/current", roles: ["reception", "ip"] },
   { path: "/ip/my-patients", roles: ["ip"] },
   { path: "/ip/pending-discharge", roles: ["ip"] },
   { path: "/ip/discharged", roles: ["ip"] },
   { path: "/ip/all-tickets", roles: ["ip"] },
   // Not "doctor": this ticket belongs to another consultant, and a doctor
   // only sees their own IP patients.
-  { path: `/ip/${IDS.ipTicket}`, roles: ["admin", "ip"] },
+  { path: `/ip/${IDS.ipTicket}`, roles: ["admin", "reception", "ip"] },
   { path: "/pharmacy", roles: ["admin", "pharmacy"] },
   { path: "/pharmacy/import", roles: ["admin", "pharmacy"] },
   { path: "/pharmacy/inventory", roles: ["admin", "pharmacy"] },
@@ -66,10 +66,10 @@ const PAGES: Array<{ path: string; roles: Role[] }> = [
   { path: "/pharmacy/medicines", roles: ["admin", "pharmacy"] },
   { path: "/pharmacy/sales", roles: ["admin", "pharmacy"] },
   { path: "/pharmacy/stock", roles: ["admin", "pharmacy"] },
-  { path: "/reports", roles: ["admin", "reception", "op", "ip", "doctor"] },
-  { path: `/visits/${IDS.visit}`, roles: ["admin", "reception", "op", "doctor", "pharmacy"] },
+  { path: "/reports", roles: ["admin", "reception", "ip", "doctor"] },
+  { path: `/visits/${IDS.visit}`, roles: ["admin", "reception", "doctor", "pharmacy"] },
   // Print documents: reachable by whoever has a button for them.
-  { path: `/print/token/${IDS.visit}`, roles: ["admin", "reception", "op"] },
+  { path: `/print/token/${IDS.visit}`, roles: ["admin", "reception"] },
   // Not "doctor": a doctor sees only their OWN IP patients, and this ticket
   // belongs to another consultant -- the 404 is the RLS policy working.
   { path: `/print/prescription/${IDS.prescription}`, roles: ["admin", "pharmacy"] },
@@ -79,7 +79,8 @@ const PAGES: Array<{ path: string; roles: Role[] }> = [
   { path: `/print/ip-ticket/${IDS.ipTicket}`, roles: ["admin", "ip"] },
   { path: `/print/ip-bill/${IDS.ipTicket}`, roles: ["admin", "ip"] },
   { path: `/print/discharge/${IDS.ipTicket}`, roles: ["admin", "ip"] },
-  { path: `/print/ip-shortage/${IDS.inventoryRequest}`, roles: ["admin", "ip", "pharmacy"] },
+  { path: `/print/ip-shortage/${IDS.inventoryRequest}`, roles: ["admin", "reception", "doctor", "ip", "pharmacy"] },
+  { path: `/print/ip-items/${IDS.inventoryRequest}`, roles: ["admin", "reception", "doctor", "ip", "pharmacy"] },
 ];
 
 // `restricted: true` means a role outside the list must be refused (403), not
@@ -87,18 +88,20 @@ const PAGES: Array<{ path: string; roles: Role[] }> = [
 // any signed-in staff member -- a locality list or an allergy name is not
 // patient data -- so for those the audit only insists on "not a 5xx".
 const APIS: Array<{ path: string; roles: Role[]; restricted?: boolean }> = [
-  { path: "/api/live/version", roles: ["admin", "reception", "op", "doctor", "ip", "pharmacy"] },
-  { path: "/api/notifications?scope=unread&page=1&pageSize=10", roles: ["admin", "reception", "op", "doctor", "ip", "pharmacy"] },
+  { path: "/api/live/version", roles: ["admin", "reception", "doctor", "ip", "pharmacy"] },
+  { path: "/api/notifications?scope=unread&page=1&pageSize=10", roles: ["admin", "reception", "doctor", "ip", "pharmacy"] },
   // The metric RPC enforces its own (stricter, money-aware) role guard.
   { path: "/api/dashboard/metric?metric=today_visits", roles: ["admin"], restricted: true },
-  { path: "/api/search/patients?q=a", roles: ["admin", "reception", "op", "doctor", "ip", "pharmacy"] },
-  { path: "/api/search/medicines?q=pa", roles: ["admin", "doctor", "op", "pharmacy", "ip"], restricted: true },
-  { path: "/api/search/clinical-terms?q=fev", roles: ["admin", "doctor", "op", "ip"], restricted: true },
+  { path: "/api/search/patients?q=a", roles: ["admin", "reception", "doctor", "ip", "pharmacy"] },
+  { path: "/api/search/medicines?q=pa", roles: ["admin", "reception", "doctor", "pharmacy", "ip"], restricted: true },
+  { path: "/api/search/pharmacy-items?q=gloves", roles: ["admin", "reception", "doctor", "pharmacy", "ip"], restricted: true },
+  { path: "/api/search/clinical-terms?q=fev", roles: ["admin", "reception", "doctor", "pharmacy", "ip"] },
+  { path: "/api/search/clinical-terms?type=diagnosis&codeSystem=SNOMED-CT&q=fever", roles: ["admin", "doctor", "pharmacy"], restricted: true },
   // Geoapify address autocomplete: answers 503 with no API key configured,
   // which is a deployment setting rather than a fault, so it is not asserted
   // as available -- only as never a 5xx for a role that should be refused.
   { path: "/api/search/locations?q=che", roles: [] },
-  { path: "/api/search/allergies?q=pen", roles: ["admin", "reception", "op", "doctor", "ip", "pharmacy"] },
+  { path: "/api/search/allergies?q=pen", roles: ["admin", "reception", "doctor", "ip", "pharmacy"] },
   // Restricted: these carry patient-identifying counter queues and exports.
   { path: "/api/search/ip-tickets-admitted?q=a", roles: ["admin", "pharmacy"], restricted: true },
   { path: "/api/search/op-visits-today?q=a", roles: ["admin", "pharmacy"], restricted: true },
@@ -107,7 +110,7 @@ const APIS: Array<{ path: string; roles: Role[]; restricted?: boolean }> = [
   { path: "/api/admin/clinical/import/template", roles: ["admin"], restricted: true },
 ];
 
-const ROLES: Role[] = ["admin", "reception", "op", "doctor", "ip", "pharmacy"];
+const ROLES: Role[] = ["admin", "reception", "doctor", "ip", "pharmacy"];
 
 async function auditRole(page: Page, role: Role) {
   const failures: string[] = [];

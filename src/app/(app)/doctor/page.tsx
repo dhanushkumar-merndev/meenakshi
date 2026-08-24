@@ -32,7 +32,7 @@ type DoctorQueue = {
   vitals: {
     bp_systolic: number | null;
     bp_diastolic: number | null;
-    temperature_c: number | null;
+    temperature_f: number | null;
     spo2: number | null;
   } | null;
 };
@@ -58,7 +58,7 @@ export default async function DoctorQueuePage({
   let query = supabase
     .from("visits")
     .select(
-      "id,token_number,created_at,visit_type,status,patients(name,dob,gender),vitals(bp_systolic,bp_diastolic,temperature_c,spo2)",
+      "id,token_number,created_at,visit_type,status,patients(name,dob,gender),vitals(bp_systolic,bp_diastolic,temperature_f,spo2)",
     )
     .eq("visit_date", today)
     .order("token_number");
@@ -142,7 +142,7 @@ export default async function DoctorQueuePage({
                         </TableCell>
                         <TableCell>
                           {v
-                            ? `BP ${v.bp_systolic ?? "—"}/${v.bp_diastolic ?? "—"} · ${v.temperature_c ?? "—"}°C`
+                            ? `BP ${v.bp_systolic ?? "—"}/${v.bp_diastolic ?? "—"} · ${v.temperature_f ?? "—"}°F`
                             : "Pending"}
                         </TableCell>
                         <TableCell>

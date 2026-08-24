@@ -15,7 +15,7 @@ const userSchema = z.object({
     .regex(/[A-Z]/, "Include an uppercase letter.")
     .regex(/[a-z]/, "Include a lowercase letter.")
     .regex(/[0-9]/, "Include a number."),
-  role: z.enum(["admin", "reception", "op", "ip", "pharmacy"]),
+  role: z.enum(["admin", "reception", "ip", "pharmacy"]),
 });
 export async function createStaffUser(
   _: ActionState,
@@ -139,7 +139,7 @@ export async function createDoctor(
 const staffUpdateSchema = z.object({
   userId: databaseIdSchema,
   fullName: z.string().trim().min(2).max(120),
-  role: z.enum(["admin", "reception", "op", "ip", "pharmacy"]),
+  role: z.enum(["admin", "reception", "ip", "pharmacy"]),
   status: z.enum(["active", "inactive"]),
   password: z.string().min(10).optional().or(z.literal("")),
 });

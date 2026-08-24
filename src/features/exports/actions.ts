@@ -61,7 +61,7 @@ async function collectExport(month: string, includeDocuments: boolean) {
   const visits = (visitsR.data ?? []) as Row[]; const sales = (salesR.data ?? []) as Row[]; const ipCharges = (ipChargesR.data ?? []) as Row[]; const ipPayments = (ipPaymentsR.data ?? []) as Row[]; const reports = (reportsR.data ?? []) as Row[];
   const visitIds = ids(visits, "id"); const [visitPayments, vitals, consultations, prescriptions, testOrders] = await Promise.all([
     inRows(admin, "visit_payments", "id,visit_id,amount_paise,mode,reference,notes,collected_by,created_at", "visit_id", visitIds),
-    inRows(admin, "vitals", "id,visit_id,weight_kg,height_cm,temperature_c,bp_systolic,bp_diastolic,pulse,spo2,respiratory_rate,notes,recorded_by,recorded_at,updated_at", "visit_id", visitIds),
+    inRows(admin, "vitals", "id,visit_id,weight_kg,height_cm,temperature_f,bp_systolic,bp_diastolic,pulse,spo2,respiratory_rate,notes,recorded_by,recorded_at,updated_at", "visit_id", visitIds),
     inRows(admin, "consultations", "id,visit_id,doctor_id,symptoms,history,examination,assessment,advice,follow_up_type,follow_up_date,follow_up_days,status,completed_at,created_at,updated_at", "visit_id", visitIds),
     inRows(admin, "prescriptions", "id,prescription_number,visit_id,ip_ticket_id,doctor_id,status,notes,created_at,updated_at", "visit_id", visitIds),
     inRows(admin, "test_orders", "id,patient_id,visit_id,ip_ticket_id,doctor_id,test_name,status,notes,created_at,updated_at", "visit_id", visitIds),

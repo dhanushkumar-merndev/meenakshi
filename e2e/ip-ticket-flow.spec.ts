@@ -22,30 +22,57 @@ test.describe("IP ticket charges and payments", () => {
     await row.getByRole("button", { name: /Open/ }).first().click();
     await page.waitForURL(/\/ip\/[0-9a-f-]{36}/, { timeout: 30_000 });
 
-    // --- Add a configured treatment charge --------------------------------
+    // --- Add configured + custom charges in one atomic batch ---------------
     const chargeTable = page.getByRole("table").filter({
       has: page.getByRole("columnheader", { name: "Category", exact: true }),
     });
     const chargeRowsBefore = await chargeTable.getByRole("row").count();
     await page.getByRole("button", { name: "Add Charge" }).click();
     const chargeDialog = page.getByRole("dialog");
-    const chargeItem = await chargeDialog.getByLabel("Item").inputValue();
-    const chargeRate = await chargeDialog.getByLabel("Rate").inputValue();
+    const chargeRows = chargeDialog.locator("[data-charge-row]");
+    const firstCharge = chargeRows.nth(0);
+    const chargeItem = await firstCharge.getByLabel("Item").inputValue();
+    const chargeRate = await firstCharge.getByLabel("Rate").inputValue();
     expect(chargeItem, "an active IP charge must be configured").not.toBe("");
     expect(Number(chargeRate), "the configured charge must have a rate").toBeGreaterThan(0);
-    await chargeDialog.getByLabel("Quantity").fill("1");
-    await chargeDialog.getByRole("button", { name: "Add Charge" }).click();
+    await firstCharge.getByLabel("Quantity").fill("1");
+
+    await chargeDialog.getByRole("button", { name: "Add another charge" }).click();
+    const customCharge = chargeRows.nth(1);
+    await customCharge.getByLabel("Charge option").click();
+    await page.getByRole("option", { name: "Custom charge" }).click();
+    const customItem = `Custom care ${Date.now()}`;
+    await customCharge.getByLabel("Item").fill(customItem);
+    await customCharge.getByLabel("Rate").fill("125.50");
+    await chargeDialog.getByRole("button", { name: "Add 2 Charges" }).click();
     await expect(page.getByRole("dialog")).toHaveCount(0, { timeout: 30_000 });
-    await expect(chargeTable.getByRole("row")).toHaveCount(chargeRowsBefore + 1, {
+    await expect(chargeTable.getByRole("row")).toHaveCount(chargeRowsBefore + 2, {
       timeout: 30_000,
     });
+    await expect(chargeTable).toContainText(chargeItem);
+    await expect(chargeTable).toContainText(customItem);
 
     // --- Add an offline payment -------------------------------------------
     await page.getByRole("button", { name: "Add Payment" }).click();
     const paymentDialog = page.getByRole("dialog");
+    await paymentDialog.getByLabel("Amount").fill("999999999.99");
+    await expect(paymentDialog).toContainText("exceeds the pending balance");
+    await expect(
+      paymentDialog.getByRole("button", { name: "Record Payment" }),
+    ).toBeDisabled();
     await paymentDialog.getByLabel("Amount").fill(chargeRate);
+    await expect(paymentDialog).toContainText(/will remain pending|Paid in full/);
     await paymentDialog.getByRole("button", { name: "Record Payment" }).click();
     await expect(page.getByRole("dialog")).toHaveCount(0, { timeout: 30_000 });
+
+    // A subsequent collection is a new payment row with a fresh idempotency
+    // key; it must not replay the previous payment or require a tab refresh.
+    await page.getByRole("button", { name: "Add Payment" }).click();
+    const secondPaymentDialog = page.getByRole("dialog");
+    await secondPaymentDialog.getByLabel("Amount").fill("1.00");
+    await secondPaymentDialog.getByRole("button", { name: "Record Payment" }).click();
+    await expect(page.getByRole("dialog")).toHaveCount(0, { timeout: 30_000 });
+    await expect(page.getByText("Payment already recorded.")).toHaveCount(0);
 
     // --- The running bill reflects both -----------------------------------
     const ticketId = page.url().split("/ip/")[1].split(/[?#]/)[0];

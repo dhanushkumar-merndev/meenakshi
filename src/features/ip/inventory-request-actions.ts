@@ -4,6 +4,7 @@ import { z } from "zod";
 import { requirePermission } from "@/lib/auth/dal";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { databaseIdSchema } from "@/lib/validation/database-id";
+import { rupeesToPaise } from "@/lib/domain/money";
 import type { ActionState } from "@/types/hospital";
 
 const requestLineSchema = z
@@ -62,13 +63,21 @@ const fulfillLineSchema = z
     z.object({
       request_item_id: databaseIdSchema,
       inventory_item_id: databaseIdSchema.optional().or(z.literal("")),
+      medicine_id: databaseIdSchema.optional().or(z.literal("")),
       fulfilled_quantity: z.number().int().min(0),
       unit_price_paise: z.number().int().min(0).optional(),
     }).superRefine((line, context) => {
+      if (line.inventory_item_id && line.medicine_id) {
+        context.addIssue({
+          code: "custom",
+          path: ["inventory_item_id"],
+          message: "Choose only one stock source.",
+        });
+      }
       // A catalog item is priced by the locked server-side stock record. An
       // off-catalog item has no such source, so its manually entered unit
       // price is mandatory whenever any quantity is being billed.
-      if (!line.inventory_item_id && line.fulfilled_quantity > 0 && !(line.unit_price_paise && line.unit_price_paise > 0)) {
+      if (!line.inventory_item_id && !line.medicine_id && line.fulfilled_quantity > 0 && !(line.unit_price_paise && line.unit_price_paise > 0)) {
         context.addIssue({
           code: "custom",
           path: ["unit_price_paise"],
@@ -83,6 +92,9 @@ const fulfillSchema = z.object({
   requestId: databaseIdSchema,
   lines: z.string(),
   idempotencyKey: databaseIdSchema,
+  collectedAmount: z.string().trim().optional(),
+  paymentMode: z.enum(["cash", "upi", "card", "bank_transfer", "other"]),
+  reference: z.string().trim().max(100).optional(),
 });
 
 /**
@@ -105,27 +117,50 @@ export async function fulfillIpInventoryRequest(_: ActionState, formData: FormDa
       : undefined;
     return { ok: false, message: message ?? "Check the fulfilled quantities and prices." };
   }
+  let collectedPaise = 0;
+  if (parsed.data.collectedAmount) {
+    try {
+      collectedPaise = rupeesToPaise(parsed.data.collectedAmount);
+    } catch (error) {
+      return { ok: false, message: (error as Error).message };
+    }
+  }
   const supabase = await createSupabaseServerClient();
   const { error } = await supabase.rpc("fulfill_ip_inventory_request", {
     p_request_id: parsed.data.requestId,
     p_lines: lines.map((line) => ({
       request_item_id: line.request_item_id,
       inventory_item_id: line.inventory_item_id || null,
+      medicine_id: line.medicine_id || null,
       fulfilled_quantity: line.fulfilled_quantity,
       unit_price_paise: line.unit_price_paise ?? null,
     })),
     p_idempotency_key: parsed.data.idempotencyKey,
+    p_collected_paise: collectedPaise,
+    p_payment_mode: parsed.data.paymentMode,
+    p_reference: parsed.data.reference || null,
   });
   if (error)
     return {
       ok: false,
-      message: error.message.includes("insufficient inventory stock")
+      message: error.message.includes("insufficient inventory stock") || error.message.includes("insufficient medicine stock")
         ? error.message
+        : error.message.includes("collection exceeds")
+          ? "The collection exceeds the supplied-item amount or current IP balance."
         : error.message.includes("manual unit price")
           ? "Enter a manual unit price for every off-catalog item being fulfilled."
         : "The request could not be fulfilled; no stock or charge was changed.",
     };
   revalidatePath("/pharmacy/ip-requests");
   revalidatePath("/pharmacy/inventory");
-  return { ok: true, message: "Request fulfilled and billed to the IP ticket." };
+  revalidatePath("/pharmacy/sales");
+  revalidatePath("/pharmacy");
+  revalidatePath("/dashboard");
+  return {
+    ok: true,
+    message: collectedPaise
+      ? "Request fulfilled, billed, and payment collected."
+      : "Request fulfilled and billed to the IP ticket.",
+    data: { requestId: parsed.data.requestId, collectedPaise },
+  };
 }

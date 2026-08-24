@@ -21,7 +21,7 @@ Useful checks: `pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm build`, or all 
 The suite signs in as real staff accounts, so it needs credentials in `.env`:
 
 ```
-E2E_PASSWORD=            # shared password for the six role accounts
+E2E_PASSWORD=            # shared password for the five account types
 E2E_ADMIN_EMAIL=         # defaults to admin@meenakshihospital.com
 E2E_DOCTOR_NAME=         # display name of the doctor the doctor account is linked to
 ```
@@ -30,6 +30,6 @@ Each role signs in as `<role>@meenakshihospital.com` unless `E2E_<ROLE>_EMAIL` o
 
 The specs write to whatever database `.env` points at — registering a patient, completing a consultation, dispensing stock, adding an IP charge. Run them against a test project, never production.
 
-Coverage: the full OP→pharmacy flow, IP charges and payments, role isolation for all six roles, printed-document letterheads, the money-free token, and mobile layout at 390px.
+Coverage: the full reception/OP→pharmacy flow, IP charges and payments, role isolation for all five account types, printed-document letterheads, the money-free token, and mobile layout at 390px.
 
 Hosted migrations use `supabase link --project-ref <ref>` followed by `pnpm db:push`. Never place a service-role key in a public variable.

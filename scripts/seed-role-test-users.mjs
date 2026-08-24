@@ -9,7 +9,6 @@ const admin = createClient(url, serviceKey, { auth: { autoRefreshToken: false, p
 const accounts = [
   ["admin", "Test Admin", "test.admin@meenakshihospital.com"],
   ["reception", "Test Reception", "test.reception@meenakshihospital.com"],
-  ["op", "Test OP Staff", "test.op@meenakshihospital.com"],
   ["doctor", "Dr Test Doctor", "test.doctor@meenakshihospital.com"],
   ["ip", "Test IP Staff", "test.ip@meenakshihospital.com"],
   ["pharmacy", "Test Pharmacy", "test.pharmacy@meenakshihospital.com"],

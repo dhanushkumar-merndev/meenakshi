@@ -35,9 +35,13 @@ export type MedicineChoice = {
 export function MedicineCombobox({
   value,
   onChange,
+  searchEndpoint = "/api/search/medicines",
+  emptyMessage = "No medicine found. Typed text can still be prescribed.",
 }: {
   value: { medicine_id?: string | undefined; medicine_name: string };
   onChange: (value: MedicineChoice) => void;
+  searchEndpoint?: string;
+  emptyMessage?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState(value.medicine_name);
@@ -54,7 +58,7 @@ export function MedicineCombobox({
       setSearchError(false);
       try {
         const response = await fetch(
-          `/api/search/medicines?q=${encodeURIComponent(query)}`,
+          `${searchEndpoint}?q=${encodeURIComponent(query)}`,
           { signal: controller.signal },
         );
         if (!response.ok) throw new Error("Medicine search failed");
@@ -72,7 +76,7 @@ export function MedicineCombobox({
       clearTimeout(timer);
       controller.abort();
     };
-  }, [open, query]);
+  }, [open, query, searchEndpoint]);
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger
@@ -114,8 +118,8 @@ export function MedicineCombobox({
             ) : null}
             <CommandEmpty>
               {searchError
-                ? "Medicine search is temporarily unavailable. Typed text can still be prescribed."
-                : "No medicine found. Typed text can still be prescribed."}
+                ? "Stock search is temporarily unavailable. Typed text can still be entered."
+                : emptyMessage}
             </CommandEmpty>
             <CommandGroup>
               {items.map((item) => (

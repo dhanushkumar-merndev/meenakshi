@@ -19,6 +19,7 @@
     "db:test": "supabase test db",
     "db:push": "supabase db push",
     "db:types": "supabase gen types typescript --local > src/types/database.generated.ts",
+    "db:build-snomed-seed": "node scripts/build-snomed-ready-seed.mjs",
     "db:clean-demo": "node scripts/prepare-production.mjs"
   },
   "dependencies": {

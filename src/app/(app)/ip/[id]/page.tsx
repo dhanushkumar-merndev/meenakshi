@@ -111,6 +111,7 @@ export default async function IpTicketPage({
   const canManage = profile.role === "admin" || profile.role === "ip";
   const canFinance = canManage;
   const canDoctor = profile.role === "admin" || profile.role === "doctor";
+  const canRequestItems = ["admin", "reception", "ip", "doctor"].includes(profile.role);
   const { data: chargeRows } = canManage ? await supabase.from("charges").select("id,category,charge_name,amount_paise").eq("active", true).in("category", IP_CHARGE_MASTER_CATEGORIES).order("category").order("charge_name") : { data: [] };
   const chargePresets = (chargeRows ?? []).map((charge) => ({ id: charge.id, category: charge.category, name: charge.charge_name, rate: (charge.amount_paise / 100).toFixed(2) }));
   const balance = Math.max(0, total - paid);
@@ -126,7 +127,7 @@ export default async function IpTicketPage({
             {ticket.status === "discharged" ? <>{canFinance ? <Button size="sm" variant="outline" render={<Link href={`/print/ip-bill/${ticket.id}`} />}><Printer /> Final Bill</Button> : null}<Button size="sm" render={<Link href={`/print/discharge/${ticket.id}`} />}><Printer /> Discharge Summary</Button></> : null}
             {canDoctor && ticket.status === "admitted" ? <ProgressNoteDialog ticketId={ticket.id} defaultFee={typeof ticket.doctors?.ip_visit_fee_paise === "number" ? (ticket.doctors.ip_visit_fee_paise / 100).toFixed(2) : undefined} /> : null}
             {canDoctor && ["admitted","discharge_pending"].includes(ticket.status) ? <DischargeSummaryDialog ticketId={ticket.id} initialValues={{finalDiagnosis:ticket.final_diagnosis,chiefComplaint:ticket.chief_complaint,procedureDone:ticket.procedure_done,operativeNotes:ticket.operative_notes,hospitalCourse:ticket.hospital_course,treatmentSummary:ticket.treatment_summary,dischargeAdvice:ticket.discharge_advice,followUp:ticket.follow_up}} /> : null}
-            {(canManage || canDoctor) && ["admitted", "discharge_pending"].includes(ticket.status) ? (
+            {canRequestItems && ["admitted", "discharge_pending"].includes(ticket.status) ? (
               <RequestInventoryDialog ticketId={ticket.id} />
             ) : null}
             {canManage && ticket.status !== "discharged" ? <>

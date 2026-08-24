@@ -191,6 +191,7 @@ export async function saveConsultation(
   await rememberTypedTerms(supabase, parsed.data.assessment, tests);
   revalidatePath(`/visits/${parsed.data.visitId}`);
   revalidatePath("/doctor");
+  revalidatePath("/pharmacy");
   revalidatePath("/dashboard");
   return {
     ok: true,

@@ -384,7 +384,7 @@ export async function IpRoleWorkspacePage({
   fixedStatus: IpTicketScope;
 }) {
   const profile = await requireRoute("/ip");
-  if (profile.role !== "ip") redirect("/ip");
+  if (profile.role !== "ip" && profile.role !== "reception") redirect("/ip");
   return (
     <IpWorkspacePage
       profile={profile}

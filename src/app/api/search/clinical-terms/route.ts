@@ -7,7 +7,7 @@ const TERM_TYPES = ["diagnosis", "symptom", "investigation", "advice"];
 
 export async function GET(request: NextRequest) {
   const profile = await getCurrentProfile();
-  if (!["admin", "doctor", "op", "ip"].includes(profile.role))
+  if (!["admin", "doctor", "reception", "ip", "pharmacy"].includes(profile.role))
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   const type = request.nextUrl.searchParams.get("type") ?? "diagnosis";
@@ -15,16 +15,28 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Unknown term type" }, { status: 400 });
 
   const q = request.nextUrl.searchParams.get("q")?.trim() ?? "";
+  const codeSystem = request.nextUrl.searchParams.get("codeSystem")?.trim() ?? "";
+  if (codeSystem && !["ICD-10", "SNOMED-CT"].includes(codeSystem))
+    return NextResponse.json({ error: "Unknown code system" }, { status: 400 });
+  if (codeSystem && !["admin", "doctor", "pharmacy"].includes(profile.role))
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   if (q.length < 2) return NextResponse.json({ items: [] });
   if (q.length > 120)
     return NextResponse.json({ error: "Search is too long" }, { status: 400 });
 
   const supabase = await createSupabaseServerClient();
-  const { data, error } = await supabase.rpc("search_clinical_terms", {
-    p_term_type: type,
-    p_query: q,
-    p_limit: 20,
-  });
+  const { data, error } =
+    type === "diagnosis" && codeSystem
+      ? await supabase.rpc("search_diagnosis_terms", {
+          p_query: q,
+          p_code_system: codeSystem,
+          p_limit: 20,
+        })
+      : await supabase.rpc("search_clinical_terms", {
+          p_term_type: type,
+          p_query: q,
+          p_limit: 20,
+        });
   if (error) return NextResponse.json({ error: "Search unavailable" }, { status: 500 });
 
   let items = data ?? [];
@@ -35,7 +47,12 @@ export async function GET(request: NextRequest) {
   // Note this only ever resolves an exact code (e.g. "E11.9") -- WHO has no
   // free-text ICD-10 search endpoint, so a word query that misses locally
   // stays missed; searchWhoIcd10 itself no-ops for anything code-shaped.
-  if (type === "diagnosis" && items.length === 0 && q.length >= 3) {
+  if (
+    type === "diagnosis" &&
+    (!codeSystem || codeSystem === "ICD-10") &&
+    items.length === 0 &&
+    q.length >= 3
+  ) {
     const whoResults = await searchWhoIcd10(q);
     if (whoResults.length) {
       items = whoResults;

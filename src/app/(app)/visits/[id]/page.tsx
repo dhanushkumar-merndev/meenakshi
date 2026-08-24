@@ -59,7 +59,7 @@ type VisitDetail = {
   vitals: {
     weight_kg: number | null;
     height_cm: number | null;
-    temperature_c: number | null;
+    temperature_f: number | null;
     bp_systolic: number | null;
     bp_diastolic: number | null;
     pulse: number | null;
@@ -133,12 +133,12 @@ export default async function VisitPage({
   const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase
     .from("visits")
-    .select(`id,token_number,created_at,visit_date,visit_type,status,patient_id,doctor_id,related_previous_visit_id,patients(name,uhid,phone_normalized,dob,gender,allergies,blood_group),doctors(display_name,qualification,registration_number,op_fee_paise,follow_up_fee_paise),departments(name),vitals(weight_kg,height_cm,temperature_c,bp_systolic,bp_diastolic,pulse,spo2,respiratory_rate,notes),consultations(id,symptoms,history,examination,assessment,advice,follow_up_type,follow_up_date,follow_up_days,status,admission_recommended,admission_ward_type,admission_reason),prescriptions(id,prescription_number,status,prescription_items(medicine_id,medicine_name,dose,frequency,duration,route,notes,requested_quantity)),test_orders(id,test_name,category,notes,status)${finance ? ",visit_payments(amount_paise,mode,created_at)" : ""}`)
+    .select(`id,token_number,created_at,visit_date,visit_type,status,patient_id,doctor_id,related_previous_visit_id,patients(name,uhid,phone_normalized,dob,gender,allergies,blood_group),doctors(display_name,qualification,registration_number,op_fee_paise,follow_up_fee_paise),departments(name),vitals(weight_kg,height_cm,temperature_f,bp_systolic,bp_diastolic,pulse,spo2,respiratory_rate,notes),consultations(id,symptoms,history,examination,assessment,advice,follow_up_type,follow_up_date,follow_up_days,status,admission_recommended,admission_ward_type,admission_reason),prescriptions(id,prescription_number,status,prescription_items(medicine_id,medicine_name,dose,frequency,duration,route,notes,requested_quantity)),test_orders(id,test_name,category,notes,status)${finance ? ",visit_payments(amount_paise,mode,created_at)" : ""}`)
     .eq("id", id)
     .single();
   if (error || !data) notFound();
   const visit = data as unknown as VisitDetail;
-  const [financialResult, reportsResult, categoriesResult, previousPrescriptionResult, diagnosesResult] = await Promise.all([
+  const [financialResult, reportsResult, categoriesResult, previousPrescriptionResult, diagnosesResult, editableFeeResult] = await Promise.all([
     seesBalance
       ? supabase.rpc("get_visit_financial_summaries", { p_visit_ids: [id] })
       : Promise.resolve({ data: [] }),
@@ -181,6 +181,16 @@ export default async function VisitPage({
           .eq("consultation_id", visit.consultations.id)
           .order("created_at")
       : Promise.resolve({ data: [] }),
+    // visits.fee_paise is deliberately not selectable by clinical roles.
+    // Once a draft exists, read back only this visit's editable fee through a
+    // narrowly guarded RPC. Without this, reopening a pharmacy-entered draft
+    // always showed the doctor's master fee and made the override appear to
+    // require repeated refreshes. A brand-new consultation still uses the
+    // doctor's configured default below.
+    visit.consultations?.id &&
+    hasPermission(profile.role, "pharmacyEnterConsultation")
+      ? supabase.rpc("get_editable_consultation_fee", { p_visit_id: id })
+      : Promise.resolve({ data: null, error: null }),
   ]);
   const summary = financialResult.data?.[0] as
     | { fee_paise?: number; collected_paise?: number }
@@ -246,15 +256,21 @@ export default async function VisitPage({
   const money = paymentSummary(visit.fee_paise, [
     Number(summary?.collected_paise ?? 0),
   ]);
-  // visits.fee_paise is column-revoked from authenticated, so the doctor cannot
-  // read it back. Prefill from their own configured fee; they can override it.
+  // A new consultation starts from the doctor's configured fee. Once a draft
+  // exists, the fee-only RPC above returns its override without exposing any
+  // payment or revenue data to clinical roles.
   const configuredFeePaise =
     visit.visit_type === "follow_up"
       ? visit.doctors?.follow_up_fee_paise
       : visit.doctors?.op_fee_paise;
+  const savedDraftFeePaise =
+    !editableFeeResult.error && editableFeeResult.data !== null
+      ? Number(editableFeeResult.data)
+      : undefined;
+  const feeForEditorPaise = savedDraftFeePaise ?? configuredFeePaise;
   const defaultFeeRupees =
-    typeof configuredFeePaise === "number"
-      ? (configuredFeePaise / 100).toFixed(2)
+    typeof feeForEditorPaise === "number" && Number.isFinite(feeForEditorPaise)
+      ? (feeForEditorPaise / 100).toFixed(2)
       : undefined;
   // Pharmacy enters exactly what the doctor wrote on paper, so it isn't
   // scoped to "their own" visit the way a doctor's own login is -- pharmacy
@@ -269,7 +285,7 @@ export default async function VisitPage({
     ? {
         weight: vitals.weight_kg,
         height: vitals.height_cm,
-        temperature: vitals.temperature_c,
+        temperature: vitals.temperature_f,
         systolic: vitals.bp_systolic,
         diastolic: vitals.bp_diastolic,
         pulse: vitals.pulse,
@@ -467,7 +483,9 @@ export default async function VisitPage({
                 ["Height", vitals.height_cm ? `${vitals.height_cm} cm` : "—"],
                 [
                   "Temperature",
-                  vitals.temperature_c ? `${vitals.temperature_c} °C` : "—",
+                  vitals.temperature_f !== null
+                    ? `${vitals.temperature_f} °F`
+                    : "—",
                 ],
                 [
                   "BP",

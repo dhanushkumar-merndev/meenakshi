@@ -56,14 +56,10 @@ const STAFF_COLUMNS: Record<string, StaffColumn[]> = {
   reception: [
     { key: "patients_registered", label: "Patients registered" },
     { key: "visits_created", label: "Visits created" },
+    { key: "vitals_recorded", label: "Vitals recorded" },
     { key: "op_payments_count", label: "Payments taken" },
     { key: "op_payments_paise", label: "Collected", money: true },
     { key: "reports_uploaded", label: "Reports uploaded" },
-  ],
-  op: [
-    { key: "vitals_recorded", label: "Vitals recorded" },
-    { key: "reports_uploaded", label: "Reports uploaded" },
-    { key: "patients_registered", label: "Patients registered" },
   ],
   doctor: [
     { key: "consultations_completed", label: "Consultations" },
@@ -92,7 +88,7 @@ const STAFF_COLUMNS: Record<string, StaffColumn[]> = {
   ],
 };
 
-const ROLE_ORDER = ["reception", "op", "doctor", "ip", "pharmacy", "admin"];
+const ROLE_ORDER = ["reception", "doctor", "ip", "pharmacy", "admin"];
 
 function dateValue(date: Date) { return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata" }).format(date); }
 function titleCase(value: string) { return value.replace(/_/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase()); }

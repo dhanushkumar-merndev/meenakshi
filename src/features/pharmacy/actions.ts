@@ -82,6 +82,8 @@ export async function dispensePrescription(
   const prescriptionStatus = prescription?.status ?? "partially_dispensed";
   revalidatePath("/pharmacy");
   revalidatePath("/pharmacy/stock");
+  revalidatePath("/pharmacy/sales");
+  revalidatePath("/drug-stock");
   revalidatePath("/dashboard");
   return {
     ok: true,

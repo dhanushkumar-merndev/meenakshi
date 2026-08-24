@@ -10,15 +10,13 @@ import { credentialsConfigured, missingCredentials, signIn, type Role } from "./
  */
 const forbidden: Array<[Role, string[]]> = [
   ["reception", ["/admin/users", "/admin/doctors", "/admin/settings", "/audit", "/pharmacy/stock", "/pharmacy/import"]],
-  ["op", ["/admin/users", "/admin/settings", "/reception/payments", "/pharmacy", "/pharmacy/sales", "/audit"]],
   ["doctor", ["/admin/users", "/admin/settings", "/pharmacy/stock", "/pharmacy/import", "/reception/payments", "/audit"]],
   ["ip", ["/admin/users", "/admin/settings", "/pharmacy/import", "/audit"]],
   ["pharmacy", ["/admin/users", "/admin/settings", "/reception", "/op", "/doctor", "/audit"]],
 ];
 
 const allowed: Array<[Role, string[]]> = [
-  ["reception", ["/reception", "/patients", "/reception/payments", "/reception/follow-ups"]],
-  ["op", ["/op", "/op/assist"]],
+  ["reception", ["/reception", "/patients", "/reception/payments", "/reception/follow-ups", "/op", "/op/assist", "/ip/current", "/drug-stock"]],
   ["doctor", ["/doctor", "/doctor/follow-ups"]],
   ["ip", ["/ip", "/drug-stock"]],
   ["pharmacy", ["/pharmacy", "/pharmacy/stock", "/pharmacy/medicines", "/pharmacy/sales"]],

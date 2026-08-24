@@ -23,8 +23,10 @@ const metricSets = {
   ],
   reception: [
     ["patients_today", "Registrations Today", Users], ["visits_today", "Visits Today", UserRound],
-    ["waiting", "Waiting", Clock3], ["followups_due", "Follow-ups Due", ClipboardCheck],
-    ["reports_ready", "Reports Ready", Activity], ["collected_today_paise", "Collected Today", IndianRupee],
+    ["waiting", "Waiting", Clock3], ["vitals_pending", "Vitals Pending", Activity],
+    ["ready", "Ready for Doctor", ClipboardCheck], ["completed", "Completed Today", UserRound],
+    ["followups_due", "Follow-ups Due", ClipboardCheck], ["reports_ready", "Reports Ready", Activity],
+    ["reports_pending", "Reports Pending", Activity], ["collected_today_paise", "Collected Today", IndianRupee],
   ],
   op: [["patients_seen_today", "Patients Today", Users], ["waiting", "Waiting", Clock3], ["vitals_pending", "Vitals Pending", Activity], ["ready", "Ready for Doctor", ClipboardCheck], ["completed", "Completed Today", UserRound], ["reports_pending", "Reports Pending", Activity]],
   doctor: [["waiting", "Waiting for Me", Clock3], ["ready", "Ready for Me", ClipboardCheck], ["completed", "Completed Today", UserRound], ["followups_due", "Follow-ups Today", Activity], ["reports_ready", "Reports to Review", ClipboardCheck], ["current_ip", "My IP Patients", BedDouble]],

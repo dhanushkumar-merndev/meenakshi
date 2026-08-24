@@ -24,7 +24,7 @@ type UserRow = {
   status: string;
   doctors: { id:string;display_name:string;department_id:string|null;specialization:string|null;qualification:string|null;registration_number:string|null;op_fee_paise:number;follow_up_fee_paise:number;ip_visit_fee_paise:number;active:boolean } | null;
 };
-const STAFF_ROLES = ["admin", "reception", "op", "doctor", "ip", "pharmacy"];
+const STAFF_ROLES = ["admin", "reception", "doctor", "ip", "pharmacy"];
 export default async function UsersPage({
   searchParams,
 }: {
@@ -55,7 +55,7 @@ export default async function UsersPage({
     profilesQuery = profilesQuery.or(filters.join(","));
   }
   // Dropdown filter is independent of the free-text search above -- both can
-  // narrow the table at once (e.g. search "staff" within role "op").
+  // narrow the table at once (e.g. search "staff" within role "reception").
   if (selectedRole) profilesQuery = profilesQuery.eq("role", selectedRole);
   const [{ data: profiles }, { data: authData }, { data: departments }] = await Promise.all([
     profilesQuery,
