@@ -1,5 +1,5 @@
 begin;
-select plan(65);
+select plan(66);
 select has_table('public','patients','patients table exists');
 select has_table('public','visits','visits table exists');
 select has_table('public','medicine_batches','stock table exists');
@@ -55,6 +55,19 @@ select has_table('public','clinical_term_catalog_memberships','clinical catalog 
 select is((select count(*) from public.clinical_term_catalog_memberships where catalog='SNOMED-ready common diagnosis dataset'),727::bigint,'all supplied SNOMED-ready diagnoses are seeded');
 select is((select count(*) from public.clinical_terms term join public.clinical_term_catalog_memberships membership on membership.term_id=term.id where membership.catalog='SNOMED-ready common diagnosis dataset' and term.normalized_text='fever'),1::bigint,'seeded Fever diagnosis is searchable locally');
 select is((select count(*) from public.profiles where role='op'),0::bigint,'OP profiles are merged into reception');
+select is(
+  (
+    select count(*)
+    from pg_enum enum_value
+    join pg_type enum_type on enum_type.oid = enum_value.enumtypid
+    join pg_namespace enum_namespace on enum_namespace.oid = enum_type.typnamespace
+    where enum_namespace.nspname = 'public'
+      and enum_type.typname = 'app_role'
+      and enum_value.enumlabel = 'op'
+  ),
+  1::bigint,
+  'legacy OP enum value remains available during migration'
+);
 select has_trigger('public','vitals','protect_closed_visit_vitals','closed visit vitals are immutable');
 select has_trigger('public','prescriptions','protect_prescription_status','prescription lifecycle is protected');
 select has_trigger('public','prescriptions','set_prescription_issued_at','pharmacy expiry starts when the doctor issues the prescription');

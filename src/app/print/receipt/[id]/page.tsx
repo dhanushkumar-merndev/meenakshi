@@ -10,7 +10,7 @@ type Receipt = {
   sale_id: string;
   created_at: string;
   source: string;
-  payment_mode: string;
+  payment_mode: string | null;
   dispensed_by: string | null;
   patient_name: string | null;
   patient_phone: string | null;
@@ -71,6 +71,7 @@ export default async function ReceiptPrintPage({
   const total = Number(receipt.medicines_paise) + Number(receipt.consultation_paise);
   const items = receipt.items ?? [];
   const unsupplied = receipt.unsupplied ?? [];
+  const isIp = receipt.source.toLowerCase() === "ip";
 
   return (
     <main className="mx-auto min-h-screen max-w-[210mm] bg-white p-4 text-black sm:p-8">
@@ -83,12 +84,12 @@ export default async function ReceiptPrintPage({
             Outside Purchase Slip
           </a>
         ) : null}
-        <PrintButton label="Print Receipt" />
+        <PrintButton label={isIp ? "Print IP Charge Slip" : "Print Receipt"} />
       </div>
       <article className="mx-auto max-w-md border border-black p-6 font-sans">
         <HospitalLetterhead identity={identity} logoSize={48} />
         <p className="mt-4 border-y border-black py-2 text-center text-sm font-semibold uppercase">
-          Payment Receipt
+          {isIp ? "IP Pharmacy Charge Slip" : "Payment Receipt"}
         </p>
 
         <dl className="mt-4 grid grid-cols-[7rem_1fr] gap-y-2 text-sm">
@@ -181,13 +182,15 @@ export default async function ReceiptPrintPage({
             </div>
           ) : null}
           <div className="flex justify-between border-t border-black pt-2 text-base font-bold">
-            <dt>Total paid</dt>
+            <dt>{isIp ? "Added to IP ticket" : "Total paid"}</dt>
             <dd className="tabular-nums">{formatInr(total)}</dd>
           </div>
-          <div className="flex justify-between text-xs">
-            <dt>Payment mode</dt>
-            <dd>{MODE_LABELS[receipt.payment_mode] ?? receipt.payment_mode}</dd>
-          </div>
+          {!isIp && receipt.payment_mode ? (
+            <div className="flex justify-between text-xs">
+              <dt>Payment mode</dt>
+              <dd>{MODE_LABELS[receipt.payment_mode] ?? receipt.payment_mode}</dd>
+            </div>
+          ) : null}
         </dl>
 
         {/* Nothing is charged for these -- the hospital never gave them. They

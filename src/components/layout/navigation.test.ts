@@ -29,6 +29,20 @@ describe("getActiveNavigationHref", () => {
     ).toBe("Drug Stock");
   });
 
+  it("puts the complete OP workflow in the reception workspace", () => {
+    const destinations = ROLE_NAVIGATION.reception.map((item) => item.href);
+    expect(destinations).toEqual(
+      expect.arrayContaining(["/op", "/op/assist", "/reports", "/drug-stock"]),
+    );
+  });
+
+  it("keeps legacy OP navigation available during account migration", () => {
+    const destinations = ROLE_NAVIGATION.op.map((item) => item.href);
+    expect(destinations).toEqual(
+      expect.arrayContaining(["/op", "/op/assist", "/reports", "/drug-stock"]),
+    );
+  });
+
   it("does not treat dashboard as a parent route", () => {
     expect(
       getActiveNavigationHref(

@@ -38,6 +38,8 @@ test.describe("unified IP pharmacy item workflow", () => {
     await expect(dialog).toContainText("Calpol Syrup");
     await expect(dialog).toContainText("₹14.00");
     await expect(dialog).toContainText("₹1.32");
-    await expect(dialog).toContainText(/Total to bill the ticket/);
+    await expect(dialog).toContainText(/Supplied total/);
+    await expect(dialog.getByText("Add to IP ticket", { exact: true })).toBeVisible();
+    await expect(dialog.getByText("Collect at pharmacy now", { exact: true })).toBeVisible();
   });
 });

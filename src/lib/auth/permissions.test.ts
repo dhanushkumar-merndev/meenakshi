@@ -24,8 +24,20 @@ describe("role authorization matrix", () => {
   it("gives reception the complete OP workflow", () => {
     expect(canAccessRoute("reception", "/op")).toBe(true);
     expect(canAccessRoute("reception", "/op/assist")).toBe(true);
+    expect(canAccessRoute("reception", "/reports")).toBe(true);
+    expect(canAccessRoute("reception", "/visits/example-visit")).toBe(true);
     expect(canAccessRoute("reception", "/drug-stock")).toBe(true);
     expect(hasPermission("reception", "recordVitals")).toBe(true);
+    expect(hasPermission("reception", "uploadReport")).toBe(true);
+  });
+
+  it("keeps legacy OP accounts compatible during migration", () => {
+    expect(canAccessRoute("op", "/op")).toBe(true);
+    expect(canAccessRoute("op", "/op/assist")).toBe(true);
+    expect(canAccessRoute("op", "/reports")).toBe(true);
+    expect(canAccessRoute("op", "/drug-stock")).toBe(true);
+    expect(hasPermission("op", "recordVitals")).toBe(true);
+    expect(hasPermission("op", "uploadReport")).toBe(true);
   });
 
   it("lets reception request IP items without pharmacy fulfilment rights", () => {

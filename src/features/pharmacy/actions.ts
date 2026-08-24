@@ -14,11 +14,7 @@ const lineSchema = z
       prescription_item_id: databaseIdSchema,
       batch_id: databaseIdSchema,
       quantity: z.number().int().positive(),
-      // Pharmacist-entered raise of what was prescribed (e.g. a couple of
-      // extra days the patient asks for at the counter). Optional; zod would
-      // otherwise silently strip it and the increase would never reach the RPC.
-      new_requested_quantity: z.number().int().positive().max(100_000).optional(),
-    }),
+    }).strict(),
   )
   .min(1)
   .max(50);
@@ -48,12 +44,15 @@ export async function dispensePrescription(
     };
   }
   const rawFee = parsed.data.consultationCollected?.trim() ?? "";
-  const collectedPaise = rawFee === "" ? 0 : rupeesToPaise(rawFee);
-  if (Number.isNaN(collectedPaise) || collectedPaise < 0)
+  let collectedPaise = 0;
+  try {
+    collectedPaise = rawFee === "" ? 0 : rupeesToPaise(rawFee);
+  } catch (error) {
     return {
       ok: false,
-      message: "Enter a valid consultation fee amount.",
+      message: (error as Error).message,
     };
+  }
   const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase.rpc("dispense_prescription", {
     p_prescription_id: parsed.data.prescriptionId,
@@ -69,6 +68,10 @@ export async function dispensePrescription(
         ? "This prescription has expired or is no longer available. No stock was changed."
         : error.message.includes("stock unavailable")
           ? "Selected batch does not have enough unexpired stock."
+          : error.message.includes("prescribed quantity cannot be changed")
+            ? "Dispensing must use the quantity prescribed by the consultant."
+            : error.message.includes("exact outstanding consultation fee")
+              ? "The consultation collection must match the current outstanding fee. Refresh and try again."
           : error.message.includes("exceeds outstanding balance")
             ? "That is more than the outstanding consultation fee. Nothing was dispensed or collected."
             : "Dispensing failed; no stock was changed.",
@@ -97,6 +100,49 @@ export async function dispensePrescription(
       medicinesPaise: Number(sale?.total_paise ?? 0),
       consultationPaise: collectedPaise,
     },
+  };
+}
+
+const unavailableSchema = z.object({
+  prescriptionId: databaseIdSchema,
+  unavailableIdempotencyKey: databaseIdSchema,
+});
+
+/**
+ * Closes the still-pending quantity as unavailable without creating a sale,
+ * collecting money, or touching stock. The remaining lines stay intact so
+ * the outside-purchase prescription can print exactly what was not supplied.
+ */
+export async function markPrescriptionUnavailable(
+  _: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  await requirePermission("dispense");
+  const parsed = unavailableSchema.safeParse(Object.fromEntries(formData));
+  if (!parsed.success)
+    return { ok: false, fieldErrors: parsed.error.flatten().fieldErrors };
+
+  const supabase = await createSupabaseServerClient();
+  const { error } = await supabase.rpc("mark_prescription_unavailable", {
+    p_prescription_id: parsed.data.prescriptionId,
+    p_idempotency_key: parsed.data.unavailableIdempotencyKey,
+  });
+  if (error)
+    return {
+      ok: false,
+      message: error.message.includes("no remaining quantity")
+        ? "Every prescribed item has already been dispensed."
+        : error.message.includes("prescription unavailable")
+          ? "This prescription is no longer pending. Refresh and try again."
+          : "The unavailable outcome could not be recorded. No stock or payment was changed.",
+    };
+
+  revalidatePath("/pharmacy");
+  revalidatePath("/dashboard");
+  return {
+    ok: true,
+    message: "Remaining medicines marked unavailable. No sale, payment, or stock movement was recorded.",
+    data: { prescriptionStatus: "unavailable" },
   };
 }
 

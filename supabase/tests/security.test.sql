@@ -1,11 +1,27 @@
 begin;
-select plan(18);
+select plan(27);
 create temp table test_actor as select id from public.profiles where email='admin@meenakshihospital.com' limit 1;
 select ok(exists(select 1 from test_actor),'configured admin fixture exists');
 select set_config('request.jwt.claim.sub',(select id::text from test_actor),true);
 
 set local role authenticated;
 select lives_ok($$select public.report_admin_overview(current_date,current_date)$$,'admin can use financial analytics');
+reset role;
+
+update public.profiles set role='reception',doctor_id=null where id=(select id from test_actor);
+set local role authenticated;
+select lives_ok($$select public.dashboard_summary()$$,'reception can load its combined dashboard');
+select is((public.dashboard_summary() ? 'vitals_pending'),true,'reception dashboard includes the former OP vitals metric');
+select lives_ok($$select * from public.list_medicine_directory(null,20,0)$$,'reception can list safe medicine availability');
+select lives_ok($$select * from public.search_medicine_availability('par',20)$$,'reception can search safe medicine availability');
+select lives_ok($$select count(*) from public.patient_reports$$,'reception can read the reports workspace');
+select throws_ok(
+  $$select public.record_visit_vitals('00000000-0000-0000-0000-000000000001',null,null,null,null,null,null,null,null,null)$$,
+  '42501','visit unavailable','reception reaches the vitals workflow guard rather than a role denial'
+);
+select throws_ok($$select public.report_admin_overview(current_date,current_date)$$,'42501','forbidden','reception cannot use admin financial analytics');
+select throws_ok($$select public.dispense_prescription('00000000-0000-0000-0000-000000000001','[]'::jsonb,'cash','00000000-0000-0000-0000-000000000002')$$,'42501','forbidden','reception cannot dispense prescriptions');
+select is((select count(*) from public.profiles where role='op'),0::bigint,'separate OP profiles were migrated to reception');
 reset role;
 
 update public.profiles set role='doctor',doctor_id=null where id=(select id from test_actor);

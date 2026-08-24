@@ -20,8 +20,8 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import {
   Select,
   SelectContent,
@@ -70,7 +70,7 @@ export function FulfillInventoryRequestDialog({
 }) {
   const [state, action, pending] = useActionState(fulfillIpInventoryRequest, { ok: false });
   const [key] = useState(() => crypto.randomUUID());
-  const [collectNow, setCollectNow] = useState(false);
+  const [settlement, setSettlement] = useState<"ip_ticket" | "collect_now">("ip_ticket");
   const [collectedAmount, setCollectedAmount] = useState("");
   const [paymentMode, setPaymentMode] = useState("cash");
   const [reference, setReference] = useState("");
@@ -132,6 +132,7 @@ export function FulfillInventoryRequestDialog({
       (!Number.isFinite(Number(line.customPriceRupees)) || Number(line.customPriceRupees) <= 0),
   );
   const collectedPaise = Math.round((Number(collectedAmount) || 0) * 100);
+  const collectNow = settlement === "collect_now";
   const invalidCollection = collectNow && (
     collectedPaise <= 0 || collectedPaise > totalPaise
   );
@@ -305,27 +306,46 @@ export function FulfillInventoryRequestDialog({
           </div>
           <div className="flex justify-end border-t pt-3 text-sm">
             <p>
-              <span className="text-muted-foreground">Total to bill the ticket: </span>
+              <span className="text-muted-foreground">Supplied total: </span>
               <span className="font-semibold">{formatInr(totalPaise)}</span>
             </p>
           </div>
           <div className="space-y-3 rounded-lg border p-3">
-            <label className="flex items-start gap-3">
-              <Checkbox
-                checked={collectNow}
-                onCheckedChange={(checked) => {
-                  const next = checked === true;
-                  setCollectNow(next);
-                  if (next) setCollectedAmount((totalPaise / 100).toFixed(2));
-                }}
-              />
-              <span>
-                <span className="block text-sm font-medium">Collect payment now</span>
-                <span className="block text-xs text-muted-foreground">
-                  Records an IP payment at the pharmacy counter. Leave unchecked to collect with the final IP bill.
+            <div>
+              <p className="text-sm font-medium">Settlement</p>
+              <p className="text-xs text-muted-foreground">
+                Choose where this supplied amount is settled. It is recorded only once.
+              </p>
+            </div>
+            <RadioGroup
+              value={settlement}
+              onValueChange={(value) => {
+                const next = String(value) as "ip_ticket" | "collect_now";
+                setSettlement(next);
+                if (next === "collect_now")
+                  setCollectedAmount((totalPaise / 100).toFixed(2));
+              }}
+              className="gap-3"
+            >
+              <label className="flex cursor-pointer items-start gap-3 rounded-md border p-3">
+                <RadioGroupItem value="ip_ticket" />
+                <span>
+                  <span className="block text-sm font-medium">Add to IP ticket</span>
+                  <span className="block text-xs text-muted-foreground">
+                    Shows as an IP pharmacy charge and is collected with the running or final bill.
+                  </span>
                 </span>
-              </span>
-            </label>
+              </label>
+              <label className="flex cursor-pointer items-start gap-3 rounded-md border p-3">
+                <RadioGroupItem value="collect_now" />
+                <span>
+                  <span className="block text-sm font-medium">Collect at pharmacy now</span>
+                  <span className="block text-xs text-muted-foreground">
+                    Adds the same IP charge and an offsetting payment, so the amount is not due twice.
+                  </span>
+                </span>
+              </label>
+            </RadioGroup>
             {collectNow ? (
               <div className="grid gap-3 sm:grid-cols-2">
                 <div className="space-y-1.5">

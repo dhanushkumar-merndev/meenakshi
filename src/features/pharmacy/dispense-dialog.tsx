@@ -1,8 +1,8 @@
 "use client";
 import Link from "next/link";
 import { useActionState, useMemo, useState } from "react";
-import { CheckCircle2, LoaderCircle, Pill, Printer } from "lucide-react";
-import { dispensePrescription } from "./actions";
+import { CheckCircle2, LoaderCircle, PackageX, Pill, Printer } from "lucide-react";
+import { dispensePrescription, markPrescriptionUnavailable } from "./actions";
 import { formatInr, packBreakdown } from "@/lib/domain/money";
 import { Button } from "@/components/ui/button";
 import {
@@ -82,17 +82,19 @@ export function DispenseDialog({
   const [state, action, pending] = useActionState(dispensePrescription, {
     ok: false,
   });
+  const [unavailableState, unavailableAction, markingUnavailable] = useActionState(
+    markPrescriptionUnavailable,
+    { ok: false },
+  );
   const [mode, setMode] = useState("cash");
   const [key] = useState(() => crypto.randomUUID());
+  const [unavailableKey] = useState(() => crypto.randomUUID());
   const outstanding = consultationBalancePaise ?? 0;
-  const [feeCollected, setFeeCollected] = useState(() =>
-    outstanding > 0 ? (outstanding / 100).toFixed(2) : "",
-  );
-  // Pending starts at what was prescribed; the pharmacist can raise it here
-  // (e.g. the patient asks for a couple more days) without a separate screen.
-  const [pendingOverrides, setPendingOverrides] = useState<Record<string, number>>({});
-  const pendingFor = (item: Item) =>
-    pendingOverrides[item.id] ?? item.requested - item.dispensed;
+  const feeCollected = outstanding > 0 ? (outstanding / 100).toFixed(2) : "";
+  // The consultant's requested quantity is immutable at the pharmacy
+  // counter. Pharmacy chooses only how much of the remaining quantity it can
+  // actually hand over.
+  const pendingFor = (item: Item) => item.requested - item.dispensed;
   const [lines, setLines] = useState(() =>
     items.map((item) => {
       const batch = batches
@@ -112,23 +114,12 @@ export function DispenseDialog({
     () =>
       lines
         .filter((line) => line.batchId && line.quantity > 0)
-        .map((line) => {
-          const item = items.find((i) => i.id === line.itemId);
-          const override = item ? pendingOverrides[item.id] : undefined;
-          const newRequested =
-            item && override !== undefined
-              ? item.dispensed + override
-              : undefined;
-          return {
-            prescription_item_id: line.itemId,
-            batch_id: line.batchId,
-            quantity: line.quantity,
-            ...(newRequested !== undefined
-              ? { new_requested_quantity: newRequested }
-              : {}),
-          };
-        }),
-    [lines, items, pendingOverrides],
+        .map((line) => ({
+          prescription_item_id: line.itemId,
+          batch_id: line.batchId,
+          quantity: line.quantity,
+        })),
+    [lines],
   );
   // Mirrors the server's rounding (round(qty * pack price / units per pack))
   // so what the pharmacist sees before confirming matches the receipt after.
@@ -155,6 +146,34 @@ export function DispenseDialog({
       ? Math.round(feeEntered * 100)
       : 0;
   const totalToCollectPaise = medicinesTotalPaise + feeCollectedPaise;
+  const totalPending = items.reduce(
+    (sum, item) => sum + item.requested - item.dispensed,
+    0,
+  );
+  const totalSelected = payload.reduce((sum, line) => sum + line.quantity, 0);
+  const dispenseLabel =
+    totalSelected === totalPending
+      ? "Confirm Full Dispense"
+      : "Dispense Available Quantity";
+  if (unavailableState.ok) {
+    return (
+      <div className="flex flex-wrap items-center justify-end gap-3">
+        <p className="text-sm text-muted-foreground">
+          Remaining medicines were not supplied. No sale, payment, or stock
+          movement was created.
+        </p>
+        <Button size="sm" variant="outline" disabled>
+          <CheckCircle2 /> Unavailable recorded
+        </Button>
+        <Button
+          size="sm"
+          render={<Link href={`/print/outside-purchase/${prescriptionId}`} target="_blank" />}
+        >
+          <Printer /> Outside Purchase
+        </Button>
+      </div>
+    );
+  }
   if (state.ok) {
     const completed = state.data?.prescriptionStatus === "dispensed";
     const medicinesPaise = Number(state.data?.medicinesPaise ?? 0);
@@ -164,13 +183,24 @@ export function DispenseDialog({
     return (
       <div className="flex flex-wrap items-center justify-end gap-3">
         <p className="text-sm text-muted-foreground">
-          Medicines {formatInr(medicinesPaise)}
-          {consultationPaise > 0
-            ? ` + Doctor fee ${formatInr(consultationPaise)} = `
-            : " = "}
-          <span className="font-semibold text-foreground">
-            Total {formatInr(medicinesPaise + consultationPaise)} collected
-          </span>
+          {source === "ip" ? (
+            <>
+              Medicines {formatInr(medicinesPaise)} ·{" "}
+              <span className="font-semibold text-foreground">
+                Added to IP ticket
+              </span>
+            </>
+          ) : (
+            <>
+              Medicines {formatInr(medicinesPaise)}
+              {consultationPaise > 0
+                ? ` + Doctor fee ${formatInr(consultationPaise)} = `
+                : " = "}
+              <span className="font-semibold text-foreground">
+                Total {formatInr(medicinesPaise + consultationPaise)} collected
+              </span>
+            </>
+          )}
         </p>
         <div className="flex gap-2">
           <Button size="sm" variant="outline" disabled>
@@ -181,7 +211,7 @@ export function DispenseDialog({
             size="sm"
             render={<Link href={`/print/receipt/${state.data?.saleId}`} target="_blank" />}
           >
-            <Printer /> Payment Receipt
+            <Printer /> {source === "ip" ? "IP Charge Slip" : "Payment Receipt"}
           </Button>
           <Button
             size="sm"
@@ -221,11 +251,16 @@ export function DispenseDialog({
           </DialogHeader>
           <input type="hidden" name="prescriptionId" value={prescriptionId} />
           <input type="hidden" name="idempotencyKey" value={key} />
+          <input
+            type="hidden"
+            name="unavailableIdempotencyKey"
+            value={unavailableKey}
+          />
           <input type="hidden" name="lines" value={JSON.stringify(payload)} />
           <input type="hidden" name="paymentMode" value={mode} />
-          {state.message ? (
+          {state.message || unavailableState.message ? (
             <p className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">
-              {state.message}
+              {state.message || unavailableState.message}
             </p>
           ) : null}
           <div className="overflow-x-auto">
@@ -275,28 +310,10 @@ export function DispenseDialog({
                         ) : null}
                       </TableCell>
                       <TableCell>
-                        {/* Editable: the patient can ask for extra days at the
-                            counter, so pending isn't fixed to what the doctor
-                            originally wrote. Can only be raised, never lowered
-                            below what is still outstanding. */}
-                        <Input
-                          className="w-20"
-                          type="number"
-                          min={item.requested - item.dispensed}
-                          value={pending}
-                          onChange={(event) => {
-                            const next = Math.max(
-                              item.requested - item.dispensed,
-                              Number(event.target.value) || 0,
-                            );
-                            setPendingOverrides((rows) => ({ ...rows, [item.id]: next }));
-                          }}
-                        />
-                        {pending > item.requested - item.dispensed ? (
-                          <p className="mt-1 text-[11px] text-muted-foreground">
-                            +{pending - (item.requested - item.dispensed)} extra
-                          </p>
-                        ) : null}
+                        <span className="tabular-nums">{pending}</span>
+                        <p className="mt-1 text-[11px] text-muted-foreground">
+                          As prescribed
+                        </p>
                       </TableCell>
                       <TableCell>
                         <Select
@@ -418,7 +435,7 @@ export function DispenseDialog({
                     inputMode="decimal"
                     className="w-48"
                     value={feeCollected}
-                    onChange={(event) => setFeeCollected(event.target.value)}
+                    readOnly
                   />
                   <p className="text-xs text-muted-foreground">
                     Set by {doctorName ?? "the consulting doctor"} · outstanding{" "}
@@ -450,11 +467,24 @@ export function DispenseDialog({
           </div>
           <DialogFooter showCloseButton>
             <Button
-              disabled={pending || payload.length === 0 || feeUnpaid}
+              disabled={pending || markingUnavailable}
+              type="submit"
+              variant="outline"
+              formAction={unavailableAction}
+            >
+              {markingUnavailable ? (
+                <LoaderCircle className="animate-spin" />
+              ) : (
+                <PackageX />
+              )}{" "}
+              Mark Remaining Unavailable
+            </Button>
+            <Button
+              disabled={pending || markingUnavailable || payload.length === 0 || feeUnpaid}
               type="submit"
             >
               {pending ? <LoaderCircle className="animate-spin" /> : <Pill />}{" "}
-              {feeUnpaid ? "Enter consultation fee" : "Confirm Dispense"}
+              {feeUnpaid ? "Consultation fee pending" : dispenseLabel}
             </Button>
           </DialogFooter>
         </form>

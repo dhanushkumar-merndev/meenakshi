@@ -104,14 +104,16 @@ export async function GET(request: NextRequest) {
         "critical",
       ),
     );
-  } else if (profile.role === "reception") {
-    const followups = value(summary, "followups_due");
-    const ready = value(summary, "reports_ready");
+  } else if (profile.role === "reception" || profile.role === "op") {
+    // Reception owns the former OP desk, so queue/vitals and pending-report
+    // notices live in the same branch as its registration/follow-up notices.
+    // Keep `op` here only for an account that is still active while the role
+    // migration is being deployed; it receives only destinations it can open.
     const vitals = value(summary, "vitals_pending");
     const reportsPending = value(summary, "reports_pending");
     notices.push(
       notification(
-        "reception-vitals",
+        `${profile.role}-vitals`,
         vitals,
         "Vitals pending",
         `${vitals} visit${vitals === 1 ? " needs" : "s need"} vitals or readiness action.`,
@@ -119,28 +121,36 @@ export async function GET(request: NextRequest) {
         "warning",
       ),
       notification(
-        "reception-followups",
-        followups,
-        "Follow-ups due",
-        `${followups} patient follow-up${followups === 1 ? " is" : "s are"} due.`,
-        "/reception/follow-ups",
-        "warning",
-      ),
-      notification(
-        "reception-reports",
-        ready,
-        "Reports ready",
-        `${ready} uploaded report${ready === 1 ? " is" : "s are"} ready for the next workflow step.`,
-        "/reports",
-      ),
-      notification(
-        "reception-reports-pending",
+        profile.role === "reception"
+          ? "reception-reports-pending"
+          : "op-reports",
         reportsPending,
         "Reports pending",
         `${reportsPending} investigation report${reportsPending === 1 ? " is" : "s are"} pending.`,
         "/reports",
       ),
     );
+    if (profile.role === "reception") {
+      const followups = value(summary, "followups_due");
+      const ready = value(summary, "reports_ready");
+      notices.push(
+        notification(
+          "reception-followups",
+          followups,
+          "Follow-ups due",
+          `${followups} patient follow-up${followups === 1 ? " is" : "s are"} due.`,
+          "/reception/follow-ups",
+          "warning",
+        ),
+        notification(
+          "reception-reports",
+          ready,
+          "Reports ready",
+          `${ready} uploaded report${ready === 1 ? " is" : "s are"} ready for the next workflow step.`,
+          "/reports",
+        ),
+      );
+    }
   } else if (profile.role === "ip") {
     const admissions = value(summary, "admissions_today");
     const discharges =
@@ -160,28 +170,6 @@ export async function GET(request: NextRequest) {
         `${value(summary, "discharge_pending")} pending and ${value(summary, "discharges_today")} completed today.`,
         "/ip",
         value(summary, "discharge_pending") > 0 ? "warning" : "default",
-      ),
-    );
-  } else if (profile.role === "op") {
-    // Legacy compatibility only. The migration converts all OP profiles to
-    // reception, which now receives these notices in its combined workspace.
-    const vitals = value(summary, "vitals_pending");
-    const reports = value(summary, "reports_pending");
-    notices.push(
-      notification(
-        "op-vitals",
-        vitals,
-        "Vitals pending",
-        `${vitals} visit${vitals === 1 ? " needs" : "s need"} vitals or readiness action.`,
-        "/op",
-        "warning",
-      ),
-      notification(
-        "op-reports",
-        reports,
-        "Reports pending",
-        `${reports} investigation report${reports === 1 ? " is" : "s are"} pending.`,
-        "/reports",
       ),
     );
   } else {
