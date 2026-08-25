@@ -54,8 +54,15 @@ export type InventoryItem = {
 export function InventoryItemDialog({ item }: { item?: InventoryItem }) {
   const [open, setOpen] = useState(false);
   const [state, action, pending] = useActionState(saveInventoryItem, initial);
+  const [idempotencyKey, setIdempotencyKey] = useState(() => crypto.randomUUID());
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog
+      open={open}
+      onOpenChange={(nextOpen) => {
+        setOpen(nextOpen);
+        if (nextOpen) setIdempotencyKey(crypto.randomUUID());
+      }}
+    >
       <DialogTrigger render={<Button size={item ? "sm" : "default"} variant={item ? "outline" : "default"} />}>
         {item ? <Pencil /> : <Plus />} {item ? "Edit" : "Add Item"}
       </DialogTrigger>
@@ -65,10 +72,12 @@ export function InventoryItemDialog({ item }: { item?: InventoryItem }) {
             <DialogTitle>{item ? "Edit inventory item" : "Add inventory item"}</DialogTitle>
             <DialogDescription>
               Consumables such as gauze, sutures and dressing material. Medicines
-              are managed separately under Medicine Master.
+              are managed separately under Medicine Master. Every stock change is
+              recorded as a traceable plus or minus entry.
             </DialogDescription>
           </DialogHeader>
           {item ? <input type="hidden" name="id" value={item.id} /> : null}
+          <input type="hidden" name="idempotencyKey" value={idempotencyKey} />
           {state.message && !state.ok ? (
             <p className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">{state.message}</p>
           ) : null}
@@ -88,9 +97,25 @@ export function InventoryItemDialog({ item }: { item?: InventoryItem }) {
               {state.fieldErrors?.price?.map((e) => <p key={e} className="text-xs text-destructive">{e}</p>)}
             </div>
             <div className="space-y-2">
-              <Label htmlFor="inv-qty">Quantity *</Label>
+              <Label htmlFor="inv-qty">{item ? "Counted quantity" : "Opening quantity"} *</Label>
               <Input id="inv-qty" name="quantity" type="number" min={0} defaultValue={item?.quantity ?? 0} required />
+              <p className="text-xs text-muted-foreground">
+                {item
+                  ? `Current system stock: ${item.quantity}. Saving records the difference as a plus or minus adjustment.`
+                  : "The opening quantity is recorded as a stock-in entry."}
+              </p>
               {state.fieldErrors?.quantity?.map((e) => <p key={e} className="text-xs text-destructive">{e}</p>)}
+            </div>
+            <div className="space-y-2 sm:col-span-2">
+              <Label htmlFor="inv-reason">{item ? "Reason for adjustment" : "Reason for opening stock"} *</Label>
+              <Input
+                id="inv-reason"
+                name="reason"
+                defaultValue={item ? "Physical count adjustment" : "Opening stock"}
+                maxLength={200}
+                required
+              />
+              {state.fieldErrors?.reason?.map((e) => <p key={e} className="text-xs text-destructive">{e}</p>)}
             </div>
             <div className="space-y-2">
               <Label htmlFor="inv-low">Low stock alert at</Label>

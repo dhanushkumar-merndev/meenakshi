@@ -1,5 +1,5 @@
 begin;
-select plan(68);
+select plan(71);
 select has_table('public','patients','patients table exists');
 select has_table('public','visits','visits table exists');
 select has_table('public','medicine_batches','stock table exists');
@@ -39,7 +39,10 @@ select has_trigger('public','patients','audit_patient_created','patient creation
 select has_trigger('public','patient_reports','audit_patient_report','report upload metadata is audited at the database boundary');
 select col_has_check('public','patient_reports','size_bytes','patient report metadata enforces the 1 MB limit');
 select has_table('public','stock_movements','stock movement ledger exists');
+select has_table('public','inventory_stock_movements','consumable stock movement ledger exists');
 select has_function('public','save_medicine_batch',array['uuid','uuid','text','date','integer','bigint','bigint','integer','boolean','text','uuid'],'atomic stock adjustment workflow exists');
+select has_function('public','save_inventory_item',array['uuid','text','text','bigint','integer','integer','date','boolean','text','uuid'],'guarded consumable stock adjustment workflow exists');
+select isnt_empty($$select policyname from pg_policies where schemaname='public' and tablename='inventory_stock_movements'$$,'consumable stock ledger has RLS policies');
 select has_function('public','review_patient_report',array['uuid'],'controlled doctor report review exists');
 select has_trigger('public','patient_reports','validate_report_relationship','report links are validated at the database boundary');
 select has_function('public','report_admin_overview',array['date','date'],'server-side admin analytics exists');

@@ -17,6 +17,8 @@ const itemSchema = z.object({
   lowStockThreshold: z.string().trim().optional(),
   expiryDate: z.string().optional(),
   active: z.string().optional(),
+  reason: z.string().trim().min(2, "Give a reason for this stock change.").max(200),
+  idempotencyKey: databaseIdSchema,
 });
 
 export async function saveInventoryItem(_: ActionState, formData: FormData): Promise<ActionState> {
@@ -32,27 +34,31 @@ export async function saveInventoryItem(_: ActionState, formData: FormData): Pro
     return { ok: false, fieldErrors: { quantity: ["Quantity must be a whole number of 0 or more."] } };
   const threshold = Number(parsed.data.lowStockThreshold || "0");
 
-  const values = {
-    name: parsed.data.name,
-    unit: parsed.data.unit || null,
-    selling_price_paise: pricePaise,
-    quantity,
-    low_stock_threshold: Number.isFinite(threshold) && threshold >= 0 ? Math.floor(threshold) : 0,
-    expiry_date: parsed.data.expiryDate || null,
-    active: parsed.data.active === "on",
-    updated_at: new Date().toISOString(),
-  };
-
   const supabase = await createSupabaseServerClient();
   const id = parsed.data.id ? databaseIdSchema.safeParse(parsed.data.id) : null;
-  const { error } = id?.success
-    ? await supabase.from("inventory_items").update(values).eq("id", id.data)
-    : await supabase.from("inventory_items").insert(values);
+  if (parsed.data.id && !id?.success)
+    return { ok: false, fieldErrors: { id: ["Invalid inventory item."] } };
+  const { error } = await supabase.rpc("save_inventory_item", {
+    p_item_id: id?.success ? id.data : null,
+    p_name: parsed.data.name,
+    p_unit: parsed.data.unit || null,
+    p_selling_price_paise: pricePaise,
+    p_quantity: quantity,
+    p_low_stock_threshold: Number.isFinite(threshold) && threshold >= 0 ? Math.floor(threshold) : 0,
+    p_expiry_date: parsed.data.expiryDate || null,
+    p_active: parsed.data.active === "on",
+    p_reason: parsed.data.reason,
+    p_idempotency_key: parsed.data.idempotencyKey,
+  });
 
   if (error?.code === "23505")
     return { ok: false, fieldErrors: { name: ["An inventory item with this name already exists."] } };
+  if (error?.message.includes("stock change reason"))
+    return { ok: false, fieldErrors: { reason: ["Give a reason for this stock change."] } };
   if (error) return { ok: false, message: "Inventory item could not be saved." };
   revalidatePath("/pharmacy/inventory");
+  revalidatePath("/pharmacy");
+  revalidatePath("/dashboard");
   return { ok: true, message: "Inventory item saved." };
 }
 

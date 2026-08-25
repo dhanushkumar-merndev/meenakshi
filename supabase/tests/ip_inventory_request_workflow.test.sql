@@ -1,6 +1,6 @@
 begin;
 
-select plan(47);
+select plan(49);
 
 create temp table test_actor as
 select id from public.profiles
@@ -229,6 +229,22 @@ select is(
    where id = (select batch_two_id from flow_ids)),
   8,
   'medicine FEFO consumes only the remaining fulfilled quantity'
+);
+select is(
+  (select coalesce(sum(quantity_delta), 0)::integer
+   from public.stock_movements
+   where source_type = 'ip_inventory_request'
+     and source_id = (select paid_request_id from flow_ids)),
+  -4,
+  'IP medicine supply records the exact negative batch-stock movement'
+);
+select is(
+  (select coalesce(sum(quantity_delta), 0)::integer
+   from public.inventory_stock_movements
+   where source_type = 'ip_inventory_request'
+     and source_id = (select paid_request_id from flow_ids)),
+  -2,
+  'IP consumable supply records the exact negative inventory movement'
 );
 select is(
   (select amount_paise from public.ip_inventory_request_items
