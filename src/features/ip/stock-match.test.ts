@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   calculateIpStockAmount,
+  calculateIpStockAmountAtOffset,
   findIpStockMatch,
   type IpStockOption,
 } from "./stock-match";
@@ -40,6 +41,22 @@ describe("IP stock auto-match", () => {
       ],
     };
     expect(calculateIpStockAmount(medicine, 2)).toBe(279);
+  });
+
+  it("continues FEFO pricing when duplicate request lines use one medicine", () => {
+    const medicine = {
+      ...option("Shared medicine", "shared"),
+      price_tiers: [
+        { quantity: 1, pack_price_paise: 100, units_per_pack: 3 },
+        { quantity: 4, pack_price_paise: 200, units_per_pack: 3 },
+      ],
+    };
+
+    // The RPC rounds each request-line/batch take separately. The second
+    // line must therefore start after the first tier, not price itself from
+    // the first 100-paise batch again.
+    expect(calculateIpStockAmountAtOffset(medicine, 1, 0)).toBe(33);
+    expect(calculateIpStockAmountAtOffset(medicine, 2, 1)).toBe(133);
   });
 
   it("uses a unique name prefix", () => {

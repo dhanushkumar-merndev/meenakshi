@@ -78,13 +78,13 @@ type Ticket = {
     id: string;
     notes: string | null;
     status: string;
+    settlement: "ip_ticket" | "pharmacy_counter" | "legacy_ip_payment";
     created_at: string;
     ip_inventory_request_items: Array<{
       id: string;
       requested_name: string;
       requested_quantity: number;
       fulfilled_quantity: number;
-      unit_price_paise: number | null;
       status: string;
     }>;
   }>;
@@ -100,7 +100,7 @@ export default async function IpTicketPage({
   const { data, error } = await supabase
     .from("ip_tickets")
     .select(
-      "id,ticket_number,patient_id,is_emergency,admission_at,discharge_at,room,bed,admission_reason,status,final_diagnosis,chief_complaint,procedure_done,operative_notes,hospital_course,treatment_summary,discharge_medicines,discharge_advice,follow_up,patients(name,uhid,phone_normalized),doctors(display_name,ip_visit_fee_paise),ip_charges(id,created_at,category,item,quantity,rate_paise,amount_paise),ip_payments(id,created_at,amount_paise,mode,reference),ip_progress_notes(id,created_at,note,pulse,bp,spo2,respiratory_rate,chief_complaint,issues,examination,plan,doctors(display_name)),ip_inventory_requests(id,notes,status,created_at,ip_inventory_request_items(id,requested_name,requested_quantity,fulfilled_quantity,unit_price_paise,status))",
+      "id,ticket_number,patient_id,is_emergency,admission_at,discharge_at,room,bed,admission_reason,status,final_diagnosis,chief_complaint,procedure_done,operative_notes,hospital_course,treatment_summary,discharge_medicines,discharge_advice,follow_up,patients(name,uhid,phone_normalized),doctors(display_name,ip_visit_fee_paise),ip_charges(id,created_at,category,item,quantity,rate_paise,amount_paise),ip_payments(id,created_at,amount_paise,mode,reference),ip_progress_notes(id,created_at,note,pulse,bp,spo2,respiratory_rate,chief_complaint,issues,examination,plan,doctors(display_name)),ip_inventory_requests(id,notes,status,settlement,created_at,ip_inventory_request_items(id,requested_name,requested_quantity,fulfilled_quantity,status))",
     )
     .eq("id", id)
     .single();
@@ -318,6 +318,9 @@ export default async function IpTicketPage({
               const hasShortfall = request.ip_inventory_request_items.some(
                 (item) => item.requested_quantity - item.fulfilled_quantity > 0,
               );
+              const hasSuppliedItems = request.ip_inventory_request_items.some(
+                (item) => item.fulfilled_quantity > 0,
+              );
               return (
               <Card key={request.id}>
                 <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2">
@@ -327,6 +330,17 @@ export default async function IpTicketPage({
                     </CardTitle>
                     {request.notes ? (
                       <p className="mt-1 text-xs text-muted-foreground">{request.notes}</p>
+                    ) : null}
+                    {request.status === "fulfilled" ? (
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {request.settlement === "pharmacy_counter"
+                          ? "Collected at pharmacy — not added to this IP bill."
+                          : request.settlement === "legacy_ip_payment"
+                            ? "Historical IP charge and payment."
+                            : hasSuppliedItems
+                              ? "Added to this IP bill."
+                              : "No items supplied — nothing was added to this IP bill."}
+                      </p>
                     ) : null}
                   </div>
                   <div className="flex items-center gap-2">
@@ -345,23 +359,42 @@ export default async function IpTicketPage({
                       <TableRow>
                         <TableHead>Item</TableHead>
                         <TableHead>Requested</TableHead>
-                        <TableHead>Fulfilled</TableHead>
+                        <TableHead>Supplied</TableHead>
+                        <TableHead>Not supplied</TableHead>
                         <TableHead>Status</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {request.ip_inventory_request_items.map((item) => (
-                        <TableRow key={item.id}>
-                          <TableCell className="font-medium">{item.requested_name}</TableCell>
-                          <TableCell>{item.requested_quantity}</TableCell>
-                          <TableCell>
-                            {item.status === "pending" ? "—" : item.fulfilled_quantity}
-                          </TableCell>
-                          <TableCell>
-                            <StatusBadge status={item.status} />
-                          </TableCell>
-                        </TableRow>
-                      ))}
+                      {request.ip_inventory_request_items.map((item) => {
+                        const notSupplied = Math.max(
+                          0,
+                          item.requested_quantity - item.fulfilled_quantity,
+                        );
+                        const outcome =
+                          item.status === "pending"
+                            ? "Pending"
+                            : notSupplied === 0
+                              ? "Supplied"
+                              : item.fulfilled_quantity === 0
+                                ? "Unavailable"
+                                : `Partially supplied · ${notSupplied} not supplied`;
+                        return (
+                          <TableRow key={item.id}>
+                            <TableCell className="font-medium">{item.requested_name}</TableCell>
+                            <TableCell>{item.requested_quantity}</TableCell>
+                            <TableCell>
+                              {item.status === "pending" ? "—" : item.fulfilled_quantity}
+                            </TableCell>
+                            <TableCell>{item.status === "pending" ? "—" : notSupplied}</TableCell>
+                            <TableCell>
+                              <StatusBadge status={item.status} />
+                              <span className="mt-1 block text-xs text-muted-foreground">
+                                {outcome}
+                              </span>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
                     </TableBody>
                   </Table>
                   </div>

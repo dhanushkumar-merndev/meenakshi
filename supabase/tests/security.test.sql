@@ -1,5 +1,5 @@
 begin;
-select plan(27);
+select plan(30);
 create temp table test_actor as select id from public.profiles where email='admin@meenakshihospital.com' limit 1;
 select ok(exists(select 1 from test_actor),'configured admin fixture exists');
 select set_config('request.jwt.claim.sub',(select id::text from test_actor),true);
@@ -38,6 +38,9 @@ select throws_ok($$insert into public.notification_reads(user_id,notification_ke
 select is((select count(*) from public.visit_payments),0::bigint,'doctor cannot read financial payment rows');
 select throws_ok($$select fee_paise from public.visits limit 1$$,'42501',null,'doctor cannot query visit fee columns');
 select throws_ok($$select * from public.get_visit_financial_summaries(array[]::uuid[])$$,'42501','forbidden','doctor cannot call guarded visit finance RPC');
+select throws_ok($$select counter_collected_paise from public.ip_inventory_requests limit 1$$,'42501',null,'doctor cannot query IP pharmacy counter collection amounts');
+select throws_ok($$select unit_price_paise from public.ip_inventory_request_items limit 1$$,'42501',null,'doctor cannot query IP item prices');
+select throws_ok($$select * from public.get_ip_inventory_request_receipt('00000000-0000-0000-0000-000000000001')$$,'42501','forbidden','doctor cannot open an IP item financial receipt');
 reset role;
 
 update public.profiles set role='pharmacy' where id=(select id from test_actor);

@@ -4,7 +4,19 @@ import { useActionState, useMemo, useState } from "react";
 import { CheckCircle2, LoaderCircle, PackageX, Pill, Printer } from "lucide-react";
 import { dispensePrescription, markPrescriptionUnavailable } from "./actions";
 import { formatInr, packBreakdown } from "@/lib/domain/money";
+import { allocateVisibleStock } from "@/lib/domain/stock-allocation";
 import { Button } from "@/components/ui/button";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import {
   Dialog,
   DialogContent,
@@ -59,6 +71,11 @@ type Batch = {
   /** Pieces in one strip / box / bottle. 1 means it is sold as single pieces. */
   unitsPerPack: number;
 };
+type DispenseLine = {
+  itemId: string;
+  batchId: string;
+  quantity: number;
+};
 export function DispenseDialog({
   prescriptionId,
   prescriptionNumber,
@@ -95,20 +112,72 @@ export function DispenseDialog({
   // counter. Pharmacy chooses only how much of the remaining quantity it can
   // actually hand over.
   const pendingFor = (item: Item) => item.requested - item.dispensed;
-  const [lines, setLines] = useState(() =>
-    items.map((item) => {
-      const batch = batches
-        .filter((b) => b.medicineId === item.medicineId && b.quantity > 0)
-        .sort((a, b) => a.expiry.localeCompare(b.expiry))[0];
-      return {
-        itemId: item.id,
-        batchId: batch?.id ?? "",
-        quantity: Math.min(
-          item.requested - item.dispensed,
-          batch?.quantity ?? 0,
-        ),
-      };
-    }),
+  const availableByBatchId = useMemo(
+    () =>
+      Object.fromEntries(batches.map((batch) => [batch.id, batch.quantity])) as Record<
+        string,
+        number
+      >,
+    [batches],
+  );
+  const reconcileLines = (candidate: DispenseLine[]) => {
+    const allocations = allocateVisibleStock(
+      candidate.map((line) => {
+        const item = items.find((candidateItem) => candidateItem.id === line.itemId);
+        const hasAvailableBatch = Boolean(
+          line.batchId && line.batchId in availableByBatchId,
+        );
+        return {
+          stockKey: hasAvailableBatch ? line.batchId : null,
+          requestedQuantity: item ? pendingFor(item) : 0,
+          selectedQuantity: hasAvailableBatch ? line.quantity : 0,
+        };
+      }),
+      availableByBatchId,
+    );
+    return candidate.map((line, index) => ({
+      ...line,
+      // A prescription line cannot be supplied without an actual batch.
+      quantity:
+        line.batchId && line.batchId in availableByBatchId
+          ? allocations[index].selectedQuantity
+          : 0,
+    }));
+  };
+  const [lines, setLines] = useState<DispenseLine[]>(() =>
+    reconcileLines(
+      items.map((item) => {
+        const batch = batches
+          .filter((b) => b.medicineId === item.medicineId && b.quantity > 0)
+          .sort((a, b) => a.expiry.localeCompare(b.expiry))[0];
+        return {
+          itemId: item.id,
+          batchId: batch?.id ?? "",
+          quantity: Math.min(
+            item.requested - item.dispensed,
+            batch?.quantity ?? 0,
+          ),
+        };
+      }),
+    ),
+  );
+  const allocations = useMemo(
+    () =>
+      allocateVisibleStock(
+        lines.map((line) => {
+          const item = items.find((candidateItem) => candidateItem.id === line.itemId);
+          const hasAvailableBatch = Boolean(
+            line.batchId && line.batchId in availableByBatchId,
+          );
+          return {
+            stockKey: hasAvailableBatch ? line.batchId : null,
+            requestedQuantity: item ? pendingFor(item) : 0,
+            selectedQuantity: hasAvailableBatch ? line.quantity : 0,
+          };
+        }),
+        availableByBatchId,
+      ),
+    [availableByBatchId, items, lines],
   );
   const payload = useMemo(
     () =>
@@ -150,6 +219,9 @@ export function DispenseDialog({
     (sum, item) => sum + item.requested - item.dispensed,
     0,
   );
+  const remainingItems = items
+    .map((item) => ({ item, quantity: pendingFor(item) }))
+    .filter(({ quantity }) => quantity > 0);
   const totalSelected = payload.reduce((sum, line) => sum + line.quantity, 0);
   const dispenseLabel =
     totalSelected === totalPending
@@ -246,7 +318,8 @@ export function DispenseDialog({
             <DialogTitle>Dispense {prescriptionNumber}</DialogTitle>
             <DialogDescription>
               {patientName} · {source.toUpperCase()} · FEFO batches are
-              suggested. Only confirmed quantities reduce stock.
+              suggested. Available now is informational only; stock is neither
+              reserved nor reduced until you confirm the actual quantity.
             </DialogDescription>
           </DialogHeader>
           <input type="hidden" name="prescriptionId" value={prescriptionId} />
@@ -271,11 +344,14 @@ export function DispenseDialog({
                   <TableHead className="min-w-40">Medicine &amp; Form</TableHead>
                   <TableHead>Strength</TableHead>
                   <TableHead>Dose &amp; Frequency</TableHead>
-                  <TableHead>Pending</TableHead>
+                  <TableHead>Requested</TableHead>
+                  <TableHead>Supplied</TableHead>
+                  <TableHead>Available now</TableHead>
                   <TableHead className="min-w-48">
                     Batch / Expiry / Stock
                   </TableHead>
-                  <TableHead>Dispense Qty (pieces)</TableHead>
+                  <TableHead>Dispense now</TableHead>
+                  <TableHead>Not supplied now</TableHead>
                   <TableHead className="text-right">Amount</TableHead>
                 </TableRow>
               </TableHeader>
@@ -287,6 +363,24 @@ export function DispenseDialog({
                       batch.quantity > 0,
                   );
                   const pending = pendingFor(item);
+                  const line = lines[index];
+                  const allocation = allocations[index];
+                  const selectedBatch = options.find(
+                    (batch) => batch.id === line?.batchId,
+                  );
+                  const availableNow = selectedBatch
+                    ? allocation?.availableNow ?? 0
+                    : 0;
+                  const maximumDispense = selectedBatch
+                    ? Math.min(pending, allocation?.availableNow ?? 0)
+                    : 0;
+                  const notSupplied = allocation?.notSuppliedQuantity ?? pending;
+                  const resultLabel =
+                    notSupplied === 0
+                      ? "Full dispense"
+                      : (line?.quantity ?? 0) === 0
+                        ? "Still pending"
+                        : `Partial · ${notSupplied} still pending`;
                   return (
                     <TableRow key={item.id}>
                       <TableCell className="text-muted-foreground">{index + 1}</TableCell>
@@ -310,26 +404,52 @@ export function DispenseDialog({
                         ) : null}
                       </TableCell>
                       <TableCell>
-                        <span className="tabular-nums">{pending}</span>
+                        <span className="tabular-nums">{item.requested}</span>
                         <p className="mt-1 text-[11px] text-muted-foreground">
                           As prescribed
                         </p>
                       </TableCell>
                       <TableCell>
+                        <span className="tabular-nums">{item.dispensed}</span>
+                        <p className="mt-1 text-[11px] text-muted-foreground">
+                          Already supplied
+                        </p>
+                      </TableCell>
+                      <TableCell>
+                        <span className="tabular-nums">{availableNow}</span>
+                        <p className="mt-1 text-[11px] text-muted-foreground">
+                          {selectedBatch ? "Selected batch" : "Choose a batch"}
+                        </p>
+                      </TableCell>
+                      <TableCell>
                         <Select
-                          value={lines[index]?.batchId}
-                          onValueChange={(value) =>
+                          value={line?.batchId}
+                          onValueChange={(value) => {
+                            const batchId = String(value);
+                            const selected = batches.find((batch) => batch.id === batchId);
                             setLines((rows) =>
-                              rows.map((line, i) =>
+                              reconcileLines(rows.map((row, i) =>
                                 i === index
-                                  ? { ...line, batchId: value as string }
-                                  : line,
-                              ),
-                            )
-                          }
+                                  ? {
+                                      ...row,
+                                      batchId,
+                                      quantity: Math.min(
+                                        pending,
+                                        selected?.quantity ?? 0,
+                                      ),
+                                    }
+                                  : row,
+                              )),
+                            );
+                          }}
                         >
                           <SelectTrigger className="w-full">
-                            <SelectValue placeholder="Unavailable">{() => { const selected = options.find((batch) => batch.id === lines[index]?.batchId); return selected ? `${selected.batchNumber} · ${selected.expiry} · ${selected.quantity}` : "Unavailable"; }}</SelectValue>
+                            <SelectValue placeholder="No available batch">
+                              {() =>
+                                selectedBatch
+                                  ? `${selectedBatch.batchNumber} · ${selectedBatch.expiry} · ${selectedBatch.quantity}`
+                                  : "No available batch"}
+                            </SelectValue>
                           </SelectTrigger>
                           <SelectContent>
                             {options.map((batch) => (
@@ -346,28 +466,29 @@ export function DispenseDialog({
                           className="w-24"
                           type="number"
                           min={0}
-                          max={pending}
-                          value={lines[index]?.quantity ?? 0}
+                          max={maximumDispense}
+                          value={line?.quantity ?? 0}
                           onChange={(event) =>
                             setLines((rows) =>
-                              rows.map((line, i) =>
+                              reconcileLines(rows.map((row, i) =>
                                 i === index
                                   ? {
-                                      ...line,
+                                      ...row,
                                       quantity: Number(event.target.value),
                                     }
-                                  : line,
-                              ),
+                                  : row,
+                              )),
                             )
                           }
+                          disabled={!selectedBatch}
                         />
                         {/* Quantities are always pieces, so stock arithmetic has
                             one unit; this only says what that is in strips, and
                             lets the pharmacist fill in whole strips quickly. */}
                         {(() => {
-                          const pack = options.find((b) => b.id === lines[index]?.batchId)?.unitsPerPack ?? 1;
+                          const pack = selectedBatch?.unitsPerPack ?? 1;
                           if (pack <= 1) return null;
-                          const pieces = lines[index]?.quantity ?? 0;
+                          const pieces = line?.quantity ?? 0;
                           return (
                             <div className="mt-1 space-y-0.5">
                               <p className="text-[11px] text-muted-foreground">
@@ -380,11 +501,14 @@ export function DispenseDialog({
                                 className="h-auto px-0 text-[11px]"
                                 onClick={() =>
                                   setLines((rows) =>
-                                    rows.map((line, i) =>
+                                    reconcileLines(rows.map((row, i) =>
                                       i === index
-                                        ? { ...line, quantity: Math.min(pending, Math.floor(pending / pack) * pack) }
-                                        : line,
-                                    ),
+                                        ? {
+                                            ...row,
+                                            quantity: Math.floor(maximumDispense / pack) * pack,
+                                          }
+                                        : row,
+                                    )),
                                   )
                                 }
                               >
@@ -394,8 +518,21 @@ export function DispenseDialog({
                           );
                         })()}
                       </TableCell>
+                      <TableCell>
+                        <span className="tabular-nums">{notSupplied}</span>
+                        <p
+                          className={
+                            "mt-1 text-[11px] " +
+                            (notSupplied === 0
+                              ? "text-muted-foreground"
+                              : "text-destructive")
+                          }
+                        >
+                          {resultLabel}
+                        </p>
+                      </TableCell>
                       <TableCell className="text-right tabular-nums">
-                        {formatInr(lineAmountPaise(lines[index]?.batchId, lines[index]?.quantity ?? 0))}
+                        {formatInr(lineAmountPaise(line?.batchId ?? "", line?.quantity ?? 0))}
                       </TableCell>
                     </TableRow>
                   );
@@ -403,6 +540,13 @@ export function DispenseDialog({
               </TableBody>
             </Table>
           </div>
+          <p className="text-xs text-muted-foreground">
+            <span className="font-medium text-foreground">Stock rule:</span>{" "}
+            choosing a batch does not reserve it. Confirm Dispense changes stock
+            only by the quantity shown in “Dispense now.” “Not supplied now”
+            stays pending until it is supplied or you close the remaining
+            prescription as unavailable.
+          </p>
           {source === "op" ? (
             <div className="flex flex-wrap gap-4">
               <div className="space-y-2">
@@ -466,19 +610,60 @@ export function DispenseDialog({
             </dl>
           </div>
           <DialogFooter showCloseButton>
-            <Button
-              disabled={pending || markingUnavailable}
-              type="submit"
-              variant="outline"
-              formAction={unavailableAction}
-            >
-              {markingUnavailable ? (
-                <LoaderCircle className="animate-spin" />
-              ) : (
-                <PackageX />
-              )}{" "}
-              Mark Remaining Unavailable
-            </Button>
+            <AlertDialog>
+              <AlertDialogTrigger
+                render={
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={pending || markingUnavailable || remainingItems.length === 0}
+                  />
+                }
+              >
+                <PackageX /> Close remaining as unavailable
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Mark remaining medicines unavailable?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    This records that these quantities were not supplied. It does not
+                    change stock or collect payment, and it cannot be reopened.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <ul className="space-y-1 text-sm">
+                  {remainingItems.map(({ item, quantity }) => (
+                    <li key={item.id} className="flex justify-between gap-4">
+                      <span>{item.name}</span>
+                      <span className="font-medium tabular-nums">{quantity}</span>
+                    </li>
+                  ))}
+                </ul>
+                {totalSelected > 0 ? (
+                  <p className="text-sm text-destructive">
+                    This also discards the {totalSelected} unit{totalSelected === 1 ? "" : "s"} currently selected above; no sale or stock movement will be made.
+                  </p>
+                ) : null}
+                <AlertDialogFooter>
+                  <AlertDialogCancel disabled={markingUnavailable}>Cancel</AlertDialogCancel>
+                  <form action={unavailableAction}>
+                    <input type="hidden" name="prescriptionId" value={prescriptionId} />
+                    <input
+                      type="hidden"
+                      name="unavailableIdempotencyKey"
+                      value={unavailableKey}
+                    />
+                    <AlertDialogAction
+                      type="submit"
+                      variant="destructive"
+                      disabled={markingUnavailable}
+                    >
+                      {markingUnavailable ? <LoaderCircle className="animate-spin" /> : <PackageX />}
+                      Confirm unavailable
+                    </AlertDialogAction>
+                  </form>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
             <Button
               disabled={pending || markingUnavailable || payload.length === 0 || feeUnpaid}
               type="submit"

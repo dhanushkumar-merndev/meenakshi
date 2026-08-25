@@ -23,20 +23,36 @@ function normalizeStockName(value: string) {
     .replace(/\s+/g, " ");
 }
 
-/** Mirrors the database's FEFO pack-price calculation for the live preview. */
-export function calculateIpStockAmount(
+/**
+ * Mirrors the database's FEFO pack-price calculation for one request line.
+ *
+ * `alreadyAllocated` matters when two request rows select the same medicine:
+ * the RPC consumes the earliest batch for the first row before it prices the
+ * next one. Keeping that offset in the browser prevents a counter-total
+ * preview that looks right per row but differs from the transaction.
+ */
+export function calculateIpStockAmountAtOffset(
   option: IpStockOption,
   quantity: number,
+  alreadyAllocated = 0,
 ) {
   if (quantity <= 0) return 0;
   if (option.stock_type === "inventory" || !option.price_tiers?.length)
     return quantity * option.selling_price_paise;
 
   let remaining = quantity;
+  let skip = Math.max(0, Math.trunc(alreadyAllocated));
   let total = 0;
   for (const tier of option.price_tiers) {
     if (remaining <= 0) break;
-    const take = Math.min(remaining, Number(tier.quantity));
+    const tierQuantity = Math.max(0, Math.trunc(Number(tier.quantity)));
+    if (skip >= tierQuantity) {
+      skip -= tierQuantity;
+      continue;
+    }
+    const availableInTier = tierQuantity - skip;
+    skip = 0;
+    const take = Math.min(remaining, availableInTier);
     total += Math.round(
       (take * Number(tier.pack_price_paise))
       / Math.max(1, Number(tier.units_per_pack)),
@@ -44,6 +60,14 @@ export function calculateIpStockAmount(
     remaining -= take;
   }
   return remaining > 0 ? 0 : total;
+}
+
+/** Mirrors the database's FEFO pack-price calculation from the first batch. */
+export function calculateIpStockAmount(
+  option: IpStockOption,
+  quantity: number,
+) {
+  return calculateIpStockAmountAtOffset(option, quantity);
 }
 
 /**

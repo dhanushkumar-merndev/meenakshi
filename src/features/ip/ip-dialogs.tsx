@@ -737,8 +737,9 @@ export function RequestInventoryDialog({ ticketId }: { ticketId: string }) {
           <DialogHeader>
             <DialogTitle>Request pharmacy items</DialogTitle>
             <DialogDescription>
-              Describe what&apos;s needed; pharmacy sources it and bills the
-              ticket once fulfilled. Stock does not change here.
+              Describe what&apos;s needed; pharmacy chooses the settlement when it
+              fulfils the request: add it to the IP ticket or collect at the
+              pharmacy counter. Stock does not change here.
             </DialogDescription>
           </DialogHeader>
           <input type="hidden" name="ticketId" value={ticketId} />

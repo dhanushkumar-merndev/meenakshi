@@ -16,15 +16,19 @@ type Receipt = {
   patient_uhid: string | null;
   total_paise: number;
   collected_paise: number;
+  settlement: "ip_ticket" | "pharmacy_counter" | "legacy_ip_payment";
   payment_mode: string | null;
   payment_reference: string | null;
   fulfilled_by: string | null;
   items: Array<{
     name: string;
-    quantity: number;
-    unit_price_paise: number;
+    requested_quantity: number;
+    supplied_quantity: number;
+    not_supplied_quantity: number;
+    unit_price_paise: number | null;
     amount_paise: number;
     source: string;
+    outcome: string;
   }>;
 };
 
@@ -41,7 +45,7 @@ export default async function IpItemsReceiptPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
-  await requirePermission("viewIpInventoryRequest");
+  await requirePermission("viewIpInventoryReceipt");
   const { id } = await params;
   const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase.rpc(
@@ -55,6 +59,12 @@ export default async function IpItemsReceiptPage({
     0,
     Number(receipt.total_paise) - Number(receipt.collected_paise),
   );
+  const collectedAtCounter = receipt.settlement === "pharmacy_counter";
+  const legacyIpPayment = receipt.settlement === "legacy_ip_payment";
+  const noIpCharge =
+    !collectedAtCounter &&
+    !legacyIpPayment &&
+    Number(receipt.total_paise) === 0;
 
   return (
     <main className="mx-auto min-h-screen max-w-[210mm] bg-white p-4 text-black sm:p-8">
@@ -64,7 +74,11 @@ export default async function IpItemsReceiptPage({
       <article className="border border-black/20 p-7 font-sans print:border-0 print:p-0">
         <HospitalLetterhead identity={identity} logoSize={48} />
         <p className="mt-4 border-y border-black py-2 text-center text-sm font-semibold uppercase">
-          IP Pharmacy Items Bill / Receipt
+          {collectedAtCounter
+            ? "IP Pharmacy Counter Receipt"
+            : noIpCharge
+              ? "IP Pharmacy Items Outcome"
+              : "IP Pharmacy Items Bill"}
         </p>
 
         <dl className="mt-4 grid grid-cols-[7rem_1fr] gap-y-2 text-sm">
@@ -85,9 +99,11 @@ export default async function IpItemsReceiptPage({
         <table className="mt-5 w-full border-collapse text-sm">
           <thead>
             <tr className="border-y border-black text-left">
-              <th className="py-1.5 font-semibold">Supplied item</th>
+              <th className="py-1.5 font-semibold">Requested item</th>
               <th className="py-1.5 font-semibold">Source</th>
-              <th className="py-1.5 text-right font-semibold">Qty</th>
+              <th className="py-1.5 text-right font-semibold">Requested</th>
+              <th className="py-1.5 text-right font-semibold">Supplied</th>
+              <th className="py-1.5 text-right font-semibold">Not supplied</th>
               <th className="py-1.5 text-right font-semibold">Rate</th>
               <th className="py-1.5 text-right font-semibold">Amount</th>
             </tr>
@@ -96,10 +112,12 @@ export default async function IpItemsReceiptPage({
             {(receipt.items ?? []).map((item, index) => (
               <tr className="border-b border-black/20" key={`${item.name}-${index}`}>
                 <td className="py-1.5 pr-2">{item.name}</td>
-                <td className="py-1.5">{item.source}</td>
-                <td className="py-1.5 text-right tabular-nums">{item.quantity}</td>
+                <td className="py-1.5"><span>{item.source}</span><span className="block text-xs text-muted-foreground">{item.outcome}</span></td>
+                <td className="py-1.5 text-right tabular-nums">{item.requested_quantity}</td>
+                <td className="py-1.5 text-right tabular-nums">{item.supplied_quantity}</td>
+                <td className="py-1.5 text-right tabular-nums">{item.not_supplied_quantity}</td>
                 <td className="py-1.5 text-right tabular-nums">
-                  {formatInr(Number(item.unit_price_paise))}
+                  {item.unit_price_paise === null ? "—" : formatInr(Number(item.unit_price_paise))}
                 </td>
                 <td className="py-1.5 text-right tabular-nums">
                   {formatInr(Number(item.amount_paise))}
@@ -114,14 +132,38 @@ export default async function IpItemsReceiptPage({
             <dt>Supplied total</dt>
             <dd>{formatInr(Number(receipt.total_paise))}</dd>
           </div>
-          <div className="flex justify-between">
-            <dt>Collected at pharmacy</dt>
-            <dd>{formatInr(Number(receipt.collected_paise))}</dd>
-          </div>
-          <div className="flex justify-between">
-            <dt>Remaining on IP ticket</dt>
-            <dd>{formatInr(balance)}</dd>
-          </div>
+          {collectedAtCounter ? (
+            <>
+              <div className="flex justify-between">
+                <dt>Collected at pharmacy</dt>
+                <dd>{formatInr(Number(receipt.collected_paise))}</dd>
+              </div>
+              <p className="pt-1 text-xs">Collected at pharmacy — not added to IP bill.</p>
+            </>
+          ) : (
+            <>
+              <div className="flex justify-between">
+                <dt>{noIpCharge ? "IP ticket charge" : "Added to IP ticket"}</dt>
+                <dd>{formatInr(Number(receipt.total_paise))}</dd>
+              </div>
+              {legacyIpPayment ? (
+                <div className="flex justify-between">
+                  <dt>Historical IP payment</dt>
+                  <dd>{formatInr(Number(receipt.collected_paise))}</dd>
+                </div>
+              ) : null}
+              {noIpCharge ? (
+                <p className="pt-1 text-xs">
+                  No amount is due on the IP ticket for this request.
+                </p>
+              ) : (
+                <div className="flex justify-between">
+                  <dt>Remaining on IP ticket</dt>
+                  <dd>{formatInr(balance)}</dd>
+                </div>
+              )}
+            </>
+          )}
           {receipt.payment_mode ? (
             <div className="flex justify-between text-xs">
               <dt>Payment</dt>
@@ -132,11 +174,11 @@ export default async function IpItemsReceiptPage({
                   : ""}
               </dd>
             </div>
-          ) : (
+          ) : !collectedAtCounter && !noIpCharge ? (
             <p className="pt-1 text-xs">
               No counter payment recorded. This amount remains on the IP ticket.
             </p>
-          )}
+          ) : null}
         </dl>
       </article>
     </main>

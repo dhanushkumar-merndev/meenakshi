@@ -57,14 +57,14 @@ export const METRIC_HELP: Record<string, { what: string; note?: string }> = {
   reports_pending: { what: "Tests ordered where the report has not arrived yet." },
   followups_due: { what: "Completed consultations with a follow-up that is now due." },
   collected_today_paise: {
-    what: "All money collected today — OP consultations, IP payments and pharmacy sales combined.",
+    what: "All money collected today — OP consultations, IP payments, pharmacy sales, and direct pharmacy-counter collections for IP items combined.",
   },
   op_collection_paise: { what: "Consultation fees collected today at reception and the pharmacy counter." },
   ip_collection_paise: { what: "Payments collected today against IP tickets." },
   ip_balance_paise: { what: "Total unpaid balance across all currently admitted patients." },
   pharmacy_sales_today_paise: {
     what: "Value of prescriptions and IP items dispensed today.",
-    note: "IP items are billed to the patient's IP ticket; they become collected money only when an IP payment is recorded.",
+    note: "IP items collected at the pharmacy counter are collected immediately. Items added to the IP ticket remain payable there until an IP payment is recorded.",
   },
 };
 

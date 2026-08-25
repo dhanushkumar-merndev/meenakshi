@@ -92,8 +92,9 @@ const fulfillSchema = z.object({
   requestId: databaseIdSchema,
   lines: z.string(),
   idempotencyKey: databaseIdSchema,
+  settlement: z.enum(["ip_ticket", "pharmacy_counter"]),
   collectedAmount: z.string().trim().optional(),
-  paymentMode: z.enum(["cash", "upi", "card", "bank_transfer", "other"]),
+  paymentMode: z.enum(["cash", "upi", "card", "bank_transfer", "other"]).optional(),
   reference: z.string().trim().max(100).optional(),
 });
 
@@ -117,6 +118,7 @@ export async function fulfillIpInventoryRequest(_: ActionState, formData: FormDa
       : undefined;
     return { ok: false, message: message ?? "Check the fulfilled quantities and prices." };
   }
+  const hasSuppliedItems = lines.some((line) => line.fulfilled_quantity > 0);
   let collectedPaise = 0;
   if (parsed.data.collectedAmount) {
     try {
@@ -137,16 +139,23 @@ export async function fulfillIpInventoryRequest(_: ActionState, formData: FormDa
     })),
     p_idempotency_key: parsed.data.idempotencyKey,
     p_collected_paise: collectedPaise,
-    p_payment_mode: parsed.data.paymentMode,
+    p_payment_mode: parsed.data.paymentMode ?? null,
     p_reference: parsed.data.reference || null,
+    p_settlement: parsed.data.settlement,
   });
   if (error)
     return {
       ok: false,
       message: error.message.includes("insufficient inventory stock") || error.message.includes("insufficient medicine stock")
         ? error.message
-        : error.message.includes("collection exceeds")
-          ? "The collection exceeds the supplied-item amount or current IP balance."
+        : error.message.includes("counter collection")
+          ? "Collect the exact supplied-item total at the pharmacy counter."
+        : error.message.includes("no supplied items")
+          ? "No supplied items are available to collect. Add the request to the IP ticket or mark the supplied quantities first."
+        : error.message.includes("already fulfilled with a different settlement")
+          ? "This request was already fulfilled using a different settlement. Refresh to see the recorded result."
+        : error.message.includes("ticket is not active")
+          ? "This IP ticket has already been discharged, so no amount can be added to its bill."
         : error.message.includes("manual unit price")
           ? "Enter a manual unit price for every off-catalog item being fulfilled."
         : "The request could not be fulfilled; no stock or charge was changed.",
@@ -158,9 +167,15 @@ export async function fulfillIpInventoryRequest(_: ActionState, formData: FormDa
   revalidatePath("/dashboard");
   return {
     ok: true,
-    message: collectedPaise
-      ? "Request fulfilled, billed, and payment collected."
+    message: !hasSuppliedItems
+      ? "Request resolved with no supplied items. No IP charge or pharmacy collection was recorded."
+      : parsed.data.settlement === "pharmacy_counter"
+      ? "Request fulfilled and collected at the pharmacy counter. It was not added to the IP ticket."
       : "Request fulfilled and billed to the IP ticket.",
-    data: { requestId: parsed.data.requestId, collectedPaise },
+    data: {
+      requestId: parsed.data.requestId,
+      collectedPaise,
+      hasSuppliedItems,
+    },
   };
 }

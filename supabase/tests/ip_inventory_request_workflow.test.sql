@@ -1,6 +1,6 @@
 begin;
 
-select plan(26);
+select plan(47);
 
 create temp table test_actor as
 select id from public.profiles
@@ -80,6 +80,29 @@ insert into public.inventory_items(
 select inventory_id, 'Workflow Gauze', 'piece', 500, 10, 0, true
 from flow_ids;
 
+set local role authenticated;
+select lives_ok(
+  $request$
+  select public.create_ip_inventory_request(
+    (select ticket_id from flow_ids),
+    jsonb_build_array(jsonb_build_object(
+      'name', 'Workflow Gauze',
+      'quantity', 4
+    )),
+    'No stock reservation check',
+    md5('ip-request-flow-no-reservation')::uuid
+  )
+  $request$,
+  'creating an IP item request does not reserve stock'
+);
+reset role;
+select is(
+  (select quantity from public.inventory_items
+   where id = (select inventory_id from flow_ids)),
+  10,
+  'creating an IP item request leaves available stock unchanged'
+);
+
 insert into public.ip_inventory_requests(
   id, ip_ticket_id, requested_by, status, idempotency_key
 )
@@ -110,6 +133,48 @@ where id = (select id from test_actor);
 
 set local role authenticated;
 
+select throws_ok(
+  $counter_amount$
+  select public.fulfill_ip_inventory_request(
+    (select paid_request_id from flow_ids),
+    jsonb_build_array(jsonb_build_object(
+      'request_item_id', (select medicine_item_id from flow_ids),
+      'medicine_id', (select medicine_id from flow_ids),
+      'fulfilled_quantity', 1
+    )),
+    md5('ip-request-flow-counter-amount-mismatch')::uuid,
+    99,
+    'cash',
+    'FLOW-MISMATCH',
+    'pharmacy_counter'
+  )
+  $counter_amount$,
+  '23514',
+  'pharmacy counter collection must equal supplied items total',
+  'counter collection rejects an amount different from the supplied total'
+);
+
+select throws_ok(
+  $ticket_collection$
+  select public.fulfill_ip_inventory_request(
+    (select ticket_request_id from flow_ids),
+    jsonb_build_array(jsonb_build_object(
+      'request_item_id', (select ticket_item_id from flow_ids),
+      'inventory_item_id', (select inventory_id from flow_ids),
+      'fulfilled_quantity', 1
+    )),
+    md5('ip-request-flow-ticket-counter-mismatch')::uuid,
+    500,
+    'cash',
+    null,
+    'ip_ticket'
+  )
+  $ticket_collection$,
+  '23514',
+  'IP-ticket billing cannot collect at the pharmacy counter',
+  'IP-ticket settlement rejects a counter collection'
+);
+
 select lives_ok(
   $flow$
   select public.fulfill_ip_inventory_request(
@@ -138,7 +203,8 @@ select lives_ok(
     (select paid_key from flow_ids),
     1900,
     'cash',
-    'FLOW-CASH'
+    'FLOW-CASH',
+    'pharmacy_counter'
   )
   $flow$,
   'medicine, inventory, manual and unavailable lines fulfil atomically'
@@ -189,26 +255,46 @@ select is(
   'quantity zero records an unavailable line'
 );
 select is(
-  (select amount_paise from public.ip_charges
+  (select count(*) from public.ip_charges
    where source_type = 'ip_inventory_request'
      and source_id = (select paid_request_id from flow_ids)),
-  1900::bigint,
-  'one exact IP pharmacy charge is created'
+  0::bigint,
+  'counter collection creates no IP pharmacy charge'
 );
 select is(
-  (select amount_paise from public.ip_payments
-   where id = (
-     select payment_id from public.ip_inventory_requests
-     where id = (select paid_request_id from flow_ids)
-   )),
+  (select counter_collected_paise from public.ip_inventory_requests
+   where id = (select paid_request_id from flow_ids)),
   1900::bigint,
-  'collect-now creates one offsetting IP payment'
+  'counter collection stores the exact supplied total outside the IP ledger'
 );
 select is(
-  (select count(*) from public.ip_payments
-   where idempotency_key = (select paid_key from flow_ids)),
-  1::bigint,
-  'the collection idempotency key is stored once'
+  (select settlement from public.ip_inventory_requests
+   where id = (select paid_request_id from flow_ids)),
+  'pharmacy_counter',
+  'counter collection has an explicit non-IP settlement destination'
+);
+select is(
+  (select payment_id from public.ip_inventory_requests
+   where id = (select paid_request_id from flow_ids)),
+  null::uuid,
+  'counter collection never links an IP payment'
+);
+select is(
+  (
+    select
+      coalesce((
+        select sum(charge.amount_paise)::bigint
+        from public.ip_charges charge
+        where charge.ip_ticket_id = (select ticket_id from flow_ids)
+      ), 0)
+      - coalesce((
+        select sum(payment.amount_paise)::bigint
+        from public.ip_payments payment
+        where payment.ip_ticket_id = (select ticket_id from flow_ids)
+      ), 0)
+  ),
+  0::bigint,
+  'counter collection leaves the IP running-bill balance unchanged'
 );
 
 set local role authenticated;
@@ -220,10 +306,27 @@ select lives_ok(
     (select paid_key from flow_ids),
     1900,
     'cash',
-    'FLOW-CASH'
+    'FLOW-CASH',
+    'pharmacy_counter'
   )
   $retry$,
   'retry returns the completed request without another mutation'
+);
+select throws_ok(
+  $mismatched_retry$
+  select public.fulfill_ip_inventory_request(
+    (select paid_request_id from flow_ids),
+    '[]'::jsonb,
+    (select paid_key from flow_ids),
+    0,
+    'cash',
+    null,
+    'ip_ticket'
+  )
+  $mismatched_retry$,
+  '23514',
+  'request was already fulfilled with a different settlement',
+  'a retry cannot report a different settlement from the saved request'
 );
 reset role;
 
@@ -243,15 +346,52 @@ select is(
   (select count(*) from public.ip_charges
    where source_type = 'ip_inventory_request'
      and source_id = (select paid_request_id from flow_ids)),
-  1::bigint,
-  'retry does not duplicate the IP charge'
+  0::bigint,
+  'retry does not create an IP charge for a counter collection'
 );
 select is(
   (select count(*) from public.ip_payments
    where idempotency_key = (select paid_key from flow_ids)),
-  1::bigint,
-  'retry does not duplicate the payment'
+  0::bigint,
+  'counter collection creates no IP payment on retry'
 );
+
+update public.ip_tickets
+set status = 'discharged'
+where id = (select ticket_id from flow_ids);
+
+set local role authenticated;
+select throws_ok(
+  $discharged_ticket$
+  select public.fulfill_ip_inventory_request(
+    (select ticket_request_id from flow_ids),
+    jsonb_build_array(jsonb_build_object(
+      'request_item_id', (select ticket_item_id from flow_ids),
+      'inventory_item_id', (select inventory_id from flow_ids),
+      'fulfilled_quantity', 1
+    )),
+    (select ticket_key from flow_ids),
+    0,
+    'cash',
+    null,
+    'ip_ticket'
+  )
+  $discharged_ticket$,
+  '23514',
+  'IP ticket is not active',
+  'ticket settlement cannot change a discharged IP bill'
+);
+reset role;
+select is(
+  (select status from public.ip_inventory_requests
+   where id = (select ticket_request_id from flow_ids)),
+  'pending',
+  'a rejected discharged-ticket fulfilment leaves the request pending'
+);
+
+update public.ip_tickets
+set status = 'admitted'
+where id = (select ticket_id from flow_ids);
 
 set local role authenticated;
 select lives_ok(
@@ -266,7 +406,8 @@ select lives_ok(
     (select ticket_key from flow_ids),
     0,
     'cash',
-    null
+    null,
+    'ip_ticket'
   )
   $ticket$,
   'ticket settlement fulfils without a counter collection'
@@ -312,15 +453,241 @@ select is(
   1900::bigint,
   'sales ledger uses the exact stored fulfilled total'
 );
+select is(
+  (select settlement from public.list_ip_inventory_requests('pending', null, 200, 0)
+   where request_id = (select paid_request_id from flow_ids)),
+  'pharmacy_counter',
+  'IP item request ledger identifies the direct pharmacy settlement'
+);
+select is(
+  (
+    select jsonb_array_length(receipt.items)
+    from public.get_ip_inventory_request_receipt(
+      (select paid_request_id from flow_ids)
+    ) receipt
+  ),
+  4,
+  'receipt retains every originally requested line, including shortages'
+);
+select is(
+  (
+    select item ->> 'outcome'
+    from public.get_ip_inventory_request_receipt(
+      (select paid_request_id from flow_ids)
+    ) receipt
+    cross join lateral jsonb_array_elements(receipt.items) as item(value)
+    where item.value ->> 'name' = 'Outside-only item'
+  ),
+  'Unavailable — outside purchase',
+  'receipt makes an unavailable item explicit for outside purchase'
+);
 reset role;
 
 select is(
   (select count(*) from public.ip_charges
    where ip_ticket_id = (select ticket_id from flow_ids)
      and source_type = 'ip_inventory_request'),
-  2::bigint,
-  'each request contributes exactly one IP charge'
+  1::bigint,
+  'only the IP-ticket settlement contributes an IP charge'
 );
+
+update public.profiles
+set role = 'admin', doctor_id = null
+where id = (select id from test_actor);
+
+set local role authenticated;
+
+select is(
+  (public.dashboard_summary() ->> 'collected_today_paise')::bigint,
+  (
+    select (
+      coalesce((
+        select sum(payment.amount_paise)
+        from public.visit_payments payment
+        where (payment.created_at at time zone 'Asia/Kolkata')::date =
+          (now() at time zone 'Asia/Kolkata')::date
+      ), 0)
+      + coalesce((
+        select sum(payment.amount_paise)
+        from public.ip_payments payment
+        where (payment.created_at at time zone 'Asia/Kolkata')::date =
+          (now() at time zone 'Asia/Kolkata')::date
+      ), 0)
+      + coalesce((
+        select sum(sale.total_paise)
+        from public.pharmacy_sales sale
+        where sale.source = 'op'
+          and (sale.created_at at time zone 'Asia/Kolkata')::date =
+            (now() at time zone 'Asia/Kolkata')::date
+      ), 0)
+      + coalesce((
+        select sum(request.counter_collected_paise)
+        from public.ip_inventory_requests request
+        where request.settlement = 'pharmacy_counter'
+          and (request.counter_collected_at at time zone 'Asia/Kolkata')::date =
+            (now() at time zone 'Asia/Kolkata')::date
+      ), 0)
+    )::bigint
+  ),
+  'dashboard counts the direct counter receipt once in today\'s collections'
+);
+select is(
+  (public.dashboard_summary() ->> 'ip_collection_paise')::bigint,
+  (
+    select coalesce(sum(payment.amount_paise), 0)::bigint
+    from public.ip_payments payment
+    where (payment.created_at at time zone 'Asia/Kolkata')::date =
+      (now() at time zone 'Asia/Kolkata')::date
+  ),
+  'direct counter receipt does not inflate IP collections'
+);
+select is(
+  (
+    select count(*)
+    from public.dashboard_metric_detail_for_role(
+      'collected_today_paise',
+      100
+    ) detail
+    where detail.href = '/print/ip-items/' || (
+      select paid_request_id::text from flow_ids
+    )
+      and detail.secondary_text like 'Pharmacy counter · %'
+  ),
+  1::bigint,
+  'collected-today drill-down shows the direct receipt once as pharmacy collection'
+);
+select is(
+  (
+    select count(*)
+    from public.dashboard_metric_detail_for_role(
+      'collected_today_paise',
+      100
+    ) detail
+    where detail.href = '/print/ip-items/' || (
+      select paid_request_id::text from flow_ids
+    )
+      and detail.secondary_text like 'IP payment · %'
+  ),
+  0::bigint,
+  'collected-today drill-down never labels the direct receipt as an IP payment'
+);
+select is(
+  (
+    public.report_admin_overview(
+      (now() at time zone 'Asia/Kolkata')::date,
+      (now() at time zone 'Asia/Kolkata')::date
+    ) ->> 'pharmacy_collected_paise'
+  )::bigint,
+  (
+    select (
+      coalesce((
+        select sum(sale.total_paise)
+        from public.pharmacy_sales sale
+        where sale.source = 'op'
+          and (sale.created_at at time zone 'Asia/Kolkata')::date =
+            (now() at time zone 'Asia/Kolkata')::date
+      ), 0)
+      + coalesce((
+        select sum(request.counter_collected_paise)
+        from public.ip_inventory_requests request
+        where request.settlement = 'pharmacy_counter'
+          and (request.counter_collected_at at time zone 'Asia/Kolkata')::date =
+            (now() at time zone 'Asia/Kolkata')::date
+      ), 0)
+    )::bigint
+  ),
+  'admin analytics counts a direct IP counter receipt as pharmacy collection once'
+);
+select is(
+  (
+    with day as (
+      select (now() at time zone 'Asia/Kolkata')::date as metric_date
+    )
+    select (series.value ->> 'amount_paise')::bigint
+    from day
+    cross join lateral jsonb_array_elements(
+      public.report_admin_overview(day.metric_date, day.metric_date)
+        -> 'pharmacy_sales_by_day'
+    ) as series(value)
+    where series.value ->> 'date' = day.metric_date::text
+  ),
+  (
+    select (
+      coalesce((
+        select sum(sale.total_paise)
+        from public.pharmacy_sales sale
+        where (sale.created_at at time zone 'Asia/Kolkata')::date =
+          (now() at time zone 'Asia/Kolkata')::date
+      ), 0)
+      + coalesce((
+        select sum(item.amount_paise)
+        from public.ip_inventory_requests request
+        join public.ip_inventory_request_items item on item.request_id = request.id
+        where item.status = 'fulfilled'
+          and (request.fulfilled_at at time zone 'Asia/Kolkata')::date =
+            (now() at time zone 'Asia/Kolkata')::date
+      ), 0)
+    )::bigint
+  ),
+  'pharmacy sales trend includes every fulfilled IP request value once'
+);
+select is(
+  (
+    with day as (
+      select (now() at time zone 'Asia/Kolkata')::date as metric_date
+    )
+    select (series.value ->> 'items')::bigint
+    from day
+    cross join lateral jsonb_array_elements(
+      public.report_admin_overview(day.metric_date, day.metric_date)
+        -> 'pharmacy_sales_by_day'
+    ) as series(value)
+    where series.value ->> 'date' = day.metric_date::text
+  ),
+  (
+    select (
+      coalesce((
+        select sum(sale_item.quantity)
+        from public.pharmacy_sales sale
+        left join public.pharmacy_sale_items sale_item on sale_item.sale_id = sale.id
+        where (sale.created_at at time zone 'Asia/Kolkata')::date =
+          (now() at time zone 'Asia/Kolkata')::date
+      ), 0)
+      + coalesce((
+        select sum(item.fulfilled_quantity)
+        from public.ip_inventory_requests request
+        join public.ip_inventory_request_items item on item.request_id = request.id
+        where item.status = 'fulfilled'
+          and (request.fulfilled_at at time zone 'Asia/Kolkata')::date =
+            (now() at time zone 'Asia/Kolkata')::date
+      ), 0)
+    )::bigint
+  ),
+  'pharmacy sales trend includes fulfilled IP item quantities once'
+);
+select ok(
+  (
+    select activity.dispenses >= 1
+    from public.report_staff_activity(
+      (now() at time zone 'Asia/Kolkata')::date,
+      (now() at time zone 'Asia/Kolkata')::date
+    ) activity
+    where activity.profile_id = (select id from test_actor)
+  ),
+  'staff activity counts the direct IP counter fulfilment as pharmacy work'
+);
+select ok(
+  (
+    select activity.dispensed_paise >= 1900
+    from public.report_staff_activity(
+      (now() at time zone 'Asia/Kolkata')::date,
+      (now() at time zone 'Asia/Kolkata')::date
+    ) activity
+    where activity.profile_id = (select id from test_actor)
+  ),
+  'staff activity includes the direct IP counter fulfilment value'
+);
+reset role;
 
 select * from finish();
 rollback;

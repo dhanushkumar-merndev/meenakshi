@@ -4,11 +4,12 @@ import { useActionState, useMemo, useState } from "react";
 import { CheckCircle2, LoaderCircle, PackageCheck, Printer } from "lucide-react";
 import { fulfillIpInventoryRequest } from "./inventory-request-actions";
 import {
-  calculateIpStockAmount,
+  calculateIpStockAmountAtOffset,
   findIpStockMatch,
   type IpStockOption,
 } from "./stock-match";
 import { formatInr } from "@/lib/domain/money";
+import { allocateVisibleStock } from "@/lib/domain/stock-allocation";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -40,14 +41,25 @@ import {
 
 type RequestItem = { id: string; requested_name: string; requested_quantity: number };
 
+const UNAVAILABLE_STOCK_KEY = "unavailable";
+const MANUAL_STOCK_KEY = "manual";
+
+function stockKeyFor(option: IpStockOption) {
+  return `${option.stock_type}:${option.stock_id}`;
+}
+
+function isTrackedStockKey(stockKey: string) {
+  return stockKey !== UNAVAILABLE_STOCK_KEY && stockKey !== MANUAL_STOCK_KEY;
+}
+
 type Line = {
   requestItemId: string;
   requestedName: string;
   requestedQuantity: number;
-  /** "" = not matched to stock -> off-catalog, priced manually. */
+  /** A stock item, or an explicit unavailable/manual outcome. */
   stockKey: string;
   fulfilledQuantity: number;
-  /** Only used when stockKey is "" (off-catalog). */
+  /** Only used for an explicit manual/off-catalog supply. */
   customPriceRupees: string;
 };
 
@@ -71,25 +83,75 @@ export function FulfillInventoryRequestDialog({
   const [state, action, pending] = useActionState(fulfillIpInventoryRequest, { ok: false });
   const [key] = useState(() => crypto.randomUUID());
   const [settlement, setSettlement] = useState<"ip_ticket" | "collect_now">("ip_ticket");
-  const [collectedAmount, setCollectedAmount] = useState("");
   const [paymentMode, setPaymentMode] = useState("cash");
   const [reference, setReference] = useState("");
+  const availableByStockKey = useMemo(
+    () =>
+      Object.fromEntries(
+        stock.map((option) => [stockKeyFor(option), option.quantity]),
+      ) as Record<string, number>,
+    [stock],
+  );
+  const reconcileLines = (candidate: Line[]) => {
+    const allocations = allocateVisibleStock(
+      candidate.map((line) => ({
+        stockKey: isTrackedStockKey(line.stockKey) ? line.stockKey : null,
+        requestedQuantity: line.requestedQuantity,
+        selectedQuantity:
+          line.stockKey === UNAVAILABLE_STOCK_KEY ? 0 : line.fulfilledQuantity,
+      })),
+      availableByStockKey,
+    );
+    return candidate.map((line, index) => ({
+      ...line,
+      fulfilledQuantity:
+        line.stockKey === UNAVAILABLE_STOCK_KEY
+          ? 0
+          : allocations[index].selectedQuantity,
+    }));
+  };
   const [lines, setLines] = useState<Line[]>(() =>
-    items.map((item) => {
-      const match = findIpStockMatch(item.requested_name, stock);
-      return {
-        requestItemId: item.id,
-        requestedName: item.requested_name,
-        requestedQuantity: item.requested_quantity,
-        stockKey: match ? `${match.stock_type}:${match.stock_id}` : "",
-        fulfilledQuantity: match ? Math.min(item.requested_quantity, match.quantity) : item.requested_quantity,
-        customPriceRupees: "",
-      };
-    }),
+    reconcileLines(
+      items.map((item) => {
+        const match = findIpStockMatch(item.requested_name, stock);
+        return {
+          requestItemId: item.id,
+          requestedName: item.requested_name,
+          requestedQuantity: item.requested_quantity,
+          // No match means not supplied by default. A manual/off-catalog line
+          // is an intentional choice by pharmacy, never an implicit fallback.
+          stockKey: match ? stockKeyFor(match) : UNAVAILABLE_STOCK_KEY,
+          fulfilledQuantity: match
+            ? Math.min(item.requested_quantity, match.quantity)
+            : 0,
+          customPriceRupees: "",
+        };
+      }),
+    ),
   );
 
   const updateLine = (requestItemId: string, patch: Partial<Line>) =>
-    setLines((rows) => rows.map((row) => (row.requestItemId === requestItemId ? { ...row, ...patch } : row)));
+    setLines((rows) =>
+      reconcileLines(
+        rows.map((row) =>
+          row.requestItemId === requestItemId ? { ...row, ...patch } : row,
+        ),
+      ),
+    );
+
+  const allocations = useMemo(
+    () =>
+      allocateVisibleStock(
+        lines.map((line) => ({
+          stockKey: isTrackedStockKey(line.stockKey) ? line.stockKey : null,
+          requestedQuantity: line.requestedQuantity,
+          selectedQuantity:
+            line.stockKey === UNAVAILABLE_STOCK_KEY ? 0 : line.fulfilledQuantity,
+        })),
+        availableByStockKey,
+      ),
+    [availableByStockKey, lines],
+  );
 
   const payload = useMemo(
     () =>
@@ -104,38 +166,55 @@ export function FulfillInventoryRequestDialog({
             ? line.stockKey.slice("medicine:".length)
             : undefined,
         fulfilled_quantity: line.fulfilledQuantity,
-        unit_price_paise: line.stockKey
-          ? undefined
-          : Math.round((Number(line.customPriceRupees) || 0) * 100),
+        unit_price_paise:
+          line.stockKey === MANUAL_STOCK_KEY
+            ? Math.round((Number(line.customPriceRupees) || 0) * 100)
+            : undefined,
       })),
     [lines],
   );
-  const totalPaise = useMemo(
-    () =>
-      lines.reduce((sum, line) => {
-        if (line.fulfilledQuantity <= 0) return sum;
-        const option = stock.find(
-          (candidate) =>
-            `${candidate.stock_type}:${candidate.stock_id}` === line.stockKey,
+  const lineAmountsPaise = useMemo(() => {
+    const usedQuantityByStockKey = new Map<string, number>();
+    return lines.map((line) => {
+      if (line.fulfilledQuantity <= 0) return 0;
+      const option = stock.find(
+        (candidate) => stockKeyFor(candidate) === line.stockKey,
+      );
+      if (option) {
+        const usedQuantity = usedQuantityByStockKey.get(line.stockKey) ?? 0;
+        const amount = calculateIpStockAmountAtOffset(
+          option,
+          line.fulfilledQuantity,
+          usedQuantity,
         );
-        if (option)
-          return sum + calculateIpStockAmount(option, line.fulfilledQuantity);
+        usedQuantityByStockKey.set(
+          line.stockKey,
+          usedQuantity + line.fulfilledQuantity,
+        );
+        return amount;
+      }
+      if (line.stockKey === MANUAL_STOCK_KEY) {
         const price = Math.round((Number(line.customPriceRupees) || 0) * 100);
-        return sum + line.fulfilledQuantity * price;
-      }, 0),
-    [lines, stock],
+        return line.fulfilledQuantity * price;
+      }
+      return 0;
+    });
+  }, [lines, stock]);
+  const totalPaise = useMemo(
+    () => lineAmountsPaise.reduce((sum, amount) => sum + amount, 0),
+    [lineAmountsPaise],
   );
   const needsManualPrice = lines.some(
     (line) =>
-      !line.stockKey &&
+      line.stockKey === MANUAL_STOCK_KEY &&
       line.fulfilledQuantity > 0 &&
       (!Number.isFinite(Number(line.customPriceRupees)) || Number(line.customPriceRupees) <= 0),
   );
-  const collectedPaise = Math.round((Number(collectedAmount) || 0) * 100);
   const collectNow = settlement === "collect_now";
-  const invalidCollection = collectNow && (
-    collectedPaise <= 0 || collectedPaise > totalPaise
-  );
+  // Counter collection is deliberately full-only. The hidden amount is
+  // derived from the live supplied total, so changing a quantity cannot leave
+  // a stale amount that would make an IP bill and a counter receipt diverge.
+  const invalidCollection = collectNow && totalPaise <= 0;
 
   if (state.ok) {
     // Whatever fell short of the requested quantity (unmatched entirely, or
@@ -146,7 +225,12 @@ export function FulfillInventoryRequestDialog({
     return (
       <div className="flex items-center justify-end gap-2">
         <CheckCircle2 className="text-primary" />
-        <span className="text-sm text-muted-foreground">Fulfilled</span>
+        <span className="max-w-md text-sm text-muted-foreground">
+          {state.message ?? "Fulfilled"}
+          {state.data?.hasSuppliedItems
+            ? ` Supplied total: ${formatInr(totalPaise)}.`
+            : ""}
+        </span>
         <Button size="sm" variant="outline" render={<Link href={`/print/ip-items/${requestId}`} target="_blank" />}>
           <Printer /> Bill / Receipt
         </Button>
@@ -164,19 +248,21 @@ export function FulfillInventoryRequestDialog({
       <DialogTrigger render={<Button size="sm" />}>
         <PackageCheck /> Fulfill
       </DialogTrigger>
-      <DialogContent className="sm:max-w-2xl">
+      <DialogContent className="max-h-[calc(100vh-2rem)] overflow-y-auto sm:max-w-5xl">
         <form action={action} className="contents">
           <DialogHeader>
             <DialogTitle>Fulfill item request</DialogTitle>
             <DialogDescription>
-              {patientName} · Match each line to stock, or leave it off-catalog
-              and price it manually. Quantity 0 marks it unavailable.
+              {patientName} · The original requested quantity is retained on
+              every line. Available now is guidance only; stock is neither
+              reserved nor reduced until you confirm fulfilment.
             </DialogDescription>
           </DialogHeader>
           <input type="hidden" name="requestId" value={requestId} />
           <input type="hidden" name="idempotencyKey" value={key} />
           <input type="hidden" name="lines" value={JSON.stringify(payload)} />
-          <input type="hidden" name="collectedAmount" value={collectNow ? collectedAmount : ""} />
+          <input type="hidden" name="settlement" value={collectNow ? "pharmacy_counter" : "ip_ticket"} />
+          <input type="hidden" name="collectedAmount" value={collectNow ? (totalPaise / 100).toFixed(2) : ""} />
           <input type="hidden" name="paymentMode" value={paymentMode} />
           <input type="hidden" name="reference" value={reference} />
           {state.message ? (
@@ -186,54 +272,129 @@ export function FulfillInventoryRequestDialog({
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead className="min-w-44">Item</TableHead>
                   <TableHead>Requested</TableHead>
-                  <TableHead className="min-w-48">Match to stock</TableHead>
-                  <TableHead>Qty</TableHead>
-                  <TableHead>Price</TableHead>
+                  <TableHead>Available now</TableHead>
+                  <TableHead className="min-w-48">Supply from</TableHead>
+                  <TableHead>Supply now</TableHead>
+                  <TableHead>Not supplied</TableHead>
+                  <TableHead>Amount</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {lines.map((line) => {
-                  const matched = stock.find(
-                    (option) =>
-                      `${option.stock_type}:${option.stock_id}` === line.stockKey,
-                  );
+                {lines.map((line, index) => {
+                  const matched = stock.find((option) => stockKeyFor(option) === line.stockKey);
+                  const allocation = allocations[index];
+                  const isManual = line.stockKey === MANUAL_STOCK_KEY;
+                  const isUnavailable = line.stockKey === UNAVAILABLE_STOCK_KEY;
+                  const suggested = findIpStockMatch(line.requestedName, stock);
+                  const suggestedStockKey = suggested ? stockKeyFor(suggested) : null;
+                  const suggestedAvailableNow = suggested
+                    ? Math.max(
+                        0,
+                        suggested.quantity -
+                          lines.reduce(
+                            (used, candidate, candidateIndex) =>
+                              candidateIndex === index ||
+                              candidate.stockKey !== suggestedStockKey
+                                ? used
+                                : used + allocations[candidateIndex].selectedQuantity,
+                            0,
+                          ),
+                      )
+                    : 0;
+                  const maximumSupply = matched
+                    ? Math.min(line.requestedQuantity, allocation.availableNow ?? 0)
+                    : isManual
+                      ? line.requestedQuantity
+                      : 0;
+                  const outcome =
+                    allocation.notSuppliedQuantity === 0
+                      ? "Fully supplied"
+                      : line.fulfilledQuantity === 0
+                        ? "Unavailable"
+                        : `Partially supplied · ${allocation.notSuppliedQuantity} not supplied`;
+                  const lineAmountPaise = lineAmountsPaise[index] ?? 0;
                   return (
                     <TableRow key={line.requestItemId}>
                       <TableCell className="font-medium">
                         {line.requestedName}
-                        <span className="block text-xs text-muted-foreground">
-                          Requested {line.requestedQuantity}
-                        </span>
+                      </TableCell>
+                      <TableCell className="tabular-nums">
+                        {line.requestedQuantity}
+                      </TableCell>
+                      <TableCell>
+                        {matched ? (
+                          <>
+                            <span className="tabular-nums">
+                              {allocation.availableNow ?? 0}
+                            </span>
+                            <span className="block text-[11px] text-muted-foreground">
+                              selected stock
+                            </span>
+                          </>
+                        ) : isManual ? (
+                          <span className="text-xs text-muted-foreground">
+                            Not stock-tracked
+                          </span>
+                        ) : suggested ? (
+                          <>
+                            <span className="tabular-nums">{suggestedAvailableNow}</span>
+                            <span className="block text-[11px] text-muted-foreground">
+                              suggested stock
+                            </span>
+                          </>
+                        ) : (
+                          <>
+                            <span className="tabular-nums">0</span>
+                            <span className="block text-[11px] text-muted-foreground">
+                              no stock match
+                            </span>
+                          </>
+                        )}
                       </TableCell>
                       <TableCell>
                         <Select
-                          value={line.stockKey || "custom"}
+                          value={line.stockKey}
                           onValueChange={(value) => {
-                            const stockKey = value === "custom" ? "" : String(value);
-                            const selected = stock.find(
-                              (option) =>
-                                `${option.stock_type}:${option.stock_id}` === stockKey,
-                            );
+                            const stockKey = String(value);
+                            const selected = stock.find((option) => stockKeyFor(option) === stockKey);
                             updateLine(line.requestItemId, {
                               stockKey,
-                              fulfilledQuantity: selected
-                                ? Math.min(line.requestedQuantity, selected.quantity)
-                                : line.requestedQuantity,
+                              fulfilledQuantity:
+                                stockKey === UNAVAILABLE_STOCK_KEY
+                                  ? 0
+                                  : selected
+                                    ? Math.min(line.requestedQuantity, selected.quantity)
+                                    : line.fulfilledQuantity || line.requestedQuantity,
                             });
                           }}
                         >
                           <SelectTrigger className="w-full">
-                            <SelectValue placeholder="Off-catalog">
-                              {() => (matched ? `${matched.name} · ${matched.quantity} left` : "Off-catalog (manual price)")}
+                            <SelectValue placeholder="Not supplied">
+                              {() =>
+                                matched
+                                  ? `${matched.name} · ${matched.quantity} in stock`
+                                  : isManual
+                                    ? "Manual / off-catalog supply"
+                                    : "Not supplied / outside purchase"}
                             </SelectValue>
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="custom" label="Off-catalog (manual price)">
-                              Off-catalog (manual price)
+                            <SelectItem
+                              value={UNAVAILABLE_STOCK_KEY}
+                              label="Not supplied / outside purchase"
+                            >
+                              Not supplied / outside purchase
+                            </SelectItem>
+                            <SelectItem
+                              value={MANUAL_STOCK_KEY}
+                              label="Manual / off-catalog supply"
+                            >
+                              Manual / off-catalog supply
                             </SelectItem>
                             {stock.map((option) => {
-                              const value = `${option.stock_type}:${option.stock_id}`;
+                              const value = stockKeyFor(option);
                               const source = option.stock_type === "medicine" ? "Medicine" : "Inventory";
                               return (
                                 <SelectItem
@@ -253,49 +414,90 @@ export function FulfillInventoryRequestDialog({
                           className="w-20"
                           type="number"
                           min={0}
-                          max={matched ? Math.min(line.requestedQuantity, matched.quantity) : line.requestedQuantity}
+                          max={maximumSupply}
                           value={line.fulfilledQuantity}
                           onChange={(event) =>
                             updateLine(line.requestItemId, { fulfilledQuantity: Math.max(0, Number(event.target.value)) })
                           }
+                          disabled={isUnavailable}
                         />
-                        {matched && matched.quantity < line.requestedQuantity ? (
-                          <p className="mt-1 text-[11px] text-muted-foreground">Only {matched.quantity} in stock</p>
-                        ) : null}
-                        {line.fulfilledQuantity > 0 ? (
+                        {isUnavailable ? (
                           <Button
                             type="button"
                             size="sm"
                             variant="ghost"
                             className="mt-1 h-auto px-0 py-0 text-[11px] text-muted-foreground"
-                            onClick={() => updateLine(line.requestItemId, { fulfilledQuantity: 0 })}
+                            onClick={() =>
+                              updateLine(line.requestItemId, {
+                                stockKey: suggested
+                                  ? stockKeyFor(suggested)
+                                  : MANUAL_STOCK_KEY,
+                                fulfilledQuantity: suggested
+                                  ? Math.min(line.requestedQuantity, suggested.quantity)
+                                  : line.requestedQuantity,
+                              })
+                            }
                           >
-                            Mark unavailable
+                            {suggested ? "Restore stock match" : "Use manual supply"}
                           </Button>
                         ) : (
-                          <span className="mt-1 block text-[11px] text-destructive">Outside purchase</span>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="ghost"
+                            className="mt-1 h-auto px-0 py-0 text-[11px] text-muted-foreground"
+                            onClick={() =>
+                              updateLine(line.requestItemId, {
+                                stockKey: UNAVAILABLE_STOCK_KEY,
+                                fulfilledQuantity: 0,
+                              })
+                            }
+                          >
+                            Mark not supplied
+                          </Button>
                         )}
                       </TableCell>
                       <TableCell>
+                        <span className="tabular-nums">
+                          {allocation.notSuppliedQuantity}
+                        </span>
+                        <span
+                          className={
+                            "block text-[11px] " +
+                            (allocation.notSuppliedQuantity === 0
+                              ? "text-muted-foreground"
+                              : "text-destructive")
+                          }
+                        >
+                          {outcome}
+                        </span>
+                      </TableCell>
+                      <TableCell>
                         {matched ? (
-                          <span className="text-sm tabular-nums" title="Auto-filled from the current stock price">
-                            {formatInr(matched.selling_price_paise)}
+                          <span className="text-sm tabular-nums" title="Calculated from the selected FEFO stock batches">
+                            {formatInr(lineAmountPaise)}
                             <span className="block text-[11px] text-muted-foreground">
-                              per {matched.unit || "unit"}
-                              {matched.pack_price_paise && matched.units_per_pack > 1
-                                ? ` · ${formatInr(matched.pack_price_paise)}/pack`
-                                : ""}
+                              supplied total
                             </span>
                           </span>
+                        ) : isManual ? (
+                          <div className="space-y-1">
+                            <Input
+                              className="w-24"
+                              inputMode="decimal"
+                              placeholder="₹0.00"
+                              value={line.customPriceRupees}
+                              onChange={(event) => updateLine(line.requestItemId, { customPriceRupees: event.target.value })}
+                              disabled={line.fulfilledQuantity <= 0}
+                            />
+                            {line.fulfilledQuantity > 0 ? (
+                              <span className="block text-[11px] text-muted-foreground">
+                                {formatInr(lineAmountPaise)} total
+                              </span>
+                            ) : null}
+                          </div>
                         ) : (
-                          <Input
-                            className="w-24"
-                            inputMode="decimal"
-                            placeholder="₹0.00"
-                            value={line.customPriceRupees}
-                            onChange={(event) => updateLine(line.requestItemId, { customPriceRupees: event.target.value })}
-                            disabled={line.fulfilledQuantity <= 0}
-                          />
+                          <span className="text-muted-foreground">—</span>
                         )}
                       </TableCell>
                     </TableRow>
@@ -304,6 +506,12 @@ export function FulfillInventoryRequestDialog({
               </TableBody>
             </Table>
           </div>
+          <p className="text-xs text-muted-foreground">
+            <span className="font-medium text-foreground">Stock rule:</span>{" "}
+            “Available now” is a live check, not a reservation. Only the
+            supplied quantity changes stock after you confirm. Not-supplied
+            quantities remain attached to this request for the outside-purchase note.
+          </p>
           <div className="flex justify-end border-t pt-3 text-sm">
             <p>
               <span className="text-muted-foreground">Supplied total: </span>
@@ -322,8 +530,6 @@ export function FulfillInventoryRequestDialog({
               onValueChange={(value) => {
                 const next = String(value) as "ip_ticket" | "collect_now";
                 setSettlement(next);
-                if (next === "collect_now")
-                  setCollectedAmount((totalPaise / 100).toFixed(2));
               }}
               className="gap-3"
             >
@@ -341,7 +547,7 @@ export function FulfillInventoryRequestDialog({
                 <span>
                   <span className="block text-sm font-medium">Collect at pharmacy now</span>
                   <span className="block text-xs text-muted-foreground">
-                    Adds the same IP charge and an offsetting payment, so the amount is not due twice.
+                    Collects the exact supplied total at the pharmacy counter. It creates a pharmacy receipt only and does not add anything to the IP bill.
                   </span>
                 </span>
               </label>
@@ -349,13 +555,11 @@ export function FulfillInventoryRequestDialog({
             {collectNow ? (
               <div className="grid gap-3 sm:grid-cols-2">
                 <div className="space-y-1.5">
-                  <Label htmlFor={`ip-item-amount-${requestId}`}>Amount</Label>
-                  <Input
-                    id={`ip-item-amount-${requestId}`}
-                    inputMode="decimal"
-                    value={collectedAmount}
-                    onChange={(event) => setCollectedAmount(event.target.value)}
-                  />
+                  <Label>Amount to collect</Label>
+                  <p className="flex h-9 items-center rounded-md border bg-muted/40 px-3 text-sm font-medium tabular-nums">
+                    {formatInr(totalPaise)}
+                  </p>
+                  <p className="text-xs text-muted-foreground">The full supplied amount is collected here; partial counter collection is not used for IP requests.</p>
                 </div>
                 <div className="space-y-1.5">
                   <Label htmlFor={`ip-item-mode-${requestId}`}>Mode</Label>

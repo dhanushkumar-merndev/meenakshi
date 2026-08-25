@@ -33,11 +33,12 @@ export const PERMISSIONS = {
   // IP staff or the treating doctor can ask pharmacy for consumables; only
   // pharmacy (via `dispense`) actually fulfils the request and touches stock.
   requestIpInventory: ["admin", "reception", "ip", "doctor"],
-  // Reading a request's outcome (incl. printing a shortage note for items
-  // pharmacy could not fully supply) -- same role set as the RLS read policy
-  // on ip_inventory_requests, since nothing here is more sensitive than what
-  // is already shown in-app.
+  // Reading a request's supply outcome (including a shortage note) is clinical
+  // information, so the treating doctor may use it.
   viewIpInventoryRequest: ["admin", "reception", "ip", "doctor", "pharmacy"],
+  // The item bill/receipt contains payment amounts and modes, so it follows
+  // the same patient-finance boundary as other financial documents.
+  viewIpInventoryReceipt: ["admin", "reception", "ip", "pharmacy"],
   configureRooms: ["admin"],
   viewFullFinance: ["admin"],
   viewVisitFinance: ["admin", "reception"],

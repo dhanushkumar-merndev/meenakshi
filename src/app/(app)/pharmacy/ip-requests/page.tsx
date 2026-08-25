@@ -31,6 +31,7 @@ type PharmacyRequest = {
   item_count: number;
   notes: string | null;
   status: "pending" | "fulfilled";
+  settlement: "ip_ticket" | "pharmacy_counter" | "legacy_ip_payment";
   created_at: string;
   fulfilled_at: string | null;
   total_paise: number;
@@ -121,7 +122,7 @@ export default async function IpInventoryRequestsPage({
       <RecentRequestAutoRefresh expiryTimes={recentExpiryTimes} />
       <PageHeader
         title="IP Item Requests"
-        description="Medicines, inventory items, and manual requests. Fulfilment updates stock, the IP ticket, and optional counter collection atomically."
+        description="Medicines, inventory items, and manual requests. Each fulfilment is settled either on the IP ticket or at the pharmacy counter — never both."
       />
       <FilterTabs
         ariaLabel="Switch between current and completed IP item requests"
@@ -150,7 +151,7 @@ export default async function IpInventoryRequestsPage({
                   <TableHead>Items</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Amount</TableHead>
-                  <TableHead>Collected</TableHead>
+                  <TableHead>Settlement</TableHead>
                   <TableHead>{tab === "completed" ? "Completed" : "Requested"}</TableHead>
                   <TableHead className="text-right">Action</TableHead>
                 </TableRow>
@@ -175,7 +176,24 @@ export default async function IpInventoryRequestsPage({
                         <StatusBadge status={request.status} />
                       </TableCell>
                       <TableCell>{formatInr(Number(request.total_paise))}</TableCell>
-                      <TableCell>{formatInr(Number(request.collected_paise))}</TableCell>
+                      <TableCell>
+                        {request.status === "pending" ? (
+                          <>
+                            <span className="font-medium">Choose on fulfilment</span>
+                            <span className="block text-xs text-muted-foreground">
+                              No charge or counter collection yet
+                            </span>
+                          </>
+                        ) : request.settlement === "pharmacy_counter" ? (
+                          <><span className="font-medium">Pharmacy collected</span><span className="block text-xs text-muted-foreground">{formatInr(Number(request.collected_paise))}</span></>
+                        ) : request.settlement === "legacy_ip_payment" ? (
+                          <><span className="font-medium">Legacy IP payment</span><span className="block text-xs text-muted-foreground">{formatInr(Number(request.collected_paise))}</span></>
+                        ) : Number(request.total_paise) === 0 ? (
+                          <><span className="font-medium">No IP charge</span><span className="block text-xs text-muted-foreground">No amount due on the IP ticket</span></>
+                        ) : (
+                          <><span className="font-medium">On IP ticket</span><span className="block text-xs text-muted-foreground">Collected with running/final bill</span></>
+                        )}
+                      </TableCell>
                       <TableCell className="whitespace-nowrap text-muted-foreground">
                         {formatHospitalDate(
                           request.fulfilled_at ?? request.created_at,

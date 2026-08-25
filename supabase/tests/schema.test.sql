@@ -1,5 +1,5 @@
 begin;
-select plan(66);
+select plan(68);
 select has_table('public','patients','patients table exists');
 select has_table('public','visits','visits table exists');
 select has_table('public','medicine_batches','stock table exists');
@@ -20,8 +20,10 @@ select has_function('public','add_ip_charges',array['uuid','jsonb'],'atomic mult
 select has_column('public','ip_inventory_request_items','medicine_id','IP item fulfilment records a medicine stock source');
 select has_column('public','ip_inventory_request_items','amount_paise','IP item fulfilment stores its exact billed amount');
 select has_column('public','ip_inventory_requests','payment_id','IP item request links an optional pharmacy collection');
+select has_column('public','ip_inventory_requests','settlement','IP item request records one explicit settlement destination');
+select has_column('public','ip_inventory_requests','counter_collected_paise','direct pharmacy counter collection is retained outside the IP ledger');
 select has_function('public','search_ip_stock_catalog',array['text','integer'],'unified medicine and inventory stock search exists');
-select has_function('public','fulfill_ip_inventory_request',array['uuid','jsonb','uuid','bigint','payment_mode','text'],'IP item fulfilment atomically supports stock, billing, and collection');
+select has_function('public','fulfill_ip_inventory_request',array['uuid','jsonb','uuid','bigint','payment_mode','text','text'],'IP item fulfilment atomically separates IP billing from counter collection');
 select has_function('public','list_ip_inventory_requests',array['text','text','integer','integer'],'current and completed IP item request ledger exists');
 select has_function('public','get_ip_inventory_request_receipt',array['uuid'],'printable IP item bill and receipt data exists');
 select has_column('public','ip_tickets','is_emergency','IP tickets record emergency admission state');
