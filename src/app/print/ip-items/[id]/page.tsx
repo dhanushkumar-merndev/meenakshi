@@ -96,30 +96,39 @@ export default async function IpItemsReceiptPage({
           <dd>{receipt.fulfilled_by ?? "—"}</dd>
         </dl>
 
-        <table className="mt-5 w-full border-collapse text-sm">
+        <table className="mt-5 w-full table-fixed border-collapse text-sm">
+          <colgroup>
+            <col className="w-[27%]" />
+            <col className="w-[16%]" />
+            <col className="w-[11%]" />
+            <col className="w-[11%]" />
+            <col className="w-[14%]" />
+            <col className="w-[10%]" />
+            <col className="w-[11%]" />
+          </colgroup>
           <thead>
-            <tr className="border-y border-black text-left">
-              <th className="py-1.5 font-semibold">Requested item</th>
-              <th className="py-1.5 font-semibold">Source</th>
-              <th className="py-1.5 text-right font-semibold">Requested</th>
-              <th className="py-1.5 text-right font-semibold">Supplied</th>
-              <th className="py-1.5 text-right font-semibold">Not supplied</th>
-              <th className="py-1.5 text-right font-semibold">Rate</th>
-              <th className="py-1.5 text-right font-semibold">Amount</th>
+            <tr className="border-y border-black text-left text-xs leading-tight">
+              <th className="px-1 py-2 font-semibold">Requested<br />item</th>
+              <th className="px-1 py-2 font-semibold">Source</th>
+              <th className="px-1 py-2 text-right font-semibold">Requested<br />qty</th>
+              <th className="px-1 py-2 text-right font-semibold">Supplied<br />qty</th>
+              <th className="px-1 py-2 text-right font-semibold">Not<br />supplied</th>
+              <th className="px-1 py-2 text-right font-semibold">Rate</th>
+              <th className="px-1 py-2 text-right font-semibold">Amount</th>
             </tr>
           </thead>
           <tbody>
             {(receipt.items ?? []).map((item, index) => (
               <tr className="border-b border-black/20" key={`${item.name}-${index}`}>
-                <td className="py-1.5 pr-2">{item.name}</td>
-                <td className="py-1.5"><span>{item.source}</span><span className="block text-xs text-muted-foreground">{item.outcome}</span></td>
-                <td className="py-1.5 text-right tabular-nums">{item.requested_quantity}</td>
-                <td className="py-1.5 text-right tabular-nums">{item.supplied_quantity}</td>
-                <td className="py-1.5 text-right tabular-nums">{item.not_supplied_quantity}</td>
-                <td className="py-1.5 text-right tabular-nums">
+                <td className="break-words px-1 py-2">{item.name}</td>
+                <td className="break-words px-1 py-2"><span>{item.source}</span><span className="block text-xs text-muted-foreground">{item.outcome}</span></td>
+                <td className="px-1 py-2 text-right tabular-nums">{item.requested_quantity}</td>
+                <td className="px-1 py-2 text-right tabular-nums">{item.supplied_quantity}</td>
+                <td className="px-1 py-2 text-right tabular-nums">{item.not_supplied_quantity || "—"}</td>
+                <td className="whitespace-nowrap px-1 py-2 text-right tabular-nums">
                   {item.unit_price_paise === null ? "—" : formatInr(Number(item.unit_price_paise))}
                 </td>
-                <td className="py-1.5 text-right tabular-nums">
+                <td className="whitespace-nowrap px-1 py-2 text-right tabular-nums">
                   {formatInr(Number(item.amount_paise))}
                 </td>
               </tr>
