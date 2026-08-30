@@ -1,5 +1,5 @@
 begin;
-select plan(71);
+select plan(77);
 select has_table('public','patients','patients table exists');
 select has_table('public','visits','visits table exists');
 select has_table('public','medicine_batches','stock table exists');
