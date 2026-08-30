@@ -11,8 +11,8 @@ const roleTables: Record<AppRole, string[]> = {
   reception: ["visits", "vitals", "visit_payments", "patient_reports", "consultations"],
   op: ["visits", "vitals", "patient_reports"],
   doctor: ["visits", "consultations", "patient_reports", "ip_tickets"],
-  ip: ["ip_tickets", "ip_charges", "ip_payments", "patient_reports"],
-  pharmacy: ["prescriptions", "medicine_batches", "pharmacy_sales"],
+  ip: ["ip_tickets", "ip_charges", "ip_payments", "patient_reports", "ip_inventory_requests"],
+  pharmacy: ["prescriptions", "medicine_batches", "pharmacy_sales", "ip_inventory_requests"],
 };
 
 export function OperationalLiveSync({ role }: { role: AppRole }) {

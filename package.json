@@ -2,17 +2,22 @@
   "name": "hospital",
   "version": "0.1.0",
   "private": true,
+  "engines": {
+    "node": ">=22.0.0"
+  },
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "postbuild": "node scripts/sanitize-standalone.mjs",
     "start": "next start",
     "lint": "eslint .",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "next typegen && tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "test:e2e": "playwright test",
     "verify": "pnpm lint && pnpm typecheck && pnpm test && pnpm build",
+    "deploy:check": "node scripts/check-production-env.mjs",
     "db:start": "supabase start",
     "db:stop": "supabase stop",
     "db:reset": "supabase db reset",
@@ -20,6 +25,7 @@
     "db:push": "supabase db push",
     "db:types": "supabase gen types typescript --local > src/types/database.generated.ts",
     "db:import-snomed": "node scripts/import-snomed-rf2.mjs",
+    "db:create-first-admin": "node scripts/create-first-admin.mjs",
     "db:clean-demo": "node scripts/prepare-production.mjs"
   },
   "dependencies": {
@@ -50,6 +56,7 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@next/env": "16.3.0",
     "@playwright/test": "^1.62.1",
     "@tailwindcss/postcss": "^4",
     "@testing-library/jest-dom": "^7.0.1",

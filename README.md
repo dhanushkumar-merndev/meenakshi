@@ -14,6 +14,10 @@ Next.js 16, shadcn/ui, and Supabase foundation for Meenakshi Hospital. Authentic
 
 Useful checks: `pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm build`, or all four with `pnpm verify`. Database tests run with `pnpm db:test`.
 
+## Production deployment
+
+The repository produces a Next.js standalone server and includes a non-root, health-checked Docker image. Run `pnpm deploy:check`, then follow [DEPLOYMENT.md](DEPLOYMENT.md) and [SUPABASE_SETUP.md](SUPABASE_SETUP.md). Apply database migrations as a separate release step; never place the service-role key in a build argument or public environment variable.
+
 ### Browser tests
 
 `pnpm exec playwright install chromium` once, then `pnpm test:e2e`.
