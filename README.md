@@ -33,3 +33,23 @@ The specs write to whatever database `.env` points at — registering a patient,
 Coverage: the full reception/OP→pharmacy flow, IP charges and payments, role isolation for all five account types, printed-document letterheads, the money-free token, and mobile layout at 390px.
 
 Hosted migrations use `supabase link --project-ref <ref>` followed by `pnpm db:push`. Never place a service-role key in a public variable.
+
+## SNOMED CT terminology
+
+SNOMED CT is not committed to this repository. It is licensed terminology and
+must be obtained by the hospital from SNOMED International or its national
+release centre. After applying migrations, import an extracted International
+RF2 Snapshot package with:
+
+```bash
+pnpm db:import-snomed -- /absolute/path/to/SnomedCT_InternationalRF2_PRODUCTION_<date> \
+  --project <SUPABASE_PROJECT_ID> --yes
+```
+
+Without `--yes`, the command is a dry run. It verifies the release and reports
+counts without changing the database. A real import requires the project ref to
+match `.env`, replaces the prior active terminology in one transaction, stores
+the package version and licence statement, and rolls back completely on error.
+Only current active English concepts, preferred terms and synonyms are retained;
+RF2 Full history, OWL and relationship files stay outside the operational HMS.
+The original release ZIP is the recovery copy and should be stored privately.

@@ -56,6 +56,12 @@ select has_function('public','operational_data_signature',array[]::text[],'cost-
 select has_function('public','get_visit_financial_summaries',array['uuid[]'],'guarded visit finance RPC exists');
 select has_function('public','get_editable_consultation_fee',array['uuid'],'clinical fee-only read RPC exists');
 select has_function('public','search_diagnosis_terms',array['text','text','integer'],'code-system-filtered diagnosis search exists');
+select has_table('public','snomed_releases','official SNOMED release metadata exists');
+select has_table('public','snomed_concepts','official SNOMED current terminology exists');
+select like(pg_get_functiondef('public.search_diagnosis_terms(text,text,integer)'::regprocedure),'%public.snomed_concepts%','diagnosis search includes official SNOMED concepts');
+select isnt_empty($$select policyname from pg_policies where schemaname='public' and tablename='snomed_concepts'$$,'official SNOMED concepts are protected by RLS');
+select is(has_table_privilege('anon','public.snomed_concepts','SELECT'),false,'anonymous users have no raw SNOMED table grant');
+select is(has_table_privilege('authenticated','public.snomed_concepts','INSERT'),false,'authenticated users cannot write official SNOMED terminology');
 select has_table('public','clinical_term_catalog_memberships','clinical catalog provenance is retained');
 select is((select count(*) from public.clinical_term_catalog_memberships where catalog='SNOMED-ready common diagnosis dataset'),727::bigint,'all supplied SNOMED-ready diagnoses are seeded');
 select is((select count(*) from public.clinical_terms term join public.clinical_term_catalog_memberships membership on membership.term_id=term.id where membership.catalog='SNOMED-ready common diagnosis dataset' and term.normalized_text='fever'),1::bigint,'seeded Fever diagnosis is searchable locally');

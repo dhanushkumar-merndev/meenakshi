@@ -116,7 +116,7 @@ export function BulkMedicineImport() {
       setValid(checked.valid);
       setInvalid(checked.invalid);
       setKey(crypto.randomUUID());
-    } catch {
+    } catch (error) {
       setFileName(file.name);
       setRawRows([]);
       setValid([]);
@@ -124,9 +124,8 @@ export function BulkMedicineImport() {
         {
           row: 1,
           data: {},
-          errors: [
-            "The spreadsheet could not be read. Use the official template.",
-          ],
+          errors: [(error as Error).message ||
+            "The spreadsheet could not be read. Use the official template."],
         },
       ]);
     } finally {

@@ -90,6 +90,8 @@ const KEEP = [
   "inventory_items",
   "medicine_directory",
   "clinical_terms",
+  "snomed_releases",
+  "snomed_concepts",
 ];
 const BUCKETS = ["patient-documents", "hospital-exports"];
 

@@ -84,11 +84,11 @@ const COMMON_SHOWN = 3;
 
 /**
  * Assessment/Diagnosis entry. Redesigned around the three coding contexts a
- * diagnosis can come from: ICD-10 and SNOMED-CT are each searched against the
- * local clinical_terms directory, filtered by the database before its result
- * limit is applied. SNOMED-CT also includes the hospital's local SNOMED-ready
- * terms, clearly marked as mapping pending when they have no verified concept
- * ID; "Other Diagnosis" is
+ * diagnosis can come from: ICD-10 is searched in the editable clinical
+ * directory, while SNOMED-CT searches the locally imported official RF2
+ * terminology and retains the hospital's uncoded shortlist as a fallback.
+ * Results are filtered by PostgreSQL before its result limit is applied;
+ * fallback phrases are clearly marked as mapping pending. "Other Diagnosis" is
  * always free text, no directory lookup. A shortlist of common diagnoses
  * above the tabs adds a name in one click without a code system at all.
  * Every added diagnosis carries a Provisional/Confirmed status and an

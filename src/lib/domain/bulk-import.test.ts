@@ -1,5 +1,15 @@
 import { describe, expect, it } from "vitest";
-import { cellBoolean, cellText, chunkKey, chunkRows, IMPORT_CHUNK_SIZE, isIsoDate, MAX_IMPORT_ROWS } from "./bulk-import";
+import {
+  cellBoolean,
+  cellText,
+  chunkKey,
+  chunkRows,
+  IMPORT_CHUNK_SIZE,
+  isIsoDate,
+  MAX_IMPORT_FILE_BYTES,
+  MAX_IMPORT_ROWS,
+  parseSpreadsheet,
+} from "./bulk-import";
 
 describe("bulk import", () => {
   it("splits a full-size file into transaction-sized chunks", () => {
@@ -43,5 +53,19 @@ describe("bulk import", () => {
     expect(isIsoDate("2027-08-31")).toBe(true);
     expect(isIsoDate("31-08-2027")).toBe(false);
     expect(isIsoDate("2027-02-31")).toBe(false);
+  });
+
+  it("rejects unsupported, empty, and oversized files before parsing", async () => {
+    await expect(parseSpreadsheet(new File(["x"], "import.txt"))).rejects.toThrow(
+      "Only .xlsx and .csv",
+    );
+    await expect(parseSpreadsheet(new File([], "import.xlsx"))).rejects.toThrow(
+      "empty",
+    );
+    const oversized = new File(
+      [new Uint8Array(MAX_IMPORT_FILE_BYTES + 1)],
+      "import.xlsx",
+    );
+    await expect(parseSpreadsheet(oversized)).rejects.toThrow("10 MB");
   });
 });

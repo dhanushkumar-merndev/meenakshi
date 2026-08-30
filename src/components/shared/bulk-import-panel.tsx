@@ -78,11 +78,15 @@ export function BulkImportPanel<Row>({
       setValid(checked.valid);
       setInvalid(checked.invalid);
       setKey(crypto.randomUUID());
-    } catch {
+    } catch (error) {
       setFileName(file.name);
       setRawRows([]);
       setValid([]);
-      setInvalid([{ row: 1, data: {}, errors: ["The file could not be read. Use the official template."] }]);
+      setInvalid([{
+        row: 1,
+        data: {},
+        errors: [(error as Error).message || "The file could not be read. Use the official template."],
+      }]);
     } finally {
       setParsing(false);
     }

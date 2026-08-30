@@ -112,9 +112,9 @@ test.describe("OP visit through to pharmacy", () => {
     await doctor.getByLabel("Symptoms / Chief Complaint").fill("Fever for three days, body ache");
     await doctor.getByLabel("Examination").fill("Throat congested, chest clear");
 
-    // Assessment comes from the seeded local SNOMED-ready directory and is
-    // required to complete. The supplied bundle is intentionally unmapped, so
-    // the selected phrase must remain local rather than claim a SNOMED code.
+    // The fallback directory is present even in an isolated test database that
+    // has not received the separately licensed official RF2 import. It remains
+    // uncoded and must never claim a verified SNOMED concept ID.
     await doctor.getByRole("button", { name: "Add diagnosis" }).click();
     await doctor.getByRole("tab", { name: "SNOMED-CT" }).click();
     await doctor.getByRole("button", { name: "Search SNOMED-CT" }).click();

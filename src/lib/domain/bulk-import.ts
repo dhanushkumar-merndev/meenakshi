@@ -14,6 +14,7 @@
  */
 export const MAX_IMPORT_ROWS = 10_000;
 export const IMPORT_CHUNK_SIZE = 500;
+export const MAX_IMPORT_FILE_BYTES = 10 * 1024 * 1024;
 
 export function chunkRows<T>(rows: T[], size = IMPORT_CHUNK_SIZE): T[][] {
   const chunks: T[][] = [];
@@ -69,6 +70,13 @@ export const cellText = (value: unknown) => {
  * cannot be fixed in one screen and left broken in another.
  */
 export async function parseSpreadsheet(file: File): Promise<Record<string, unknown>[]> {
+  if (!/\.(xlsx|csv)$/i.test(file.name)) {
+    throw new Error("Only .xlsx and .csv files are supported.");
+  }
+  if (file.size < 1) throw new Error("The spreadsheet is empty.");
+  if (file.size > MAX_IMPORT_FILE_BYTES) {
+    throw new Error("The spreadsheet must be 10 MB or smaller.");
+  }
   // Loaded on demand: the parser is large and only import screens need it.
   const XLSX = await import("xlsx");
   const workbook = XLSX.read(await file.arrayBuffer(), { type: "array", cellDates: true });
