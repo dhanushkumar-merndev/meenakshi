@@ -1,13 +1,17 @@
 import type { NextConfig } from "next";
 
-// Next.js rejects a deploymentId longer than 32 characters, but
-// VERCEL_GIT_COMMIT_SHA is a full 40-character git SHA. Truncate rather than
-// drop it: a 32-character prefix is still unique per deployment, which is all
-// skew protection needs.
-const rawDeploymentId =
-  process.env.DEPLOYMENT_VERSION ?? process.env.VERCEL_GIT_COMMIT_SHA;
-const deploymentId = rawDeploymentId?.slice(0, 32);
 const isVercelBuild = process.env.VERCEL === "1";
+
+// Skew protection needs a deployment id that is unique per *deployment*. A
+// commit SHA is unique per *commit*, so deriving one from VERCEL_GIT_COMMIT_SHA
+// fails the moment the same commit is redeployed or a failed build is retried
+// ("deploymentId ... already exists in this project"). Vercel issues its own id
+// when Skew Protection is enabled in the project settings, so leave it unset
+// there. Self-hosted builds still supply one explicitly via DEPLOYMENT_VERSION,
+// which Next.js caps at 32 characters.
+const deploymentId = isVercelBuild
+  ? undefined
+  : process.env.DEPLOYMENT_VERSION?.slice(0, 32);
 
 const nextConfig: NextConfig = {
   // Vercel injects its own Next.js adapter and output pipeline. Standalone
