@@ -1,5 +1,5 @@
 begin;
-select plan(46);
+select plan(54);
 
 create temp table test_actor as
 select id from public.profiles where email = 'admin@meenakshihospital.com' limit 1;
@@ -227,6 +227,50 @@ $sql$,
 reset role;
 select is((select count(*) from public.visit_payments where visit_id = '24000000-0000-0000-0000-000000000026'), 1::bigint, 'trusted-fee retry creates no duplicate payment');
 select is((select quantity from public.medicine_batches where id = '24000000-0000-0000-0000-000000000010'), 84, 'trusted-fee retry does not decrement stock twice');
+
+-- The counter may hand over more than was prescribed when the batch has the
+-- stock for it; the prescribed quantity on record then follows what was
+-- actually supplied, and the raise is auditable.
+insert into public.patients(id, phone_normalized, name, created_by)
+values ('24000000-0000-0000-0000-000000000031', '9876500025', 'Excess Supply Test', (select id from test_actor));
+insert into public.visits(
+  id, patient_id, doctor_id, department_id, visit_type, visit_date,
+  token_number, fee_paise, status, idempotency_key, created_by
+) values (
+  '24000000-0000-0000-0000-000000000032', '24000000-0000-0000-0000-000000000031',
+  '24000000-0000-0000-0000-000000000002', '24000000-0000-0000-0000-000000000001',
+  'op', current_date, 24005, 0, 'completed',
+  '24000000-0000-0000-0000-000000000033', (select id from test_actor)
+);
+insert into public.prescriptions(id, visit_id, doctor_id, status)
+values ('24000000-0000-0000-0000-000000000034', '24000000-0000-0000-0000-000000000032', '24000000-0000-0000-0000-000000000002', 'draft');
+insert into public.prescription_items(
+  id, prescription_id, medicine_id, medicine_name, requested_quantity
+) values (
+  '24000000-0000-0000-0000-000000000035', '24000000-0000-0000-0000-000000000034',
+  '24000000-0000-0000-0000-000000000009', 'Dispense Test Tablet', 6
+);
+update public.prescriptions set status = 'pending'
+where id = '24000000-0000-0000-0000-000000000034';
+
+set local role authenticated;
+select lives_ok($$
+  insert into dispense_results values (
+    'excess', public.dispense_prescription(
+      '24000000-0000-0000-0000-000000000034',
+      '[{"prescription_item_id":"24000000-0000-0000-0000-000000000035","batch_id":"24000000-0000-0000-0000-000000000010","quantity":20}]'::jsonb,
+      'cash', '24000000-0000-0000-0000-000000000036', 0
+    )
+  )
+$$, 'counter may supply more than prescribed when the batch has the stock');
+select is((select quantity from public.medicine_batches where id = '24000000-0000-0000-0000-000000000010'), 64, 'excess dispense decrements the full supplied quantity');
+select is((select dispensed_quantity from public.prescription_items where id = '24000000-0000-0000-0000-000000000035'), 20, 'excess dispense records what was actually handed over');
+select is((select requested_quantity from public.prescription_items where id = '24000000-0000-0000-0000-000000000035'), 20, 'prescribed quantity rises to match the supplied quantity');
+select is((select status::text from public.prescriptions where id = '24000000-0000-0000-0000-000000000034'), 'dispensed', 'excess dispense closes the prescription');
+select is((select total_paise from public.pharmacy_sales where id = (select sale_id from dispense_results where kind = 'excess')), 6000::bigint, 'excess sale bills every supplied piece');
+select is((select sm.quantity_delta from public.stock_movements sm join public.pharmacy_sale_items si on si.id = sm.idempotency_key where si.sale_id = (select sale_id from dispense_results where kind = 'excess')), -20, 'excess dispense writes the full supplied quantity to the stock ledger');
+reset role;
+select is((select count(*) from public.audit_logs where action = 'PRESCRIPTION_QUANTITY_RAISED' and entity_id = '24000000-0000-0000-0000-000000000035' and (metadata ->> 'excess_quantity')::integer = 14), 1::bigint, 'raising the prescribed quantity is written to the audit trail');
 
 update public.profiles set role = 'doctor'
 where id = (select id from test_actor);

@@ -2,9 +2,12 @@ import type { NextConfig } from "next";
 
 const deploymentId =
   process.env.DEPLOYMENT_VERSION ?? process.env.VERCEL_GIT_COMMIT_SHA;
+const isVercelBuild = process.env.VERCEL === "1";
 
 const nextConfig: NextConfig = {
-  output: "standalone",
+  // Vercel injects its own Next.js adapter and output pipeline. Standalone
+  // output is only needed by the self-hosted Docker image.
+  ...(!isVercelBuild ? { output: "standalone" as const } : {}),
   poweredByHeader: false,
   allowedDevOrigins: ["127.0.0.1", "192.168.1.8"],
   ...(deploymentId ? { deploymentId } : {}),

@@ -17,6 +17,17 @@ export type StockAllocation = {
   selectedQuantity: number;
   /** Requested quantity that will not be supplied by this transaction. */
   notSuppliedQuantity: number;
+  /** Selected quantity beyond the request; always 0 unless excess is allowed. */
+  excessQuantity: number;
+};
+
+export type StockAllocationOptions = {
+  /**
+   * Lets a counter supply more than was requested, bounded only by visible
+   * stock. Off by default: a fulfilment counter normally cannot hand over
+   * more than the ward or consultant asked for.
+   */
+  allowExceedingRequest?: boolean;
 };
 
 function wholeNonNegative(value: number) {
@@ -33,8 +44,10 @@ function wholeNonNegative(value: number) {
 export function allocateVisibleStock(
   lines: readonly StockAllocationLine[],
   availableByStockKey: Readonly<Record<string, number>>,
+  options: StockAllocationOptions = {},
 ): StockAllocation[] {
   const usedByStockKey: Record<string, number> = {};
+  const allowExcess = options.allowExceedingRequest === true;
 
   return lines.map((line) => {
     const requestedQuantity = wholeNonNegative(line.requestedQuantity);
@@ -42,11 +55,14 @@ export function allocateVisibleStock(
     const stockKey = line.stockKey;
 
     if (!stockKey || !(stockKey in availableByStockKey)) {
-      const selected = Math.min(requestedQuantity, selectedQuantity);
+      const selected = allowExcess
+        ? selectedQuantity
+        : Math.min(requestedQuantity, selectedQuantity);
       return {
         availableNow: null,
         selectedQuantity: selected,
-        notSuppliedQuantity: requestedQuantity - selected,
+        notSuppliedQuantity: Math.max(0, requestedQuantity - selected),
+        excessQuantity: Math.max(0, selected - requestedQuantity),
       };
     }
 
@@ -55,14 +71,17 @@ export function allocateVisibleStock(
       0,
       totalAvailable - (usedByStockKey[stockKey] ?? 0),
     );
-    const selected = Math.min(requestedQuantity, selectedQuantity, availableNow);
+    const selected = allowExcess
+      ? Math.min(selectedQuantity, availableNow)
+      : Math.min(requestedQuantity, selectedQuantity, availableNow);
     usedByStockKey[stockKey] =
       (usedByStockKey[stockKey] ?? 0) + selected;
 
     return {
       availableNow,
       selectedQuantity: selected,
-      notSuppliedQuantity: requestedQuantity - selected,
+      notSuppliedQuantity: Math.max(0, requestedQuantity - selected),
+      excessQuantity: Math.max(0, selected - requestedQuantity),
     };
   });
 }

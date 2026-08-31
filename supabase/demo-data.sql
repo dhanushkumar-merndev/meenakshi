@@ -198,7 +198,15 @@ select
   a.id,
   ((current_date - (s.i % 365))::timestamp + interval '8 hours' + make_interval(mins => s.i % 600)) at time zone 'Asia/Kolkata'
 from patient_seed s cross join admin_user a
-on conflict (phone_normalized) do nothing;
+-- UHID, not phone, has been the unique patient identity since
+-- 20260815190000_uhid_patient_identity.sql dropped patients_phone_normalized_key
+-- (a household legitimately shares one number), so there is no arbiter index for
+-- ON CONFLICT (phone_normalized). This guard keeps the re-run safety that clause
+-- was there to provide.
+where not exists (
+  select 1 from public.patients p
+  where p.phone_normalized = (7000000000::bigint + s.i)::text
+);
 
 -- A broad medicine directory with two batches per item.
 with medicine_seed as (
@@ -477,18 +485,28 @@ join public.visits v on v.id = p.visit_id
 cross join admin_user a
 on conflict (idempotency_key) do nothing;
 
+-- amount_paise stopped being a generated column in 20260816260000_medicine_pack_size.sql
+-- (it is now NOT NULL and written explicitly), and prices are per pack while
+-- quantities are pieces. Both values mirror dispense_prescription()'s own
+-- rounding so demo receipts add up the way real ones do.
 insert into public.pharmacy_sale_items(
-  id, sale_id, prescription_item_id, batch_id, quantity, unit_price_paise
+  id, sale_id, prescription_item_id, batch_id, quantity,
+  unit_price_paise, amount_paise
 )
 select
   md5('meenakshi-demo-sale-line-' || i || '-' || line_no)::uuid,
-  s.id, pi.id, b.id, pi.requested_quantity, b.selling_price_paise
+  s.id, pi.id, b.id, pi.requested_quantity,
+  round(b.selling_price_paise::numeric / greatest(b.units_per_pack, 1)),
+  round(
+    pi.requested_quantity::numeric * b.selling_price_paise
+    / greatest(b.units_per_pack, 1)
+  )
 from generate_series(1, 2000) i
 cross join generate_series(1, 2) line_no
 join public.pharmacy_sales s on s.id = md5('meenakshi-demo-sale-' || i)::uuid
 join public.prescription_items pi on pi.id = md5('meenakshi-demo-rx-line-' || i || '-' || line_no)::uuid
 join lateral (
-  select mb.id, mb.selling_price_paise
+  select mb.id, mb.selling_price_paise, mb.units_per_pack
   from public.medicine_batches mb
   where mb.medicine_id = pi.medicine_id and mb.active and mb.expiry_date >= current_date
   order by mb.expiry_date, mb.id limit 1
@@ -527,6 +545,35 @@ from (
   from generate_series(1, 3000) i
 ) seed
 where p.id = seed.id and p.status = 'draft';
+
+-- require_settled_op_fee() (20260815200000) refuses an admission while the
+-- source OP visit still owes a consultation fee. The OP seed above deliberately
+-- leaves ~10% unpaid and some part-paid for realism, so settle only the 100
+-- visits that go on to be admitted -- which is what reception does before
+-- admitting -- and leave the rest of the outstanding mix intact.
+with admin_user as (
+  select id from public.profiles where email = 'admin@meenakshihospital.com' limit 1
+), admitted as (
+  select v.id, v.created_at,
+         v.fee_paise - coalesce(sum(vp.amount_paise), 0) as balance
+  from public.visits v
+  left join public.visit_payments vp on vp.visit_id = v.id
+  where v.id in (select md5('meenakshi-demo-op-' || i)::uuid from generate_series(1, 100) i)
+  group by v.id, v.fee_paise, v.created_at
+)
+insert into public.visit_payments(
+  id, visit_id, amount_paise, mode, reference, notes,
+  idempotency_key, collected_by, created_at
+)
+select
+  md5('meenakshi-demo-admission-settlement-' || ad.id)::uuid,
+  ad.id, ad.balance, 'cash'::public.payment_mode,
+  'DEMO-ADM-' || left(ad.id::text, 8), 'Demo pre-admission fee settlement',
+  md5('meenakshi-demo-admission-settlement-key-' || ad.id)::uuid,
+  a.id, ad.created_at + interval '30 minutes'
+from admitted ad cross join admin_user a
+where ad.balance > 0
+on conflict (idempotency_key) do nothing;
 
 -- 100 IP cases with running, discharge-pending, and completed examples.
 with admin_user as (

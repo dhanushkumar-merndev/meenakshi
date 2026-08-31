@@ -68,6 +68,8 @@ export async function dispensePrescription(
         ? "This prescription has expired or is no longer available. No stock was changed."
         : error.message.includes("stock unavailable")
           ? "Selected batch does not have enough unexpired stock."
+          : error.message.includes("prescription item not found")
+            ? "A prescribed medicine is no longer on this prescription. Refresh and try again."
           : error.message.includes("prescribed quantity cannot be changed")
             ? "Dispensing must use the quantity prescribed by the consultant."
             : error.message.includes("exact outstanding consultation fee")

@@ -46,6 +46,10 @@ import {
 
 const MODE_LABELS: Record<string, string> = { cash: "Cash", upi: "UPI", card: "Card", bank_transfer: "Bank Transfer", other: "Other" };
 
+// The pharmacy counter is bounded by the stock in the batch, not by the
+// prescribed quantity: it may hand over more when the stock is there.
+const ALLOW_EXCESS = { allowExceedingRequest: true } as const;
+
 type Item = {
   id: string;
   medicineId: string | null;
@@ -108,9 +112,10 @@ export function DispenseDialog({
   const [unavailableKey] = useState(() => crypto.randomUUID());
   const outstanding = consultationBalancePaise ?? 0;
   const feeCollected = outstanding > 0 ? (outstanding / 100).toFixed(2) : "";
-  // The consultant's requested quantity is immutable at the pharmacy
-  // counter. Pharmacy chooses only how much of the remaining quantity it can
-  // actually hand over.
+  // The consultant's prescription sets what is still pending. The counter may
+  // supply less (a shortage stays pending) or more than that, bounded by the
+  // stock actually in the selected batch; supplying more raises the recorded
+  // prescribed quantity on the server and is written to the audit trail.
   const pendingFor = (item: Item) => item.requested - item.dispensed;
   const availableByBatchId = useMemo(
     () =>
@@ -134,6 +139,7 @@ export function DispenseDialog({
         };
       }),
       availableByBatchId,
+      ALLOW_EXCESS,
     );
     return candidate.map((line, index) => ({
       ...line,
@@ -176,6 +182,7 @@ export function DispenseDialog({
           };
         }),
         availableByBatchId,
+        ALLOW_EXCESS,
       ),
     [availableByBatchId, items, lines],
   );
@@ -223,10 +230,16 @@ export function DispenseDialog({
     .map((item) => ({ item, quantity: pendingFor(item) }))
     .filter(({ quantity }) => quantity > 0);
   const totalSelected = payload.reduce((sum, line) => sum + line.quantity, 0);
+  const totalExcess = allocations.reduce(
+    (sum, allocation) => sum + allocation.excessQuantity,
+    0,
+  );
   const dispenseLabel =
-    totalSelected === totalPending
-      ? "Confirm Full Dispense"
-      : "Dispense Available Quantity";
+    totalExcess > 0
+      ? "Confirm Dispense With Extra"
+      : totalSelected === totalPending
+        ? "Confirm Full Dispense"
+        : "Dispense Available Quantity";
   if (unavailableState.ok) {
     return (
       <div className="flex flex-wrap items-center justify-end gap-3">
@@ -318,8 +331,9 @@ export function DispenseDialog({
             <DialogTitle>Dispense {prescriptionNumber}</DialogTitle>
             <DialogDescription>
               {patientName} · {source.toUpperCase()} · FEFO batches are
-              suggested. Available now is informational only; stock is neither
-              reserved nor reduced until you confirm the actual quantity.
+              suggested. Available now is the ceiling for “Dispense now”;
+              stock is neither reserved nor reduced until you confirm the
+              actual quantity.
             </DialogDescription>
           </DialogHeader>
           <input type="hidden" name="prescriptionId" value={prescriptionId} />
@@ -371,16 +385,17 @@ export function DispenseDialog({
                   const availableNow = selectedBatch
                     ? allocation?.availableNow ?? 0
                     : 0;
-                  const maximumDispense = selectedBatch
-                    ? Math.min(pending, allocation?.availableNow ?? 0)
-                    : 0;
+                  const maximumDispense = selectedBatch ? availableNow : 0;
                   const notSupplied = allocation?.notSuppliedQuantity ?? pending;
+                  const excess = allocation?.excessQuantity ?? 0;
                   const resultLabel =
-                    notSupplied === 0
-                      ? "Full dispense"
-                      : (line?.quantity ?? 0) === 0
-                        ? "Still pending"
-                        : `Partial · ${notSupplied} still pending`;
+                    excess > 0
+                      ? `Extra · ${excess} over prescription`
+                      : notSupplied === 0
+                        ? "Full dispense"
+                        : (line?.quantity ?? 0) === 0
+                          ? "Still pending"
+                          : `Partial · ${notSupplied} still pending`;
                   return (
                     <TableRow key={item.id}>
                       <TableCell className="text-muted-foreground">{index + 1}</TableCell>
@@ -501,14 +516,23 @@ export function DispenseDialog({
                                 className="h-auto px-0 text-[11px]"
                                 onClick={() =>
                                   setLines((rows) =>
-                                    reconcileLines(rows.map((row, i) =>
-                                      i === index
-                                        ? {
-                                            ...row,
-                                            quantity: Math.floor(maximumDispense / pack) * pack,
-                                          }
-                                        : row,
-                                    )),
+                                    reconcileLines(rows.map((row, i) => {
+                                      if (i !== index) return row;
+                                      // Rounds down what is already typed, so
+                                      // this never balloons to the whole batch
+                                      // now that stock is the only ceiling.
+                                      const target =
+                                        pieces > 0
+                                          ? pieces
+                                          : Math.min(pending, maximumDispense);
+                                      return {
+                                        ...row,
+                                        quantity: Math.min(
+                                          Math.floor(target / pack) * pack,
+                                          maximumDispense,
+                                        ),
+                                      };
+                                    })),
                                   )
                                 }
                               >
@@ -523,9 +547,11 @@ export function DispenseDialog({
                         <p
                           className={
                             "mt-1 text-[11px] " +
-                            (notSupplied === 0
-                              ? "text-muted-foreground"
-                              : "text-destructive")
+                            (excess > 0
+                              ? "text-amber-600 dark:text-amber-500"
+                              : notSupplied === 0
+                                ? "text-muted-foreground"
+                                : "text-destructive")
                           }
                         >
                           {resultLabel}
@@ -543,9 +569,12 @@ export function DispenseDialog({
           <p className="text-xs text-muted-foreground">
             <span className="font-medium text-foreground">Stock rule:</span>{" "}
             choosing a batch does not reserve it. Confirm Dispense changes stock
-            only by the quantity shown in “Dispense now.” “Not supplied now”
-            stays pending until it is supplied or you close the remaining
-            prescription as unavailable.
+            only by the quantity shown in “Dispense now,” which you may set
+            anywhere from 0 up to the batch stock shown in “Available now.”
+            “Not supplied now” stays pending until it is supplied or you close
+            the remaining prescription as unavailable. Supplying more than was
+            prescribed raises the recorded prescribed quantity and is written to
+            the audit trail.
           </p>
           {source === "op" ? (
             <div className="flex flex-wrap gap-4">
