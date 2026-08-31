@@ -1,7 +1,12 @@
 import type { NextConfig } from "next";
 
-const deploymentId =
+// Next.js rejects a deploymentId longer than 32 characters, but
+// VERCEL_GIT_COMMIT_SHA is a full 40-character git SHA. Truncate rather than
+// drop it: a 32-character prefix is still unique per deployment, which is all
+// skew protection needs.
+const rawDeploymentId =
   process.env.DEPLOYMENT_VERSION ?? process.env.VERCEL_GIT_COMMIT_SHA;
+const deploymentId = rawDeploymentId?.slice(0, 32);
 const isVercelBuild = process.env.VERCEL === "1";
 
 const nextConfig: NextConfig = {
