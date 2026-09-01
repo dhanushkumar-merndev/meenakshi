@@ -1,18 +1,18 @@
 begin;
-select plan(77);
+select plan(78);
 select has_table('public','patients','patients table exists');
 select has_table('public','visits','visits table exists');
 select has_table('public','medicine_batches','stock table exists');
 select has_table('public','notification_reads','persistent notification read state exists');
 select has_function('public','create_visit_with_token',array['uuid','uuid','visit_type','bigint','bigint','payment_mode','uuid','text','uuid'],'atomic visit RPC exists');
-select has_function('public','dispense_prescription',array['uuid','jsonb','payment_mode','uuid'],'atomic dispense RPC exists');
+select has_function('public','dispense_prescription',array['uuid','jsonb','payment_mode','uuid','bigint'],'atomic dispense RPC exists');
 select has_function('public','expire_stale_prescriptions',array[]::text[],'24-hour prescription expiry workflow exists');
 select has_function('public','record_visit_vitals',array['uuid','numeric','numeric','numeric','smallint','smallint','smallint','smallint','smallint','text'],'vitals workflow RPC exists');
 select has_column('public','vitals','temperature_f','vitals store temperature in Fahrenheit');
 select hasnt_column('public','vitals','temperature_c','legacy Celsius vitals column is removed');
 select col_has_check('public','vitals','temperature_f','Fahrenheit temperature has a valid range check');
-select has_function('public','save_visit_consultation',array['uuid','text','text','text','text','text','follow_up_type','date','integer','jsonb','jsonb','boolean'],'consultation workflow RPC exists');
-select has_function('public','create_ip_ticket',array['uuid','uuid','uuid','text','text','text','bigint','payment_mode','boolean','uuid'],'emergency-capable IP admission RPC exists');
+select has_function('public','save_visit_consultation',array['uuid','text','text','text','text','text','follow_up_type','date','integer','jsonb','jsonb','boolean','bigint','boolean','text','text','jsonb'],'consultation workflow RPC exists');
+select has_function('public','create_ip_ticket',array['uuid','uuid','uuid','text','text','text','bigint','payment_mode','boolean','uuid','uuid','uuid'],'emergency-capable IP admission RPC exists');
 select has_function('public','assign_ip_ticket_patient',array['uuid','uuid'],'controlled emergency patient assignment exists');
 select has_function('public','add_configured_ip_charge',array['uuid','uuid','integer','uuid'],'configured IP charge workflow exists');
 select has_function('public','add_custom_ip_charge',array['uuid','text','integer','bigint','uuid'],'custom IP charge workflow exists');
@@ -31,8 +31,8 @@ select has_trigger('public','consultations','protect_completed_consultation','co
 select has_trigger('public','prescription_items','protect_prescription_content','completed prescription content is immutable');
 select has_trigger('public','visit_payments','prevent_visit_overpayment','visit overpayment is blocked');
 select has_function('public','bulk_import_medicines',array['jsonb','text','uuid'],'bulk medicine import RPC exists');
-select has_function('public','add_ip_progress_note',array['uuid','text','boolean','uuid'],'IP progress note RPC exists');
-select has_function('public','save_ip_discharge_summary',array['uuid','text','text','text','text','text','text'],'IP discharge summary RPC exists');
+select has_function('public','add_ip_progress_note',array['uuid','text','boolean','uuid','bigint','text','text','text','text','text','text','text','text'],'IP progress note RPC exists');
+select has_function('public','save_ip_discharge_summary',array['uuid','text','text','text','text','text','text','text','text','text'],'IP discharge summary RPC exists');
 select has_function('public','complete_ip_discharge',array['uuid'],'IP discharge completion RPC exists');
 select has_trigger('public','ip_tickets','protect_ip_discharge_workflow','IP discharge is a controlled immutable workflow');
 select has_trigger('public','patients','audit_patient_created','patient creation is audited at the database boundary');
@@ -40,25 +40,34 @@ select has_trigger('public','patient_reports','audit_patient_report','report upl
 select col_has_check('public','patient_reports','size_bytes','patient report metadata enforces the 1 MB limit');
 select has_table('public','stock_movements','stock movement ledger exists');
 select has_table('public','inventory_stock_movements','consumable stock movement ledger exists');
-select has_function('public','save_medicine_batch',array['uuid','uuid','text','date','integer','bigint','bigint','integer','boolean','text','uuid'],'atomic stock adjustment workflow exists');
+select has_function('public','save_medicine_batch',array['uuid','uuid','text','date','integer','bigint','bigint','integer','boolean','text','uuid','integer'],'atomic stock adjustment workflow exists');
 select has_function('public','save_inventory_item',array['uuid','text','text','bigint','integer','integer','date','boolean','text','uuid'],'guarded consumable stock adjustment workflow exists');
 select isnt_empty($$select policyname from pg_policies where schemaname='public' and tablename='inventory_stock_movements'$$,'consumable stock ledger has RLS policies');
 select has_function('public','review_patient_report',array['uuid'],'controlled doctor report review exists');
 select has_trigger('public','patient_reports','validate_report_relationship','report links are validated at the database boundary');
 select has_function('public','report_admin_overview',array['date','date'],'server-side admin analytics exists');
 select has_function('public','search_medicine_availability',array['text','integer'],'doctor-safe medicine availability RPC exists');
-select has_function('public','list_pharmacy_batches',array['integer','integer'],'guarded pharmacy batch listing exists');
+select hasnt_function('public','list_pharmacy_batches',array['integer','integer'],'legacy unfiltered pharmacy batch listing is removed');
 select has_function('public','list_pharmacy_batches',array['text','integer','integer'],'searchable guarded pharmacy batch listing exists');
 select has_function('public','list_medicine_directory',array['text','integer','integer'],'guarded medicine directory listing exists');
 select has_function('public','list_available_dispense_batches',array['integer'],'guarded FEFO dispensing batch list exists');
-select like(pg_get_functiondef('public.list_pharmacy_sales(text,integer,integer)'::regprocedure),'%public.ip_inventory_requests%','pharmacy sales ledger includes fulfilled IP item requests');
+select has_function('public','list_dispense_batches_for_medicines',array['uuid[]'],'scoped live multi-batch dispense list exists');
+select ok(
+  pg_get_functiondef('public.list_pharmacy_sales(text,integer,integer)'::regprocedure)
+    like '%public.ip_inventory_requests%',
+  'pharmacy sales ledger includes fulfilled IP item requests'
+);
 select has_function('public','operational_data_signature',array[]::text[],'cost-controlled live data signature exists');
 select has_function('public','get_visit_financial_summaries',array['uuid[]'],'guarded visit finance RPC exists');
 select has_function('public','get_editable_consultation_fee',array['uuid'],'clinical fee-only read RPC exists');
 select has_function('public','search_diagnosis_terms',array['text','text','integer'],'code-system-filtered diagnosis search exists');
 select has_table('public','snomed_releases','official SNOMED release metadata exists');
 select has_table('public','snomed_concepts','official SNOMED current terminology exists');
-select like(pg_get_functiondef('public.search_diagnosis_terms(text,text,integer)'::regprocedure),'%public.snomed_concepts%','diagnosis search includes official SNOMED concepts');
+select ok(
+  pg_get_functiondef('public.search_diagnosis_terms(text,text,integer)'::regprocedure)
+    like '%public.snomed_concepts%',
+  'diagnosis search includes official SNOMED concepts'
+);
 select isnt_empty($$select policyname from pg_policies where schemaname='public' and tablename='snomed_concepts'$$,'official SNOMED concepts are protected by RLS');
 select is(has_table_privilege('anon','public.snomed_concepts','SELECT'),false,'anonymous users have no raw SNOMED table grant');
 select is(has_table_privilege('authenticated','public.snomed_concepts','INSERT'),false,'authenticated users cannot write official SNOMED terminology');

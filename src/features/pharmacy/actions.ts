@@ -17,7 +17,8 @@ const lineSchema = z
     }).strict(),
   )
   .min(1)
-  .max(50);
+  // One prescription item may split across several physical batches.
+  .max(200);
 const schema = z.object({
   prescriptionId: databaseIdSchema,
   lines: z.string(),
@@ -230,6 +231,6 @@ export async function saveMedicineBatch(_: ActionState, formData: FormData): Pro
   const supabase = await createSupabaseServerClient();
   const { error } = await supabase.rpc("save_medicine_batch", { p_batch_id: parsed.data.batchId || null, p_medicine_id: parsed.data.medicineId, p_batch_number: parsed.data.batchNumber, p_expiry_date: parsed.data.expiryDate, p_quantity_delta: parsed.data.quantityDelta, p_purchase_price_paise: purchase, p_selling_price_paise: selling, p_low_stock_threshold: parsed.data.lowStockThreshold, p_active: parsed.data.active === "on", p_reason: parsed.data.reason, p_idempotency_key: parsed.data.idempotencyKey, p_units_per_pack: parsed.data.unitsPerPack });
   if (error) return { ok: false, message: error.message.includes("negative") ? "This adjustment would make stock negative." : error.message.includes("duplicate") ? "This batch already exists." : "Batch and stock could not be saved." };
-  revalidatePath("/pharmacy/stock"); revalidatePath("/pharmacy/medicines"); revalidatePath("/dashboard");
+  revalidatePath("/pharmacy"); revalidatePath("/pharmacy/stock"); revalidatePath("/pharmacy/medicines"); revalidatePath("/dashboard");
   return { ok: true, message: "Batch and stock saved." };
 }

@@ -53,15 +53,6 @@ type Rx = {
     dispensed_quantity: number;
   }>;
 };
-type Batch = {
-  id: string;
-  medicine_id: string;
-  batch_number: string;
-  expiry_date: string;
-  quantity: number;
-  selling_price_paise: number;
-  units_per_pack: number;
-};
 export default async function PharmacyPage({
   searchParams,
 }: {
@@ -78,32 +69,19 @@ export default async function PharmacyPage({
   // request only added a round-trip and Vercel function time.
   // Read through an RPC: the pharmacy role has no SELECT on public.patients, so
   // an embedded join would silently return null patient names.
-  const [rxResult, batchResult, doctorsResult] = await Promise.all([
+  const [rxResult, doctorsResult] = await Promise.all([
     supabase.rpc("list_pending_prescriptions", {
       p_query: q || null,
       p_limit: 50,
       p_status_filter: selectedStatus,
     }),
-    supabase.rpc("list_available_dispense_batches", { p_limit: 500 }),
     supabase.from("doctors").select("id,display_name").eq("active", true).order("display_name"),
   ]);
   if (rxResult.error) {
     throw new Error("Pending prescriptions could not be loaded.");
   }
-  if (batchResult.error) {
-    throw new Error("Available medicine batches could not be loaded.");
-  }
   const prescriptions = (rxResult.data ?? []) as unknown as Rx[];
   const doctors = (doctorsResult.data ?? []).map((d) => ({ id: d.id, label: d.display_name }));
-  const batches = ((batchResult.data ?? []) as unknown as Batch[]).map((b) => ({
-    id: b.id,
-    medicineId: b.medicine_id,
-    batchNumber: b.batch_number,
-    expiry: b.expiry_date,
-    quantity: b.quantity,
-    pricePaise: b.selling_price_paise,
-    unitsPerPack: b.units_per_pack ?? 1,
-  }));
   return (
     <div>
       <PageHeader
@@ -243,7 +221,6 @@ export default async function PharmacyPage({
                                 requested: item.requested_quantity,
                                 dispensed: item.dispensed_quantity,
                               }))}
-                              batches={batches}
                             />
                           ) : (
                             <>

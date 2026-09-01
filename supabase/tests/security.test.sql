@@ -1,8 +1,15 @@
 begin;
-select plan(32);
+select plan(34);
 create temp table test_actor as select id from public.profiles where email='admin@meenakshihospital.com' limit 1;
 select ok(exists(select 1 from test_actor),'configured admin fixture exists');
 select set_config('request.jwt.claim.sub',(select id::text from test_actor),true);
+insert into public.patients(id, phone_normalized, name, created_by)
+values (
+  '25000000-0000-0000-0000-000000000001',
+  '9876500099',
+  'Unlinked Pharmacy Security Test',
+  (select id from test_actor)
+);
 
 set local role authenticated;
 select lives_ok($$select public.report_admin_overview(current_date,current_date)$$,'admin can use financial analytics');
@@ -22,6 +29,7 @@ select throws_ok(
 );
 select throws_ok($$select public.report_admin_overview(current_date,current_date)$$,'42501','forbidden','reception cannot use admin financial analytics');
 select throws_ok($$select public.dispense_prescription('00000000-0000-0000-0000-000000000001','[]'::jsonb,'cash','00000000-0000-0000-0000-000000000002')$$,'42501','forbidden','reception cannot dispense prescriptions');
+select throws_ok($$select * from public.list_dispense_batches_for_medicines(array['00000000-0000-0000-0000-000000000001'::uuid])$$,'42501','forbidden','reception cannot inspect pharmacy batch detail');
 select is((select count(*) from public.profiles where role='op'),0::bigint,'separate OP profiles were migrated to reception');
 reset role;
 
@@ -47,7 +55,12 @@ reset role;
 
 update public.profiles set role='pharmacy' where id=(select id from test_actor);
 set local role authenticated;
-select is((select count(*) from public.patients),0::bigint,'pharmacy cannot read patient directory rows');
+select lives_ok($$select * from public.list_dispense_batches_for_medicines(array['00000000-0000-0000-0000-000000000001'::uuid])$$,'pharmacy can load scoped live batch detail');
+select is(
+  (select count(*) from public.patients where id='25000000-0000-0000-0000-000000000001'),
+  0::bigint,
+  'pharmacy cannot read a patient unrelated to its dispensing work'
+);
 select throws_ok($$insert into public.departments(name) values('Unauthorized')$$,'42501',null,'pharmacy cannot manage departments');
 select lives_ok($$select * from public.search_diagnosis_terms('fever','SNOMED-CT',20)$$,'pharmacy can search diagnoses while transcribing a consultation');
 select lives_ok($$select public.add_clinical_term('diagnosis','Locally entered test diagnosis')$$,'pharmacy transcription can remember a typed local diagnosis');

@@ -131,7 +131,7 @@ export function StorageUsage({
           </div>
         </section>
 
-        <section className="flex flex-col items-center gap-6 border-t pt-6 sm:flex-row sm:items-center lg:border-l lg:border-t-0 lg:pl-6 lg:pt-0">
+        <section className="flex flex-col items-center gap-6  pt-6 sm:flex-row sm:items-center lg:border-l lg:border-t-0 lg:pl-6 lg:pt-0">
           <UsageRing percent={databasePercent} label="Database storage used" />
           <div className="min-w-0 flex-1 space-y-3">
             <div>

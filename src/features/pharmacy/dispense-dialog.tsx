@@ -1,10 +1,14 @@
 "use client";
 import Link from "next/link";
 import { useActionState, useMemo, useState } from "react";
-import { CheckCircle2, LoaderCircle, PackageX, Pill, Printer } from "lucide-react";
+import { CheckCircle2, LoaderCircle, PackageX, Pill, Printer, RefreshCw } from "lucide-react";
 import { dispensePrescription, markPrescriptionUnavailable } from "./actions";
 import { formatInr, packBreakdown } from "@/lib/domain/money";
-import { allocateVisibleStock } from "@/lib/domain/stock-allocation";
+import {
+  allocateFefoStock,
+  type FefoBatch,
+  type FefoRequestLine,
+} from "@/lib/domain/fefo-allocation";
 import { Button } from "@/components/ui/button";
 import {
   AlertDialog,
@@ -63,21 +67,9 @@ type Item = {
   requested: number;
   dispensed: number;
 };
-type Batch = {
-  id: string;
-  medicineId: string;
-  batchNumber: string;
-  expiry: string;
-  /** Stock in pieces. */
-  quantity: number;
-  /** Price of one pack; a single piece is priced pro rata. */
-  pricePaise: number;
-  /** Pieces in one strip / box / bottle. 1 means it is sold as single pieces. */
-  unitsPerPack: number;
-};
 type DispenseLine = {
   itemId: string;
-  batchId: string;
+  preferredBatchId: string | null;
   quantity: number;
 };
 export function DispenseDialog({
@@ -86,7 +78,6 @@ export function DispenseDialog({
   patientName,
   source,
   items,
-  batches,
   consultationBalancePaise,
   doctorName,
 }: {
@@ -95,7 +86,6 @@ export function DispenseDialog({
   patientName: string;
   source: string;
   items: Item[];
-  batches: Batch[];
   /** Outstanding consultation fee the doctor set, collected at this counter. */
   consultationBalancePaise?: number;
   doctorName?: string | null;
@@ -108,6 +98,10 @@ export function DispenseDialog({
     { ok: false },
   );
   const [mode, setMode] = useState("cash");
+  const [open, setOpen] = useState(false);
+  const [batches, setBatches] = useState<FefoBatch[]>([]);
+  const [stockLoading, setStockLoading] = useState(false);
+  const [stockError, setStockError] = useState<string | null>(null);
   const [key] = useState(() => crypto.randomUUID());
   const [unavailableKey] = useState(() => crypto.randomUUID());
   const outstanding = consultationBalancePaise ?? 0;
@@ -117,97 +111,69 @@ export function DispenseDialog({
   // stock actually in the selected batch; supplying more raises the recorded
   // prescribed quantity on the server and is written to the audit trail.
   const pendingFor = (item: Item) => item.requested - item.dispensed;
-  const availableByBatchId = useMemo(
-    () =>
-      Object.fromEntries(batches.map((batch) => [batch.id, batch.quantity])) as Record<
-        string,
-        number
-      >,
-    [batches],
-  );
-  const reconcileLines = (candidate: DispenseLine[]) => {
-    const allocations = allocateVisibleStock(
-      candidate.map((line) => {
-        const item = items.find((candidateItem) => candidateItem.id === line.itemId);
-        const hasAvailableBatch = Boolean(
-          line.batchId && line.batchId in availableByBatchId,
-        );
-        return {
-          stockKey: hasAvailableBatch ? line.batchId : null,
-          requestedQuantity: item ? pendingFor(item) : 0,
-          selectedQuantity: hasAvailableBatch ? line.quantity : 0,
-        };
-      }),
-      availableByBatchId,
-      ALLOW_EXCESS,
-    );
+  const requestLines = (candidate: DispenseLine[]): FefoRequestLine[] =>
+    candidate.map((line) => {
+      const item = items.find((candidateItem) => candidateItem.id === line.itemId);
+      return {
+        itemId: line.itemId,
+        medicineId: item?.medicineId ?? null,
+        requestedQuantity: item ? pendingFor(item) : 0,
+        selectedQuantity: line.quantity,
+        preferredBatchId: line.preferredBatchId,
+      };
+    });
+  const reconcileLines = (candidate: DispenseLine[], stock = batches) => {
+    const allocations = allocateFefoStock(requestLines(candidate), stock, ALLOW_EXCESS);
     return candidate.map((line, index) => ({
       ...line,
-      // A prescription line cannot be supplied without an actual batch.
-      quantity:
-        line.batchId && line.batchId in availableByBatchId
-          ? allocations[index].selectedQuantity
-          : 0,
+      quantity: allocations[index].selectedQuantity,
     }));
   };
   const [lines, setLines] = useState<DispenseLine[]>(() =>
-    reconcileLines(
-      items.map((item) => {
-        const batch = batches
-          .filter((b) => b.medicineId === item.medicineId && b.quantity > 0)
-          .sort((a, b) => a.expiry.localeCompare(b.expiry))[0];
-        return {
-          itemId: item.id,
-          batchId: batch?.id ?? "",
-          quantity: Math.min(
-            item.requested - item.dispensed,
-            batch?.quantity ?? 0,
-          ),
-        };
-      }),
-    ),
+    items.map((item) => ({
+      itemId: item.id,
+      preferredBatchId: null,
+      quantity: 0,
+    })),
   );
   const allocations = useMemo(
-    () =>
-      allocateVisibleStock(
-        lines.map((line) => {
-          const item = items.find((candidateItem) => candidateItem.id === line.itemId);
-          const hasAvailableBatch = Boolean(
-            line.batchId && line.batchId in availableByBatchId,
-          );
-          return {
-            stockKey: hasAvailableBatch ? line.batchId : null,
-            requestedQuantity: item ? pendingFor(item) : 0,
-            selectedQuantity: hasAvailableBatch ? line.quantity : 0,
-          };
-        }),
-        availableByBatchId,
-        ALLOW_EXCESS,
-      ),
-    [availableByBatchId, items, lines],
+    () => allocateFefoStock(requestLines(lines), batches, ALLOW_EXCESS),
+    // requestLines is deliberately derived from these current props/states.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [batches, items, lines],
   );
   const payload = useMemo(
     () =>
-      lines
-        .filter((line) => line.batchId && line.quantity > 0)
-        .map((line) => ({
-          prescription_item_id: line.itemId,
-          batch_id: line.batchId,
-          quantity: line.quantity,
+      allocations.flatMap((allocation, index) =>
+        allocation.batches.map((batch) => ({
+          prescription_item_id: lines[index].itemId,
+          batch_id: batch.batchId,
+          quantity: batch.quantity,
         })),
-    [lines],
+      ),
+    [allocations, lines],
   );
   // Mirrors the server's rounding (round(qty * pack price / units per pack))
   // so what the pharmacist sees before confirming matches the receipt after.
-  const lineAmountPaise = (batchId: string, quantity: number) => {
+  const batchAmountPaise = (batchId: string, quantity: number) => {
     const batch = batches.find((b) => b.id === batchId);
     if (!batch || quantity <= 0) return 0;
     return Math.round((quantity * batch.pricePaise) / Math.max(batch.unitsPerPack, 1));
   };
   const medicinesTotalPaise = useMemo(
-    () => lines.reduce((sum, line) => sum + lineAmountPaise(line.batchId, line.quantity), 0),
+    () =>
+      allocations.reduce(
+        (total, allocation) =>
+          total +
+          allocation.batches.reduce(
+            (lineTotal, batch) =>
+              lineTotal + batchAmountPaise(batch.batchId, batch.quantity),
+            0,
+          ),
+        0,
+      ),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [lines, batches],
+    [allocations, batches],
   );
   // The pharmacy counter cannot close an OP prescription while the doctor's
   // consultation fee is still outstanding.
@@ -240,6 +206,54 @@ export function DispenseDialog({
       : totalSelected === totalPending
         ? "Confirm Full Dispense"
         : "Dispense Available Quantity";
+  const refreshStock = async () => {
+    const medicineIds = [
+      ...new Set(items.map((item) => item.medicineId).filter((id): id is string => Boolean(id))),
+    ];
+    setStockLoading(true);
+    setStockError(null);
+    try {
+      if (medicineIds.length === 0) {
+        setBatches([]);
+        setLines((rows) => rows.map((line) => ({ ...line, quantity: 0 })));
+        return;
+      }
+      const response = await fetch(
+        `/api/pharmacy/dispense-batches?medicineIds=${encodeURIComponent(medicineIds.join(","))}`,
+        { cache: "no-store" },
+      );
+      const body = (await response.json()) as {
+        batches?: FefoBatch[];
+        error?: string;
+      };
+      if (!response.ok || !Array.isArray(body.batches)) {
+        throw new Error(body.error ?? "Live stock unavailable");
+      }
+      const fresh = body.batches;
+      setBatches(fresh);
+      setLines((current) =>
+        reconcileLines(
+          items.map((item) => ({
+            itemId: item.id,
+            preferredBatchId:
+              current.find((line) => line.itemId === item.id)?.preferredBatchId ?? null,
+            quantity: pendingFor(item),
+          })),
+          fresh,
+        ),
+      );
+    } catch {
+      setBatches([]);
+      setLines((rows) => rows.map((line) => ({ ...line, quantity: 0 })));
+      setStockError("Live stock could not be refreshed. Nothing can be dispensed until it loads.");
+    } finally {
+      setStockLoading(false);
+    }
+  };
+  const handleOpenChange = (nextOpen: boolean) => {
+    setOpen(nextOpen);
+    if (nextOpen) void refreshStock();
+  };
   if (unavailableState.ok) {
     return (
       <div className="flex flex-wrap items-center justify-end gap-3">
@@ -321,7 +335,7 @@ export function DispenseDialog({
     );
   }
   return (
-    <Dialog>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger render={<Button size="sm" />}>
         <Pill /> Dispense
       </DialogTrigger>
@@ -330,12 +344,28 @@ export function DispenseDialog({
           <DialogHeader>
             <DialogTitle>Dispense {prescriptionNumber}</DialogTitle>
             <DialogDescription>
-              {patientName} · {source.toUpperCase()} · FEFO batches are
-              suggested. Available now is the ceiling for “Dispense now”;
-              stock is neither reserved nor reduced until you confirm the
-              actual quantity.
+              {patientName} · {source.toUpperCase()} · Combined live stock is
+              split across batches in FEFO order. Stock is neither reserved nor
+              reduced until you confirm the actual quantity.
             </DialogDescription>
           </DialogHeader>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-xs text-muted-foreground">
+              {stockLoading
+                ? "Loading current batch quantities…"
+                : `${batches.length} active, unexpired batch${batches.length === 1 ? "" : "es"} loaded`}
+            </p>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              disabled={stockLoading || pending}
+              onClick={() => void refreshStock()}
+            >
+              {stockLoading ? <LoaderCircle className="animate-spin" /> : <RefreshCw />}
+              Refresh live stock
+            </Button>
+          </div>
           <input type="hidden" name="prescriptionId" value={prescriptionId} />
           <input type="hidden" name="idempotencyKey" value={key} />
           <input
@@ -345,9 +375,9 @@ export function DispenseDialog({
           />
           <input type="hidden" name="lines" value={JSON.stringify(payload)} />
           <input type="hidden" name="paymentMode" value={mode} />
-          {state.message || unavailableState.message ? (
+          {stockError || state.message || unavailableState.message ? (
             <p className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">
-              {state.message || unavailableState.message}
+              {stockError || state.message || unavailableState.message}
             </p>
           ) : null}
           <div className="overflow-x-auto">
@@ -361,8 +391,8 @@ export function DispenseDialog({
                   <TableHead>Requested</TableHead>
                   <TableHead>Supplied</TableHead>
                   <TableHead>Available now</TableHead>
-                  <TableHead className="min-w-48">
-                    Batch / Expiry / Stock
+                  <TableHead className="min-w-64">
+                    Batch allocation (FEFO)
                   </TableHead>
                   <TableHead>Dispense now</TableHead>
                   <TableHead>Not supplied now</TableHead>
@@ -379,15 +409,24 @@ export function DispenseDialog({
                   const pending = pendingFor(item);
                   const line = lines[index];
                   const allocation = allocations[index];
-                  const selectedBatch = options.find(
-                    (batch) => batch.id === line?.batchId,
-                  );
-                  const availableNow = selectedBatch
-                    ? allocation?.availableNow ?? 0
-                    : 0;
-                  const maximumDispense = selectedBatch ? availableNow : 0;
+                  const availableNow = allocation?.availableNow ?? 0;
+                  const maximumDispense = availableNow;
                   const notSupplied = allocation?.notSuppliedQuantity ?? pending;
                   const excess = allocation?.excessQuantity ?? 0;
+                  const allocatedBatches = (allocation?.batches ?? []).map((entry) => ({
+                    ...entry,
+                    batch: options.find((batch) => batch.id === entry.batchId),
+                  }));
+                  const lineAmount = allocatedBatches.reduce(
+                    (sum, entry) =>
+                      sum + batchAmountPaise(entry.batchId, entry.quantity),
+                    0,
+                  );
+                  const commonPack =
+                    options.length > 0 &&
+                    options.every((batch) => batch.unitsPerPack === options[0].unitsPerPack)
+                      ? options[0].unitsPerPack
+                      : 1;
                   const resultLabel =
                     excess > 0
                       ? `Extra · ${excess} over prescription`
@@ -433,25 +472,20 @@ export function DispenseDialog({
                       <TableCell>
                         <span className="tabular-nums">{availableNow}</span>
                         <p className="mt-1 text-[11px] text-muted-foreground">
-                          {selectedBatch ? "Selected batch" : "Choose a batch"}
+                          Across {options.length} batch{options.length === 1 ? "" : "es"}
                         </p>
                       </TableCell>
-                      <TableCell>
+                      <TableCell className="space-y-2">
                         <Select
-                          value={line?.batchId}
+                          value={line?.preferredBatchId ?? "fefo"}
                           onValueChange={(value) => {
-                            const batchId = String(value);
-                            const selected = batches.find((batch) => batch.id === batchId);
                             setLines((rows) =>
                               reconcileLines(rows.map((row, i) =>
                                 i === index
                                   ? {
                                       ...row,
-                                      batchId,
-                                      quantity: Math.min(
-                                        pending,
-                                        selected?.quantity ?? 0,
-                                      ),
+                                      preferredBatchId:
+                                        String(value) === "fefo" ? null : String(value),
                                     }
                                   : row,
                               )),
@@ -459,14 +493,15 @@ export function DispenseDialog({
                           }}
                         >
                           <SelectTrigger className="w-full">
-                            <SelectValue placeholder="No available batch">
+                            <SelectValue>
                               {() =>
-                                selectedBatch
-                                  ? `${selectedBatch.batchNumber} · ${selectedBatch.expiry} · ${selectedBatch.quantity}`
-                                  : "No available batch"}
+                                line?.preferredBatchId
+                                  ? `Start with ${options.find((batch) => batch.id === line.preferredBatchId)?.batchNumber ?? "selected batch"}`
+                                  : "Automatic FEFO"}
                             </SelectValue>
                           </SelectTrigger>
                           <SelectContent>
+                            <SelectItem value="fefo">Automatic FEFO</SelectItem>
                             {options.map((batch) => (
                               <SelectItem key={batch.id} value={batch.id} label={`${batch.batchNumber} · ${batch.expiry} · ${batch.quantity}`}>
                                 {batch.batchNumber} · {batch.expiry} ·{" "}
@@ -475,10 +510,27 @@ export function DispenseDialog({
                             ))}
                           </SelectContent>
                         </Select>
+                        {allocatedBatches.length ? (
+                          <ul className="space-y-1 text-xs" aria-label={`Batch allocation for ${item.name}`}>
+                            {allocatedBatches.map((entry) => (
+                              <li key={entry.batchId} className="flex justify-between gap-3">
+                                <span>
+                                  {entry.batch?.batchNumber ?? "Batch"} · {entry.batch?.expiry ?? "—"}
+                                </span>
+                                <span className="font-medium tabular-nums">{entry.quantity}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        ) : (
+                          <p className="text-xs text-destructive">
+                            {stockLoading ? "Checking stock…" : "No active unexpired stock"}
+                          </p>
+                        )}
                       </TableCell>
                       <TableCell>
                         <Input
                           className="w-24"
+                          aria-label={`Dispense now for ${item.name}`}
                           type="number"
                           min={0}
                           max={maximumDispense}
@@ -495,13 +547,13 @@ export function DispenseDialog({
                               )),
                             )
                           }
-                          disabled={!selectedBatch}
+                          disabled={stockLoading || maximumDispense === 0}
                         />
-                        {/* Quantities are always pieces, so stock arithmetic has
-                            one unit; this only says what that is in strips, and
-                            lets the pharmacist fill in whole strips quickly. */}
+                        {/* Whole-strip entry remains available when every batch
+                            uses the same pack size; mixed pack sizes are priced
+                            and shown separately in the FEFO breakdown. */}
                         {(() => {
-                          const pack = selectedBatch?.unitsPerPack ?? 1;
+                          const pack = commonPack;
                           if (pack <= 1) return null;
                           const pieces = line?.quantity ?? 0;
                           return (
@@ -518,9 +570,8 @@ export function DispenseDialog({
                                   setLines((rows) =>
                                     reconcileLines(rows.map((row, i) => {
                                       if (i !== index) return row;
-                                      // Rounds down what is already typed, so
-                                      // this never balloons to the whole batch
-                                      // now that stock is the only ceiling.
+                                      // Round down what is already typed; never
+                                      // increase the total merely by clicking.
                                       const target =
                                         pieces > 0
                                           ? pieces
@@ -558,7 +609,7 @@ export function DispenseDialog({
                         </p>
                       </TableCell>
                       <TableCell className="text-right tabular-nums">
-                        {formatInr(lineAmountPaise(line?.batchId ?? "", line?.quantity ?? 0))}
+                        {formatInr(lineAmount)}
                       </TableCell>
                     </TableRow>
                   );
@@ -568,9 +619,10 @@ export function DispenseDialog({
           </div>
           <p className="text-xs text-muted-foreground">
             <span className="font-medium text-foreground">Stock rule:</span>{" "}
-            choosing a batch does not reserve it. Confirm Dispense changes stock
-            only by the quantity shown in “Dispense now,” which you may set
-            anywhere from 0 up to the batch stock shown in “Available now.”
+            “Available now” adds every active, unexpired batch. The entered total
+            is split by earliest expiry first; choosing another priority batch
+            uses it first and then resumes FEFO. Confirm Dispense changes each
+            exact batch only by the quantities shown above.
             “Not supplied now” stays pending until it is supplied or you close
             the remaining prescription as unavailable. Supplying more than was
             prescribed raises the recorded prescribed quantity and is written to
@@ -694,7 +746,14 @@ export function DispenseDialog({
               </AlertDialogContent>
             </AlertDialog>
             <Button
-              disabled={pending || markingUnavailable || payload.length === 0 || feeUnpaid}
+              disabled={
+                pending ||
+                markingUnavailable ||
+                stockLoading ||
+                Boolean(stockError) ||
+                payload.length === 0 ||
+                feeUnpaid
+              }
               type="submit"
             >
               {pending ? <LoaderCircle className="animate-spin" /> : <Pill />}{" "}
