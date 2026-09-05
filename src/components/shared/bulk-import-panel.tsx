@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { AlertCircle, CheckCircle2, Download, FileSpreadsheet, LoaderCircle, Upload } from "lucide-react";
+import { AlertCircle, CheckCircle2, Download, LoaderCircle, Upload } from "lucide-react";
 import {
   buildErrorCsv,
   chunkKey,
@@ -15,8 +15,8 @@ import {
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
+import { SpreadsheetDropzone } from "@/components/shared/spreadsheet-dropzone";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
 export type ImportChunkResult = { ok: boolean; message?: string };
@@ -149,17 +149,7 @@ export function BulkImportPanel<Row>({
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <label className="flex min-h-28 cursor-pointer flex-col items-center justify-center rounded-lg border border-dashed bg-muted/30 p-5 text-center hover:bg-muted/60">
-              <FileSpreadsheet className="mb-2 size-7 text-primary" />
-              <span className="text-sm font-medium">Drag and drop or choose a file</span>
-              <span className="text-xs text-muted-foreground">.xlsx or .csv</span>
-              <Input
-                className="sr-only"
-                type="file"
-                accept=".xlsx,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv"
-                onChange={(event) => parseFile(event.target.files?.[0])}
-              />
-            </label>
+            <SpreadsheetDropzone onFile={parseFile} disabled={parsing || pending} />
           </CardContent>
         </Card>
       </div>
