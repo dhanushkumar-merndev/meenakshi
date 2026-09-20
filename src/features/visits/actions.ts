@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { z } from "zod";
 import { requirePermission } from "@/lib/auth/dal";
 import { rupeesToPaise } from "@/lib/domain/money";
@@ -19,6 +20,17 @@ export async function createVisit(_: ActionState, formData: FormData): Promise<A
   const result = await issueVisit(supabase, patientId, fields);
   if (!result.ok) return result;
   revalidatePath(`/patients/${patientId}`); revalidatePath("/reception"); revalidatePath("/op"); revalidatePath("/dashboard");
+  return result;
+}
+
+/** Create the linked visit, then take reception directly to its new token. */
+export async function createFollowUpVisit(
+  previous: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const result = await createVisit(previous, formData);
+  const visitId = result.data?.visitId;
+  if (result.ok && typeof visitId === "string") redirect(`/visits/${visitId}`);
   return result;
 }
 

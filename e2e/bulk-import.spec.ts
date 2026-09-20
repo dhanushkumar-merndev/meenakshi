@@ -11,6 +11,10 @@ import { credentialsConfigured, missingCredentials, signIn } from "./support/aut
 const ROWS = 10_000;
 
 async function attachCsv(page: import("@playwright/test").Page, name: string, csv: string) {
+  // setInputFiles is a programmatic event, so unlike a human click it is not
+  // replayed while React is hydrating. Wait for the client upload control to
+  // be ready before handing it a file.
+  await expect(page.locator('[data-file-upload-ready="true"]')).toBeVisible();
   await page.setInputFiles('input[type="file"]', {
     name,
     mimeType: "text/csv",

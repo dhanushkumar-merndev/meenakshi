@@ -15,6 +15,10 @@ export const PERMISSIONS = {
   createVisit: ["admin", "reception"],
   recordVitals: ["admin", "reception", "op", "doctor"],
   writeConsultation: ["admin", "doctor"],
+  // IP staff prepare the structured discharge summary; this is deliberately
+  // narrower than writeConsultation, which remains doctor-only for progress
+  // notes and consultation records.
+  prepareDischarge: ["admin", "doctor", "ip"],
   // Narrower than writeConsultation on purpose: only the consultation form
   // itself (entering exactly what the doctor wrote on paper), not progress
   // notes, discharge summaries, or report uploads -- those stay doctor-only.

@@ -1,15 +1,14 @@
 import { expect, test } from "@playwright/test";
+import { credentialsConfigured, missingCredentials, signIn } from "./support/auth";
 
-const email = process.env.E2E_ADMIN_EMAIL;
-const password = process.env.E2E_ADMIN_PASSWORD;
 const tabs = ["OP", "Doctors", "IP", "Pharmacy", "Collections", "Patients"];
 
 test.describe("admin analytics charts", () => {
-  test.skip(!email || !password, "Set E2E_ADMIN_EMAIL and E2E_ADMIN_PASSWORD for authenticated tests.");
+  test.skip(!credentialsConfigured, missingCredentials);
   test("every analytics tab renders its own echarts canvas", async ({ page }, testInfo) => {
     test.skip(testInfo.project.name !== "desktop", "Desktop project only");
     const errors: string[] = []; page.on("pageerror", (error) => errors.push(error.message)); page.on("console", (message) => { if (message.type() === "error") errors.push(message.text()); });
-    await page.goto("/login"); await page.getByLabel("Email").fill(email!); await page.getByLabel("Password", { exact: true }).fill(password!); await page.getByRole("button", { name: "Sign In" }).click(); await expect(page).toHaveURL(/dashboard/);
+    await signIn(page, "admin");
     await page.goto("/admin/analytics");
     await expect(page.getByRole("img", { name: "Patient visits per day" }).locator("canvas")).toBeVisible();
     await expect(page.getByRole("img", { name: "Daily collections by source" }).locator("canvas")).toBeVisible();

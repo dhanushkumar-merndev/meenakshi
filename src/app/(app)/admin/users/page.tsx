@@ -1,6 +1,7 @@
 import { requireRoute } from "@/lib/auth/dal";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { formatHospitalDate } from "@/lib/domain/date";
+import { PAGE_SIZE, TablePagination, pageFromParam, rangeFor } from "@/components/shared/table-pagination";
 import { containsSearchPattern } from "@/lib/domain/search";
 import { AddUserDialog, EditDoctorDialog, EditStaffDialog } from "@/features/admin/admin-dialogs";
 import { PageHeader } from "@/components/shared/page-header";
@@ -28,20 +29,22 @@ const STAFF_ROLES = ["admin", "reception", "doctor", "ip", "pharmacy"];
 export default async function UsersPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; role?: string }>;
+  searchParams: Promise<{ q?: string; role?: string; page?: string }>;
 }) {
   await requireRoute("/admin/users");
   const params = await searchParams;
   const q = params.q?.trim() ?? "";
   const selectedRole = STAFF_ROLES.includes(params.role ?? "") ? (params.role as string) : "";
+  const page = pageFromParam(params.page);
   const admin = createSupabaseAdminClient();
   let profilesQuery = admin
     .from("profiles")
     .select(
       "id,full_name,email,role,status,doctors!profiles_doctor_id_fkey(id,display_name,department_id,specialization,qualification,registration_number,op_fee_paise,follow_up_fee_paise,ip_visit_fee_paise,active)",
+      { count: "exact" },
     )
     .order("created_at", { ascending: false })
-    .limit(100);
+    .range(...rangeFor(page));
   if (q) {
     const pattern = containsSearchPattern(q);
     const filters = [
@@ -57,15 +60,20 @@ export default async function UsersPage({
   // Dropdown filter is independent of the free-text search above -- both can
   // narrow the table at once (e.g. search "staff" within role "reception").
   if (selectedRole) profilesQuery = profilesQuery.eq("role", selectedRole);
-  const [{ data: profiles }, { data: authData }, { data: departments }] = await Promise.all([
+  const [{ data: profiles, count }, { data: authData }, { data: departments }] = await Promise.all([
     profilesQuery,
-    admin.auth.admin.listUsers({ page: 1, perPage: 100 }),
+    // Last sign-in comes from the auth service, which cannot be filtered to
+    // this page's ids -- and asking per row would be one round trip per user.
+    // One call covering every staff account is cheaper than either; a hospital
+    // has one account per employee, so this is tens of rows, not thousands.
+    admin.auth.admin.listUsers({ page: 1, perPage: 1000 }),
     admin.from("departments").select("id,name").eq("active",true).order("name"),
   ]);
   const signIns = new Map(
     authData?.users.map((user) => [user.id, user.last_sign_in_at]),
   );
   const rows = (profiles ?? []) as unknown as UserRow[];
+  const total = count ?? 0;
   return (
     <div>
       <PageHeader
@@ -120,6 +128,7 @@ export default async function UsersPage({
               </TableBody>
             </Table>
           </div>
+          <TablePagination page={page} total={total} noun="staff users" params={{ q, role: selectedRole }} size={PAGE_SIZE} />
         </CardContent>
       </Card>
     </div>

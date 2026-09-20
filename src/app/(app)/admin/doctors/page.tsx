@@ -1,6 +1,7 @@
 import { requireRoute } from "@/lib/auth/dal";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { formatInr } from "@/lib/domain/money";
+import { PAGE_SIZE, TablePagination, pageFromParam, rangeFor } from "@/components/shared/table-pagination";
 import { containsSearchPattern } from "@/lib/domain/search";
 import { AddDoctorDialog, EditDoctorDialog } from "@/features/admin/admin-dialogs";
 import { PageHeader } from "@/components/shared/page-header";
@@ -28,16 +29,20 @@ type Doctor = {
   active: boolean;
   departments: { name: string } | null;
 };
-export default async function DoctorsAdminPage({ searchParams }: { searchParams: Promise<{ q?: string }> }) {
+export default async function DoctorsAdminPage({ searchParams }: { searchParams: Promise<{ q?: string; page?: string }> }) {
   await requireRoute("/admin/doctors");
-  const q = (await searchParams).q?.trim() ?? "";
+  const params = await searchParams;
+  const q = params.q?.trim() ?? "";
+  const page = pageFromParam(params.page);
   const supabase = await createSupabaseServerClient();
   let doctorsQuery = supabase
     .from("doctors")
     .select(
       "id,display_name,department_id,specialization,qualification,registration_number,op_fee_paise,follow_up_fee_paise,ip_visit_fee_paise,active,departments(name)",
+      { count: "exact" },
     )
-    .order("display_name");
+    .order("display_name")
+    .range(...rangeFor(page));
   if (q) {
     const pattern = containsSearchPattern(q);
     doctorsQuery = doctorsQuery.or(`display_name.ilike.${pattern},specialization.ilike.${pattern},qualification.ilike.${pattern},registration_number.ilike.${pattern}`);
@@ -51,6 +56,7 @@ export default async function DoctorsAdminPage({ searchParams }: { searchParams:
       .order("name"),
   ]);
   const rows = (doctorResult.data ?? []) as unknown as Doctor[];
+  const total = doctorResult.count ?? 0;
   return (
     <div>
       <PageHeader
@@ -107,6 +113,7 @@ export default async function DoctorsAdminPage({ searchParams }: { searchParams:
               </TableBody>
             </Table>
           </div>
+          <TablePagination page={page} total={total} noun="doctors" params={{ q }} size={PAGE_SIZE} />
         </CardContent>
       </Card>
     </div>

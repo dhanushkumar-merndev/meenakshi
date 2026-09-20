@@ -1,5 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { credentialsConfigured, missingCredentials, signIn, type Role } from "./support/auth";
+import { lookupFixtureIds, type FixtureIds } from "./support/fixtures";
 
 test.skip(!credentialsConfigured, missingCredentials);
 // Six simultaneous role crawls can saturate a development server and turn a
@@ -15,17 +16,15 @@ test.describe.configure({ mode: "serial" });
  * role. This walks the entire surface for each role and reports everything at
  * once instead of failing on the first problem.
  */
-const IDS = {
-  visit: "6cc9c5fd-b993-4425-b2f4-f3565e260e5e",
-  patient: "d49e3008-16fc-48aa-93a9-f21ec4174564",
-  ipTicket: "e30eb994-04a9-4377-8bb8-6d2c03b94570",
-  prescription: "d3c08624-1ba7-456e-956f-4bc8bbb9e34f",
-  sale: "19beabaf-8461-46dc-ab76-80a92c383952",
-  procedureSale: "525a0e98-15d7-4f4b-bfd6-0474614f0747",
-  inventoryRequest: "13ef2e5a-a434-4754-96c0-5dedb1c66683",
-};
+/**
+ * Record-scoped routes name the entity they need. The id is filled in at run
+ * time; a route whose entity does not exist in this database is reported as
+ * uncovered rather than counted as a 404, because "the hospital has no IP
+ * ticket yet" is not the print route being broken.
+ */
+type Entity = keyof FixtureIds;
 
-const PAGES: Array<{ path: string; roles: Role[] }> = [
+const PAGES: Array<{ path: string; roles: Role[]; entity?: Entity; suffix?: string }> = [
   { path: "/dashboard", roles: ["admin", "reception", "doctor", "ip", "pharmacy"] },
   { path: "/notifications", roles: ["admin", "reception", "doctor", "ip", "pharmacy"] },
   { path: "/admin/analytics", roles: ["admin"] },
@@ -38,7 +37,7 @@ const PAGES: Array<{ path: string; roles: Role[] }> = [
   { path: "/admin/users", roles: ["admin"] },
   { path: "/audit", roles: ["admin"] },
   { path: "/patients", roles: ["admin", "reception", "doctor", "ip"] },
-  { path: `/patients/${IDS.patient}`, roles: ["admin", "reception", "doctor", "ip"] },
+  { path: "/patients/", entity: "patient", suffix: "", roles: ["admin", "reception", "doctor", "ip"] },
   { path: "/patients/import", roles: ["admin", "reception"] },
   { path: "/reception", roles: ["admin", "reception"] },
   { path: "/reception/follow-ups", roles: ["admin", "reception"] },
@@ -58,7 +57,7 @@ const PAGES: Array<{ path: string; roles: Role[] }> = [
   { path: "/ip/all-tickets", roles: ["ip"] },
   // Not "doctor": this ticket belongs to another consultant, and a doctor
   // only sees their own IP patients.
-  { path: `/ip/${IDS.ipTicket}`, roles: ["admin", "reception", "ip"] },
+  { path: "/ip/", entity: "ipTicket", suffix: "", roles: ["admin", "reception", "ip"] },
   { path: "/pharmacy", roles: ["admin", "pharmacy"] },
   { path: "/pharmacy/import", roles: ["admin", "pharmacy"] },
   { path: "/pharmacy/inventory", roles: ["admin", "pharmacy"] },
@@ -67,20 +66,20 @@ const PAGES: Array<{ path: string; roles: Role[] }> = [
   { path: "/pharmacy/sales", roles: ["admin", "pharmacy"] },
   { path: "/pharmacy/stock", roles: ["admin", "pharmacy"] },
   { path: "/reports", roles: ["admin", "reception", "ip", "doctor"] },
-  { path: `/visits/${IDS.visit}`, roles: ["admin", "reception", "doctor", "pharmacy"] },
+  { path: "/visits/", entity: "visit", suffix: "", roles: ["admin", "reception", "doctor", "pharmacy"] },
   // Print documents: reachable by whoever has a button for them.
-  { path: `/print/token/${IDS.visit}`, roles: ["admin", "reception"] },
+  { path: "/print/token/", entity: "visit", suffix: "", roles: ["admin", "reception"] },
   // Not "doctor": a doctor sees only their OWN IP patients, and this ticket
   // belongs to another consultant -- the 404 is the RLS policy working.
-  { path: `/print/prescription/${IDS.prescription}`, roles: ["admin", "pharmacy"] },
-  { path: `/print/outside-purchase/${IDS.prescription}`, roles: ["admin", "pharmacy"] },
-  { path: `/print/receipt/${IDS.sale}`, roles: ["admin", "pharmacy", "reception"] },
-  { path: `/print/procedure-bill/${IDS.procedureSale}`, roles: ["admin", "pharmacy"] },
-  { path: `/print/ip-ticket/${IDS.ipTicket}`, roles: ["admin", "ip"] },
-  { path: `/print/ip-bill/${IDS.ipTicket}`, roles: ["admin", "ip"] },
-  { path: `/print/discharge/${IDS.ipTicket}`, roles: ["admin", "ip"] },
-  { path: `/print/ip-shortage/${IDS.inventoryRequest}`, roles: ["admin", "reception", "doctor", "ip", "pharmacy"] },
-  { path: `/print/ip-items/${IDS.inventoryRequest}`, roles: ["admin", "reception", "doctor", "ip", "pharmacy"] },
+  { path: "/print/prescription/", entity: "prescription", suffix: "", roles: ["admin", "pharmacy"] },
+  { path: "/print/outside-purchase/", entity: "prescription", suffix: "", roles: ["admin", "pharmacy"] },
+  { path: "/print/receipt/", entity: "sale", suffix: "", roles: ["admin", "pharmacy", "reception"] },
+  { path: "/print/procedure-bill/", entity: "procedureSale", suffix: "", roles: ["admin", "pharmacy"] },
+  { path: "/print/ip-ticket/", entity: "ipTicket", suffix: "", roles: ["admin", "ip"] },
+  { path: "/print/ip-bill/", entity: "ipTicket", suffix: "", roles: ["admin", "ip"] },
+  { path: "/print/discharge/", entity: "ipTicket", suffix: "", roles: ["admin", "ip"] },
+  { path: "/print/ip-shortage/", entity: "inventoryRequest", suffix: "", roles: ["admin", "reception", "doctor", "ip", "pharmacy"] },
+  { path: "/print/ip-items/", entity: "inventoryRequest", suffix: "", roles: ["admin", "reception", "ip", "pharmacy"] },
 ];
 
 // `restricted: true` means a role outside the list must be refused (403), not
@@ -112,8 +111,9 @@ const APIS: Array<{ path: string; roles: Role[]; restricted?: boolean }> = [
 
 const ROLES: Role[] = ["admin", "reception", "doctor", "ip", "pharmacy"];
 
-async function auditRole(page: Page, role: Role) {
+async function auditRole(page: Page, role: Role, fixtures: FixtureIds) {
   const failures: string[] = [];
+  const uncovered: string[] = [];
   const consoleErrors: string[] = [];
   page.on("console", (message) => {
     if (message.type() !== "error") return;
@@ -127,15 +127,24 @@ async function auditRole(page: Page, role: Role) {
 
   for (const entry of PAGES) {
     if (!entry.roles.includes(role)) continue;
+    let path = entry.path;
+    if (entry.entity) {
+      const id = fixtures[entry.entity];
+      if (!id) {
+        uncovered.push(`${entry.path}<${entry.entity}> -- no ${entry.entity} exists`);
+        continue;
+      }
+      path = `${entry.path}${id}${entry.suffix ?? ""}`;
+    }
     consoleErrors.length = 0;
-    const response = await page.goto(entry.path, { waitUntil: "domcontentloaded" });
+    const response = await page.goto(path, { waitUntil: "domcontentloaded" });
     const status = response?.status() ?? 0;
     if (status !== 200) {
-      failures.push(`${entry.path} -> HTTP ${status}`);
+      failures.push(`${path} -> HTTP ${status}`);
       continue;
     }
     if (/forbidden=1/.test(page.url())) {
-      failures.push(`${entry.path} -> redirected to forbidden`);
+      failures.push(`${path} -> redirected to forbidden`);
       continue;
     }
     const body = await page.locator("body").innerText().catch(() => "");
@@ -143,13 +152,13 @@ async function auditRole(page: Page, role: Role) {
     // streamed page that calls notFound() after the shell has flushed answers
     // 200 with that body, which is how RLS correctly refuses a record.
     if (/We could not load this page|Application error/i.test(body))
-      failures.push(`${entry.path} -> error boundary rendered`);
+      failures.push(`${path} -> error boundary rendered`);
     if (/You're offline|This page hasn't been saved yet/i.test(body))
-      failures.push(`${entry.path} -> offline fallback rendered`);
+      failures.push(`${path} -> offline fallback rendered`);
     if (/could not be found/i.test(body))
-      failures.push(`${entry.path} -> rendered Next 404 body`);
+      failures.push(`${path} -> rendered Next 404 body`);
     if (consoleErrors.length)
-      failures.push(`${entry.path} -> console: ${consoleErrors[0]}`);
+      failures.push(`${path} -> console: ${consoleErrors[0]}`);
   }
 
   for (const api of APIS) {
@@ -168,14 +177,23 @@ async function auditRole(page: Page, role: Role) {
       failures.push(`${api.path} -> HTTP ${result}`);
     }
   }
-  return failures;
+  return { failures, uncovered };
 }
+
+let fixtures: FixtureIds = {};
+test.beforeAll(async () => {
+  fixtures = await lookupFixtureIds();
+});
 
 for (const role of ROLES) {
   test(`${role}: every page, print and API responds`, async ({ page }, testInfo) => {
     test.skip(testInfo.project.name !== "desktop", "Surface audit runs once, on desktop.");
     test.setTimeout(300_000);
-    const failures = await auditRole(page, role);
+    const { failures, uncovered } = await auditRole(page, role, fixtures);
+    // Visible in the report rather than silent: a database with no IP tickets
+    // genuinely leaves the IP print routes untested, and that should be read,
+    // not discovered later.
+    if (uncovered.length) console.log(`${role}: ${uncovered.length} route(s) not covered\n  ${uncovered.join("\n  ")}`);
     // Report the whole list, not just the first one.
     expect(failures, `${role} failures:\n${failures.join("\n")}`).toEqual([]);
   });

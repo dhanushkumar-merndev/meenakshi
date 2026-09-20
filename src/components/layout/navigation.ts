@@ -62,6 +62,9 @@ export const ROLE_NAVIGATION: Record<AppRole, NavigationItem[]> = {
     { title: "Doctor Master", href: "/admin/doctors", icon: "briefcase-medical", group: "Administration" },
     { title: "Masters", href: "/admin/masters", icon: "library", group: "Administration" },
     { title: "Clinical Directory", href: "/admin/clinical-directory", icon: "book-open", group: "Administration" },
+    // The same page pharmacy works in, reached from where an admin looks for
+    // a master list. One route, so there is one medicine library, not two.
+    { title: "Medicine Directory", href: "/pharmacy/medicines", icon: "pill", group: "Administration" },
     { title: "Monthly Export", href: "/admin/exports", icon: "archive-restore", group: "Administration" },
     { title: "Settings", href: "/admin/settings", icon: "settings", group: "Administration" },
     { title: "Audit Logs", href: "/audit", icon: "shield-check", group: "Security" },

@@ -605,12 +605,12 @@ export function ConsultationEditor({
             />
           </div>
           <div className="space-y-2">
-            <Label>Follow-up</Label>
+            <Label htmlFor="follow-up">Follow-up</Label>
             <Select
               value={followUp}
               onValueChange={(value) => setFollowUp(value as string)}
             >
-              <SelectTrigger className="w-full">
+              <SelectTrigger id="follow-up" className="w-full">
                 <SelectValue>{() => FOLLOW_UP_LABELS[followUp] ?? followUp}</SelectValue>
               </SelectTrigger>
               <SelectContent>

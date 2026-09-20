@@ -98,7 +98,7 @@ export function AppSidebar({ profile }: { profile: Profile }) {
           </Avatar>
           <div className="min-w-0 flex-1 overflow-hidden transition-opacity duration-200 ease-linear group-data-[collapsible=icon]:w-0 group-data-[collapsible=icon]:opacity-0">
             <p className="truncate text-sm font-medium">{profile.fullName}</p>
-            <Badge variant="secondary" className="mt-0.5 capitalize">
+            <Badge data-testid="current-role" variant="secondary" className="mt-0.5 capitalize">
               {profile.role}
             </Badge>
           </div>
@@ -119,4 +119,3 @@ export function AppSidebar({ profile }: { profile: Profile }) {
     </Sidebar>
   );
 }
-

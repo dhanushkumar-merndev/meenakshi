@@ -5,6 +5,7 @@ import { formatHospitalDate } from "@/lib/domain/date";
 import { formatInr } from "@/lib/domain/money";
 import { containsSearchPattern, EMPTY_UUID } from "@/lib/domain/search";
 import { findMatchingVisitIds } from "@/lib/search/patients";
+import { PAGE_SIZE, TablePagination, pageFromParam, rangeFor } from "@/components/shared/table-pagination";
 import { PageHeader } from "@/components/shared/page-header";
 import { FilterTabs } from "@/components/shared/filter-tabs";
 import { DebouncedSearchInput } from "@/components/shared/debounced-search-input";
@@ -28,11 +29,12 @@ type Pending = {
   has_prescription: boolean;
 };
 
-export default async function ReceptionPaymentsPage({ searchParams }: { searchParams: Promise<{ q?: string; view?: string }> }) {
+export default async function ReceptionPaymentsPage({ searchParams }: { searchParams: Promise<{ q?: string; view?: string; page?: string }> }) {
   await requireRoute("/reception/payments");
   const params = await searchParams;
   const q = params.q?.trim() ?? "";
   const view = params.view === "collected" ? "collected" : "pending";
+  const page = pageFromParam(params.page);
   const supabase = await createSupabaseServerClient();
 
   const header = (
@@ -159,9 +161,9 @@ export default async function ReceptionPaymentsPage({ searchParams }: { searchPa
   }
 
   const visitIds = q ? await findMatchingVisitIds(supabase, q) : [];
-  let query = supabase.from("visit_payments").select("id,created_at,amount_paise,mode,reference,visits(id,token_number,patients(name,phone_normalized),doctors(display_name)),profiles!visit_payments_collected_by_fkey(full_name)").order("created_at", { ascending: false }).range(0, 49);
+  let query = supabase.from("visit_payments").select("id,created_at,amount_paise,mode,reference,visits(id,token_number,patients(name,phone_normalized),doctors(display_name)),profiles!visit_payments_collected_by_fkey(full_name)", { count: "exact" }).order("created_at", { ascending: false }).range(...rangeFor(page));
   if (q) query = query.or([`reference.ilike.${containsSearchPattern(q)}`, visitIds.length ? `visit_id.in.(${visitIds.join(",")})` : `visit_id.eq.${EMPTY_UUID}`].join(","));
-  const { data } = await query;
+  const { data, count } = await query;
   const rows = (data ?? []) as unknown as Payment[];
-  return <div>{header}<Card><CardContent className="p-0"><div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Date/Time</TableHead><TableHead>Patient</TableHead><TableHead>Token</TableHead><TableHead>Doctor</TableHead><TableHead>Amount</TableHead><TableHead>Mode</TableHead><TableHead>Collected By</TableHead><TableHead className="text-right">Action</TableHead></TableRow></TableHeader><TableBody>{rows.length ? rows.map((payment) => <TableRow key={payment.id}><TableCell>{formatHospitalDate(payment.created_at, true)}</TableCell><TableCell><span className="font-medium">{payment.visits?.patients?.name}</span><span className="block text-xs text-muted-foreground">{payment.visits?.patients?.phone_normalized}</span></TableCell><TableCell>#{payment.visits?.token_number}</TableCell><TableCell>{payment.visits?.doctors?.display_name}</TableCell><TableCell>{formatInr(payment.amount_paise)}</TableCell><TableCell className="capitalize">{payment.mode.replaceAll("_", " ")}</TableCell><TableCell>{payment.profiles?.full_name ?? "—"}</TableCell><TableCell className="text-right">{payment.visits ? <Button size="sm" variant="outline" render={<Link href={`/visits/${payment.visits.id}`} />}>Open</Button> : null}</TableCell></TableRow>) : <TableRow><TableCell colSpan={8} className="h-32 text-center text-muted-foreground">{q ? "No payments match this search." : "No payments recorded."}</TableCell></TableRow>}</TableBody></Table></div></CardContent></Card></div>;
+  return <div>{header}<Card><CardContent className="p-0"><div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Date/Time</TableHead><TableHead>Patient</TableHead><TableHead>Token</TableHead><TableHead>Doctor</TableHead><TableHead>Amount</TableHead><TableHead>Mode</TableHead><TableHead>Collected By</TableHead><TableHead className="text-right">Action</TableHead></TableRow></TableHeader><TableBody>{rows.length ? rows.map((payment) => <TableRow key={payment.id}><TableCell>{formatHospitalDate(payment.created_at, true)}</TableCell><TableCell><span className="font-medium">{payment.visits?.patients?.name}</span><span className="block text-xs text-muted-foreground">{payment.visits?.patients?.phone_normalized}</span></TableCell><TableCell>#{payment.visits?.token_number}</TableCell><TableCell>{payment.visits?.doctors?.display_name}</TableCell><TableCell>{formatInr(payment.amount_paise)}</TableCell><TableCell className="capitalize">{payment.mode.replaceAll("_", " ")}</TableCell><TableCell>{payment.profiles?.full_name ?? "—"}</TableCell><TableCell className="text-right">{payment.visits ? <Button size="sm" variant="outline" render={<Link href={`/visits/${payment.visits.id}`} />}>Open</Button> : null}</TableCell></TableRow>) : <TableRow><TableCell colSpan={8} className="h-32 text-center text-muted-foreground">{q ? "No payments match this search." : "No payments recorded."}</TableCell></TableRow>}</TableBody></Table></div><TablePagination page={page} total={count ?? 0} noun="payments" params={{ q, view }} size={PAGE_SIZE} /></CardContent></Card></div>;
 }

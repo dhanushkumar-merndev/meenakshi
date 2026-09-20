@@ -37,11 +37,15 @@ export function AssignStaffDialog({
   ticketNumber,
   currentStaffId,
   staff,
+  selfStaffId,
 }: {
   ticketId: string;
   ticketNumber: string;
   currentStaffId: string | null;
   staff: Array<{ id: string; label: string; activePatients: number }>;
+  /** Lets an IP staff member claim an unassigned ward patient without guessing
+   * their own name from the handover list. */
+  selfStaffId?: string;
 }) {
   const [state, action, pending] = useActionState(assignIpTicket, initial);
   const [staffId, setStaffId] = useState(currentStaffId ?? UNASSIGNED);
@@ -95,6 +99,16 @@ export function AssignStaffDialog({
                 ))}
               </SelectContent>
             </Select>
+            {selfStaffId ? (
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                onClick={() => setStaffId(selfStaffId)}
+              >
+                Assign to me
+              </Button>
+            ) : null}
           </div>
           <DialogFooter showCloseButton>
             <Button disabled={pending} type="submit">

@@ -331,6 +331,7 @@ export default async function IpWorkspacePage({
                                 ticketNumber={ticket.ticket_number}
                                 currentStaffId={ticket.assigned_ip_staff_id}
                                 staff={ipStaffOptions}
+                                selfStaffId={profile.role === "ip" ? profile.id : undefined}
                               />
                             ) : null}
                             <Button

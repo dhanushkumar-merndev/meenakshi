@@ -218,6 +218,76 @@ export async function saveMedicine(_: ActionState, formData: FormData): Promise<
   return { ok: true, message: "Medicine saved." };
 }
 
+/**
+ * Takes a medicine out of the library.
+ *
+ * The RPC decides between a real delete and an archive, because only the
+ * database can see whether a prescription, sale, ward request or ledger row
+ * still points at it -- and none of those may change. Admin only, matching
+ * the RPC's own guard.
+ */
+export async function deleteMedicine(_: ActionState, formData: FormData): Promise<ActionState> {
+  await requirePermission("manageUsers");
+  const parsed = z.object({ id: databaseIdSchema }).safeParse(Object.fromEntries(formData));
+  if (!parsed.success) return { ok: false, message: "Invalid removal request." };
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase.rpc("delete_medicine", {
+    p_medicine_id: parsed.data.id,
+  });
+  if (error)
+    return {
+      ok: false,
+      message: error.message.includes("medicine not found")
+        ? "This medicine is no longer in the library. Refresh and try again."
+        : "This medicine could not be removed.",
+    };
+  const result = (data ?? {}) as { mode?: string; stock_units_held?: number };
+  revalidateMedicineViews();
+  return {
+    ok: true,
+    message:
+      result.mode === "deleted"
+        ? "Medicine deleted. It was never used, so nothing was left behind."
+        : `Medicine removed from the library.${
+            result.stock_units_held
+              ? ` ${result.stock_units_held} unit(s) of counted stock were kept.`
+              : ""
+          } Past prescriptions and bills are unchanged.`,
+  };
+}
+
+/** Puts an archived medicine back in the library. Batches stay inactive. */
+export async function restoreMedicine(_: ActionState, formData: FormData): Promise<ActionState> {
+  await requirePermission("manageUsers");
+  const parsed = z.object({ id: databaseIdSchema }).safeParse(Object.fromEntries(formData));
+  if (!parsed.success) return { ok: false, message: "Invalid restore request." };
+  const supabase = await createSupabaseServerClient();
+  const { error } = await supabase.rpc("restore_medicine", {
+    p_medicine_id: parsed.data.id,
+  });
+  if (error)
+    return {
+      ok: false,
+      message: error.message.includes("medicine not found")
+        ? "This medicine is already in the library. Refresh and try again."
+        : "This medicine could not be restored.",
+    };
+  revalidateMedicineViews();
+  return {
+    ok: true,
+    message:
+      "Medicine restored. Re-activate its batches under Stock & Batches to sell it again.",
+  };
+}
+
+/** Every surface that reads the directory or the stock counters built on it. */
+function revalidateMedicineViews() {
+  revalidatePath("/pharmacy/medicines");
+  revalidatePath("/pharmacy/stock");
+  revalidatePath("/drug-stock");
+  revalidatePath("/dashboard");
+}
+
 const batchSchema = z.object({
   batchId: databaseIdSchema.optional().or(z.literal("")), medicineId: databaseIdSchema, batchNumber: z.string().trim().min(1).max(100), expiryDate: z.string().date(), quantityDelta: z.coerce.number().int(), purchasePrice: z.string(), sellingPrice: z.string(), lowStockThreshold: z.coerce.number().int().nonnegative(), unitsPerPack: z.coerce.number().int().min(1).max(10_000).default(1), active: z.string().optional(), reason: z.string().trim().min(2).max(200), idempotencyKey: databaseIdSchema,
 });

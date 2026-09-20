@@ -13,9 +13,15 @@ test("dosage form can be typed or picked from previously used values", async ({ 
   await dosageForm.click();
   const list = page.getByRole("listbox", { name: /Dosage form suggestions/i });
   await expect(list).toBeVisible();
-  await expect(list.getByRole("option", { name: "Tablet" })).toBeVisible();
+  // Typed first, then picked. The list shows the first eight suggestions in
+  // alphabetical order, and the directory has learned enough dosage forms
+  // that "Tablet" no longer sits inside an unfiltered list.
+  // exact: a name option is a case-insensitive SUBSTRING match by default, so
+  // a plain "Tablet" would also hit "CHEWABLE TABLET" and an all-caps "TABLET".
+  await dosageForm.fill("Tab");
+  await expect(list.getByRole("option", { name: "Tablet", exact: true })).toBeVisible();
   await dosageForm.fill("Syr");
-  await list.getByRole("option", { name: "Syrup" }).click();
+  await list.getByRole("option", { name: "Syrup", exact: true }).click();
   await expect(dosageForm).toHaveValue("Syrup");
   // A value nobody has used yet stays typed -- the list is a suggestion, not
   // a constraint, and the save is what teaches it.

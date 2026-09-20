@@ -26,6 +26,7 @@ import {
 } from "@/components/ui/select";
 import { useAutoCloseDialog } from "@/hooks/use-auto-close-dialog";
 import { DeleteMasterButton } from "@/features/admin/delete-master-button";
+import { DeleteMedicineButton } from "./medicine-removal-buttons";
 import { calculateStockUnits } from "@/lib/domain/medicine-quantity";
 import { LearningField } from "./learning-field";
 import {
@@ -129,7 +130,7 @@ export function MedicineDialog({
             </label>
           </div>
           <DialogFooter showCloseButton>
-            {item && canDelete ? <DeleteMasterButton entity="medicine" id={item.id} label={item.brandName} /> : null}
+            {item && canDelete ? <DeleteMedicineButton id={item.id} label={item.brandName} /> : null}
             <Button disabled={pending} type="submit">
               {pending ? <LoaderCircle className="animate-spin" /> : <Plus />}{" "}
               Save Medicine

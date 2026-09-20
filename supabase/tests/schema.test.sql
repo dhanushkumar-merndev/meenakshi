@@ -1,5 +1,5 @@
 begin;
-select plan(78);
+select plan(82);
 select has_table('public','patients','patients table exists');
 select has_table('public','visits','visits table exists');
 select has_table('public','medicine_batches','stock table exists');
@@ -49,7 +49,11 @@ select has_function('public','report_admin_overview',array['date','date'],'serve
 select has_function('public','search_medicine_availability',array['text','integer'],'doctor-safe medicine availability RPC exists');
 select hasnt_function('public','list_pharmacy_batches',array['integer','integer'],'legacy unfiltered pharmacy batch listing is removed');
 select has_function('public','list_pharmacy_batches',array['text','integer','integer'],'searchable guarded pharmacy batch listing exists');
-select has_function('public','list_medicine_directory',array['text','integer','integer'],'guarded medicine directory listing exists');
+select has_function('public','list_medicine_directory',array['text','integer','integer','boolean'],'guarded medicine directory listing exists');
+select has_column('public','medicine_directory','archived_at','removed medicines are archived rather than erased');
+select has_column('public','medicine_directory','archived_by','medicine removal records who removed it');
+select has_function('public','delete_medicine',array['uuid'],'history-safe medicine removal RPC exists');
+select has_function('public','restore_medicine',array['uuid'],'archived medicine can be returned to the library');
 select has_function('public','list_available_dispense_batches',array['integer'],'guarded FEFO dispensing batch list exists');
 select has_function('public','list_dispense_batches_for_medicines',array['uuid[]'],'scoped live multi-batch dispense list exists');
 select ok(

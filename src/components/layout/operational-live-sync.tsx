@@ -6,13 +6,20 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { createSupabaseBrowserClient } from "@/lib/supabase/browser";
 import type { AppRole } from "@/types/hospital";
 
+// medicine_directory is watched by every role because every role reads it
+// somewhere: pharmacy and admin manage the library, doctors prescribe from its
+// autocomplete, IP requests items from its catalogue, and reception/OP read it
+// on Drug Stock. Without it, an admin removing a medicine left those screens
+// still offering it until someone reloaded. It is a rare write, so the extra
+// subscription costs almost nothing -- unlike medicine_batches, which changes
+// on every dispense and stays with the two roles that manage stock.
 const roleTables: Record<AppRole, string[]> = {
-  admin: ["visits", "patient_reports", "prescriptions", "ip_tickets", "medicine_batches"],
-  reception: ["visits", "vitals", "visit_payments", "patient_reports", "consultations"],
-  op: ["visits", "vitals", "patient_reports"],
-  doctor: ["visits", "consultations", "patient_reports", "ip_tickets"],
-  ip: ["ip_tickets", "ip_charges", "ip_payments", "patient_reports", "ip_inventory_requests"],
-  pharmacy: ["prescriptions", "medicine_batches", "pharmacy_sales", "ip_inventory_requests"],
+  admin: ["visits", "patient_reports", "prescriptions", "ip_tickets", "medicine_batches", "medicine_directory"],
+  reception: ["visits", "vitals", "visit_payments", "patient_reports", "consultations", "medicine_directory"],
+  op: ["visits", "vitals", "patient_reports", "medicine_directory"],
+  doctor: ["visits", "consultations", "patient_reports", "ip_tickets", "medicine_directory"],
+  ip: ["ip_tickets", "ip_charges", "ip_payments", "patient_reports", "ip_inventory_requests", "medicine_directory"],
+  pharmacy: ["prescriptions", "medicine_batches", "pharmacy_sales", "ip_inventory_requests", "medicine_directory"],
 };
 
 export function OperationalLiveSync({ role }: { role: AppRole }) {

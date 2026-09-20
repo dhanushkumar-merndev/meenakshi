@@ -16,6 +16,8 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "test:e2e": "playwright test",
+    "test:e2e:headed": "PW_SLOW_MO=${PW_SLOW_MO:-400} playwright test --project=desktop --headed --workers=1",
+    "test:e2e:clean": "node scripts/e2e-teardown.mjs",
     "verify": "pnpm lint && pnpm typecheck && pnpm test && pnpm build",
     "deploy:check": "node scripts/check-production-env.mjs",
     "db:start": "supabase start",

@@ -75,8 +75,11 @@ export async function saveClinicalTerm(_: ActionState, formData: FormData): Prom
   return { ok: true, message: "Clinical term saved." };
 }
 
+// A medicine is not in this list: it leaves the library through
+// deleteMedicine (features/pharmacy/actions), whose RPC knows about batches
+// and stock. Everything else shares delete_master_record.
 const deletableMasterSchema = z.object({
-  entity: z.enum(["department", "charge", "report_category", "clinical_term", "room_bed", "medicine", "medicine_batch"]),
+  entity: z.enum(["department", "charge", "report_category", "clinical_term", "room_bed", "medicine_batch", "doctor"]),
   id: z.string().uuid(),
 });
 
@@ -86,37 +89,121 @@ const deletePaths = {
   report_category: "/admin/masters",
   clinical_term: "/admin/clinical-directory",
   room_bed: "/admin/masters",
-  medicine: "/pharmacy/medicines",
   medicine_batch: "/pharmacy/stock",
+  doctor: "/admin/doctors",
 } as const;
 
+/**
+ * Removes one master record.
+ *
+ * The database decides between deleting and archiving, because only it can see
+ * whether hospital history points at the row -- and for a clinical term the
+ * foreign key would NOT have refused: consultation_diagnoses.term_id is
+ * ON DELETE SET NULL, so a plain delete used to succeed and quietly blank the
+ * link on every past diagnosis that used it.
+ */
 export async function deleteMasterRecord(_: ActionState, formData: FormData): Promise<ActionState> {
   const parsed = deletableMasterSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) return { ok: false, message: "Invalid delete request." };
-  const { actor, admin } = await adminActor();
   const { entity, id } = parsed.data;
-  let error: { code?: string } | null = null;
+  const { actor, admin } = await adminActor();
 
-  if (entity === "department") ({ error } = await admin.from("departments").delete().eq("id", id));
-  if (entity === "charge") ({ error } = await admin.from("charges").delete().eq("id", id));
-  if (entity === "report_category") ({ error } = await admin.from("report_categories").delete().eq("id", id));
-  if (entity === "clinical_term") ({ error } = await admin.from("clinical_terms").delete().eq("id", id));
-  if (entity === "room_bed") ({ error } = await admin.from("room_beds").delete().eq("id", id));
-  if (entity === "medicine") ({ error } = await admin.from("medicine_directory").delete().eq("id", id));
-  if (entity === "medicine_batch") ({ error } = await admin.from("medicine_batches").delete().eq("id", id));
+  // A batch is physical stock with its own ledger, not a master definition.
+  if (entity === "medicine_batch") {
+    const { error } = await admin.from("medicine_batches").delete().eq("id", id);
+    if (error)
+      return {
+        ok: false,
+        message: error.code === "23503"
+          ? "This batch is already used by hospital history. Deactivate it instead of deleting it."
+          : "This batch could not be deleted.",
+      };
+    await admin.from("audit_logs").insert({ actor_user_id: actor.id, action: "MASTER_RECORD_DELETED", entity_type: entity, entity_id: id });
+    revalidatePath(deletePaths[entity]);
+    revalidatePath("/dashboard");
+    return { ok: true, message: "Batch permanently deleted." };
+  }
 
-  if (error) {
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase.rpc("delete_master_record", {
+    p_entity: entity,
+    p_id: id,
+  });
+  if (error)
     return {
       ok: false,
-      message: error.code === "23503"
-        ? "This item is already used by hospital history. Deactivate it instead of deleting it."
-        : "This item could not be deleted.",
+      message: error.message.includes("record not found")
+        ? "This record no longer exists. Refresh and try again."
+        : "This record could not be removed.",
     };
-  }
-  await admin.from("audit_logs").insert({ actor_user_id: actor.id, action: "MASTER_RECORD_DELETED", entity_type: entity, entity_id: id });
+  const result = (data ?? {}) as { mode?: string };
   revalidatePath(deletePaths[entity]);
-  if (entity === "medicine" || entity === "medicine_batch") revalidatePath("/dashboard");
-  return { ok: true, message: "Item permanently deleted." };
+  return {
+    ok: true,
+    message:
+      result.mode === "deleted"
+        ? "Deleted. It was never used, so nothing was left behind."
+        : "Removed from the list. Every record that already uses it is unchanged.",
+  };
+}
+
+/** Puts an archived master record back. */
+export async function restoreMasterRecord(_: ActionState, formData: FormData): Promise<ActionState> {
+  const parsed = deletableMasterSchema.safeParse(Object.fromEntries(formData));
+  if (!parsed.success) return { ok: false, message: "Invalid restore request." };
+  await requirePermission("manageUsers");
+  const supabase = await createSupabaseServerClient();
+  const { error } = await supabase.rpc("restore_master_record", {
+    p_entity: parsed.data.entity,
+    p_id: parsed.data.id,
+  });
+  if (error) return { ok: false, message: "This record could not be restored." };
+  revalidatePath(deletePaths[parsed.data.entity]);
+  return { ok: true, message: "Restored." };
+}
+
+/**
+ * Removes a staff account.
+ *
+ * An account that has done any work is deactivated, not deleted: the profile
+ * is who registered a patient or collected a payment, and deleting it would
+ * erase that attribution. One created by mistake is removed for real, and its
+ * sign-in goes with it.
+ */
+export async function deleteStaffUser(_: ActionState, formData: FormData): Promise<ActionState> {
+  const parsed = z.object({ id: z.string().uuid() }).safeParse(Object.fromEntries(formData));
+  if (!parsed.success) return { ok: false, message: "Invalid removal request." };
+  const { actor, admin } = await adminActor();
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase.rpc("delete_staff_profile", {
+    p_user_id: parsed.data.id,
+  });
+  if (error)
+    return {
+      ok: false,
+      message: error.message.includes("your own account")
+        ? "You cannot remove your own account."
+        : error.message.includes("last administrator")
+          ? "This is the only active administrator. Promote another admin first."
+          : error.message.includes("record not found")
+            ? "This account no longer exists. Refresh and try again."
+            : "This account could not be removed.",
+    };
+  const result = (data ?? {}) as { mode?: string; label?: string };
+  // The profile is gone, so the sign-in must go too or the email cannot be
+  // reused. A deactivated account keeps its login disabled by status instead.
+  if (result.mode === "deleted") await admin.auth.admin.deleteUser(parsed.data.id);
+  else await admin.auth.admin.updateUserById(parsed.data.id, { ban_duration: "876000h" });
+  void actor;
+  revalidatePath("/admin/users");
+  revalidatePath("/admin/doctors");
+  return {
+    ok: true,
+    message:
+      result.mode === "deleted"
+        ? "Account deleted. It had never been used, so nothing was left behind."
+        : "Account deactivated and signed out. Everything they recorded keeps their name on it.",
+  };
 }
 
 export async function saveHospitalSettings(_: ActionState, formData: FormData): Promise<ActionState> {

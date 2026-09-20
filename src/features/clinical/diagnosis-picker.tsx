@@ -155,7 +155,10 @@ export function DiagnosisPicker({
   };
   const addFromDirectory = (item: ClinicalTerm) =>
     add({
-      term_id: item.id,
+      // Official SNOMED terms have no local clinical_terms UUID. Omit the
+      // optional foreign key instead of serializing null, while retaining the
+      // official concept code and display text on the diagnosis entry.
+      term_id: item.id ?? undefined,
       display_text: item.display_text,
       code: item.code ?? undefined,
       code_system: item.code_system ?? undefined,

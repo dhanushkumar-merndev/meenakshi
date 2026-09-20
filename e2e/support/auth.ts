@@ -3,12 +3,16 @@ import { expect, type Page } from "@playwright/test";
 export type Role = "admin" | "reception" | "doctor" | "ip" | "pharmacy";
 
 /**
- * Staff sign-in for E2E. All five account types share one password in the test
- * project; each email can be overridden with E2E_<ROLE>_EMAIL.
+ * Staff sign-in for E2E.
+ *
+ * E2E_PASSWORD is the shared fallback, but the accounts do not have to share
+ * one: a role whose password differs (an account still on the credentials
+ * handed out at go-live, say) is configured with E2E_<ROLE>_PASSWORD. Emails
+ * are overridden the same way with E2E_<ROLE>_EMAIL.
  */
-const password = process.env.E2E_PASSWORD ?? process.env.E2E_ADMIN_PASSWORD;
+const sharedPassword = process.env.E2E_PASSWORD ?? process.env.E2E_ADMIN_PASSWORD;
 
-export const credentialsConfigured = Boolean(password);
+export const credentialsConfigured = Boolean(sharedPassword);
 export const missingCredentials =
   "Set E2E_PASSWORD (and the role emails, if they differ from the defaults) to run authenticated tests.";
 
@@ -19,14 +23,34 @@ export function emailFor(role: Role) {
   return `${role}@meenakshihospital.com`;
 }
 
+export function passwordFor(role: Role) {
+  return process.env[`E2E_${role.toUpperCase()}_PASSWORD`] ?? sharedPassword;
+}
+
 export async function signIn(page: Page, role: Role) {
-  await page.goto("/login");
-  await page.getByLabel("Email").fill(emailFor(role));
-  // exact: the show/hide toggle button's own aria-label ("Show password")
-  // otherwise also matches this substring search.
-  await page.getByLabel("Password", { exact: true }).fill(password!);
-  await page.getByRole("button", { name: "Sign In" }).click();
-  await expect(page).toHaveURL(/dashboard/, { timeout: 20_000 });
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    await page.goto("/login");
+    await page.getByLabel("Email").fill(emailFor(role));
+    // exact: the show/hide toggle button's own aria-label ("Show password")
+    // otherwise also matches this substring search.
+    await page.getByLabel("Password", { exact: true }).fill(passwordFor(role)!);
+    await page.getByRole("button", { name: "Sign In" }).click();
+
+    try {
+      await expect(page).toHaveURL(/dashboard/, { timeout: 20_000 });
+      await expect(page.getByTestId("current-role")).toHaveText(
+        new RegExp(`^${role}$`, "i"),
+        { timeout: 20_000 },
+      );
+      return;
+    } catch (error) {
+      const message = await page.getByRole("alert").textContent().catch(() => null);
+      // A rendered login error is a real authentication failure. Retrying would
+      // hide a broken credential; only retry a session/navigation handoff that
+      // left the page silently on /login during a long live-data suite.
+      if (message || attempt === 1) throw error;
+    }
+  }
 }
 
 /**

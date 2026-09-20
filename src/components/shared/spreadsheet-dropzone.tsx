@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { FileSpreadsheet } from "lucide-react";
 import { Input } from "@/components/ui/input";
 
@@ -26,7 +26,15 @@ export function SpreadsheetDropzone({
   disabled?: boolean;
 }) {
   const [dragging, setDragging] = useState(false);
+  const [ready, setReady] = useState(false);
   const depth = useRef(0);
+
+  // A user can only choose a file after this client component is interactive.
+  // Exposing that moment also lets automated tests avoid firing a synthetic
+  // file event into server-rendered markup before React has attached it.
+  useEffect(() => {
+    setReady(true);
+  }, []);
 
   const reset = () => {
     depth.current = 0;
@@ -36,6 +44,7 @@ export function SpreadsheetDropzone({
   return (
     <label
       data-dragging={dragging || undefined}
+      data-file-upload-ready={ready || undefined}
       className={
         "flex min-h-28 flex-col items-center justify-center rounded-lg border border-dashed p-5 text-center transition-colors " +
         (disabled
@@ -80,9 +89,10 @@ export function SpreadsheetDropzone({
         accept={ACCEPT}
         disabled={disabled}
         onChange={(event) => {
-          onFile(event.target.files?.[0]);
+          const input = event.target;
+          onFile(input.files?.[0]);
           // Let the same file be picked again after a failed parse.
-          event.target.value = "";
+          input.value = "";
         }}
       />
     </label>

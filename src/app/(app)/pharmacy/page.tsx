@@ -10,6 +10,7 @@ import { ManualPrescriptionDialog } from "@/features/pharmacy/manual-prescriptio
 import { CollectPaymentDialog } from "@/features/visits/collect-payment-dialog";
 import { DebouncedSearchInput } from "@/components/shared/debounced-search-input";
 import { FilterTabs } from "@/components/shared/filter-tabs";
+import { PAGE_SIZE, TablePagination, pageFromParam } from "@/components/shared/table-pagination";
 import { PageHeader } from "@/components/shared/page-header";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { Button } from "@/components/ui/button";
@@ -56,13 +57,14 @@ type Rx = {
 export default async function PharmacyPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; status?: string }>;
+  searchParams: Promise<{ q?: string; status?: string; page?: string }>;
 }) {
   await requireRoute("/pharmacy");
   const params = await searchParams;
   const q = params.q?.trim() ?? "";
   const selectedStatus =
     params.status === "completed" || params.status === "all" ? params.status : "pending";
+  const page = pageFromParam(params.page);
   const supabase = await createSupabaseServerClient();
   // Expiry is not swept here: the Supabase pg_cron job
   // "expire-stale-hospital-prescriptions" runs every minute, so doing it per
@@ -72,8 +74,9 @@ export default async function PharmacyPage({
   const [rxResult, doctorsResult] = await Promise.all([
     supabase.rpc("list_pending_prescriptions", {
       p_query: q || null,
-      p_limit: 50,
+      p_limit: PAGE_SIZE,
       p_status_filter: selectedStatus,
+      p_offset: (page - 1) * PAGE_SIZE,
     }),
     supabase.from("doctors").select("id,display_name").eq("active", true).order("display_name"),
   ]);
@@ -81,6 +84,7 @@ export default async function PharmacyPage({
     throw new Error("Pending prescriptions could not be loaded.");
   }
   const prescriptions = (rxResult.data ?? []) as unknown as Rx[];
+  const total = Number((prescriptions[0] as unknown as { total_count?: number })?.total_count ?? 0);
   const doctors = (doctorsResult.data ?? []).map((d) => ({ id: d.id, label: d.display_name }));
   return (
     <div>
@@ -293,6 +297,13 @@ export default async function PharmacyPage({
               </TableBody>
             </Table>
           </div>
+          <TablePagination
+            page={page}
+            total={total}
+            noun="prescriptions"
+            params={{ q, status: selectedStatus }}
+            size={PAGE_SIZE}
+          />
         </CardContent>
       </Card>
     </div>

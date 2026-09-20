@@ -1,6 +1,7 @@
 import { requireRoute } from "@/lib/auth/dal";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { formatInr } from "@/lib/domain/money";
+import { PAGE_SIZE, TablePagination, pageFromParam, rangeFor } from "@/components/shared/table-pagination";
 import { containsSearchPattern } from "@/lib/domain/search";
 import {
   ChargeDialog,
@@ -67,11 +68,12 @@ function EmptyRow({ span, searched }: { span: number; searched: boolean }) {
 export default async function MastersPage({
   searchParams,
 }: {
-  searchParams: Promise<{ tab?: string; q?: string }>;
+  searchParams: Promise<{ tab?: string; q?: string; page?: string }>;
 }) {
   await requireRoute("/admin/masters");
   const params = await searchParams;
   const q = params.q?.trim() ?? "";
+  const page = pageFromParam(params.page);
   const tab = TABS.some((entry) => entry.value === params.tab)
     ? params.tab!
     : "departments";
@@ -110,18 +112,20 @@ export default async function MastersPage({
       />
       <Card>
         <CardContent className="p-0">
-          <div className="overflow-x-auto">
+          <div>
             {tab === "departments" ? (
-              <DepartmentsTable supabase={supabase} q={q} pattern={pattern} />
+              <DepartmentsTable supabase={supabase} q={q} pattern={pattern} page={page} tab={tab} />
             ) : tab === "charges" ? (
-              <ChargesTable supabase={supabase} q={q} pattern={pattern} />
+              <ChargesTable supabase={supabase} q={q} pattern={pattern} page={page} tab={tab} />
             ) : tab === "rooms" ? (
-              <RoomsTable supabase={supabase} q={q} pattern={pattern} />
+              <RoomsTable supabase={supabase} q={q} pattern={pattern} page={page} tab={tab} />
             ) : (
               <ReportCategoriesTable
                 supabase={supabase}
                 q={q}
                 pattern={pattern}
+                page={page}
+                tab={tab}
               />
             )}
           </div>
@@ -135,17 +139,35 @@ type TableProps = {
   supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>;
   q: string;
   pattern: string;
+  page: number;
+  tab: string;
 };
 
-async function DepartmentsTable({ supabase, q, pattern }: TableProps) {
+/** Scroll wrapper plus the page footer every master table shares. */
+function TableShell({
+  children, page, total, noun, q, tab,
+}: {
+  children: React.ReactNode; page: number; total: number; noun: string; q: string; tab: string;
+}) {
+  return (
+    <>
+      <div className="overflow-x-auto">{children}</div>
+      <TablePagination page={page} total={total} noun={noun} params={{ q, tab }} size={PAGE_SIZE} />
+    </>
+  );
+}
+
+async function DepartmentsTable({ supabase, q, pattern, page, tab }: TableProps) {
   let query = supabase
     .from("departments")
-    .select("id,name,description,active")
-    .order("name");
+    .select("id,name,description,active", { count: "exact" })
+    .order("name")
+    .range(...rangeFor(page));
   if (q) query = query.or(`name.ilike.${pattern},description.ilike.${pattern}`);
-  const { data } = await query;
+  const { data, count } = await query;
   const rows = data ?? [];
   return (
+    <TableShell page={page} total={count ?? 0} noun="departments" q={q} tab={tab}>
     <Table>
       <TableHeader>
         <TableRow>
@@ -171,20 +193,23 @@ async function DepartmentsTable({ supabase, q, pattern }: TableProps) {
         {rows.length ? null : <EmptyRow span={4} searched={Boolean(q)} />}
       </TableBody>
     </Table>
+    </TableShell>
   );
 }
 
-async function ChargesTable({ supabase, q, pattern }: TableProps) {
+async function ChargesTable({ supabase, q, pattern, page, tab }: TableProps) {
   let query = supabase
     .from("charges")
-    .select("id,category,charge_name,amount_paise,active")
+    .select("id,category,charge_name,amount_paise,active", { count: "exact" })
     .order("category")
-    .order("charge_name");
+    .order("charge_name")
+    .range(...rangeFor(page));
   if (q)
     query = query.or(`category.ilike.${pattern},charge_name.ilike.${pattern}`);
-  const { data } = await query;
+  const { data, count } = await query;
   const rows = data ?? [];
   return (
+    <TableShell page={page} total={count ?? 0} noun="charges" q={q} tab={tab}>
     <Table>
       <TableHeader>
         <TableRow>
@@ -220,21 +245,23 @@ async function ChargesTable({ supabase, q, pattern }: TableProps) {
         {rows.length ? null : <EmptyRow span={5} searched={Boolean(q)} />}
       </TableBody>
     </Table>
+    </TableShell>
   );
 }
 
-async function RoomsTable({ supabase, q, pattern }: TableProps) {
+async function RoomsTable({ supabase, q, pattern, page, tab }: TableProps) {
   let roomQuery = supabase
     .from("room_beds")
-    .select("id,room_number,bed_number,floor,room_type,active")
+    .select("id,room_number,bed_number,floor,room_type,active", { count: "exact" })
     .order("floor")
     .order("room_number")
-    .order("bed_number");
+    .order("bed_number")
+    .range(...rangeFor(page));
   if (q)
     roomQuery = roomQuery.or(
       `room_number.ilike.${pattern},bed_number.ilike.${pattern},floor.ilike.${pattern}`,
     );
-  const [{ data: rooms }, { data: occupied }] = await Promise.all([
+  const [{ data: rooms, count }, { data: occupied }] = await Promise.all([
     roomQuery,
     supabase
       .from("ip_tickets")
@@ -245,6 +272,7 @@ async function RoomsTable({ supabase, q, pattern }: TableProps) {
   const used = new Set((occupied ?? []).map((entry) => entry.room_bed_id));
   const rows = rooms ?? [];
   return (
+    <TableShell page={page} total={count ?? 0} noun="beds" q={q} tab={tab}>
     <Table>
       <TableHeader>
         <TableRow>
@@ -291,18 +319,21 @@ async function RoomsTable({ supabase, q, pattern }: TableProps) {
         {rows.length ? null : <EmptyRow span={6} searched={Boolean(q)} />}
       </TableBody>
     </Table>
+    </TableShell>
   );
 }
 
-async function ReportCategoriesTable({ supabase, q, pattern }: TableProps) {
+async function ReportCategoriesTable({ supabase, q, pattern, page, tab }: TableProps) {
   let query = supabase
     .from("report_categories")
-    .select("id,name,active,created_at")
-    .order("name");
+    .select("id,name,active,created_at", { count: "exact" })
+    .order("name")
+    .range(...rangeFor(page));
   if (q) query = query.ilike("name", pattern);
-  const { data } = await query;
+  const { data, count } = await query;
   const rows = data ?? [];
   return (
+    <TableShell page={page} total={count ?? 0} noun="report categories" q={q} tab={tab}>
     <Table>
       <TableHeader>
         <TableRow>
@@ -326,5 +357,6 @@ async function ReportCategoriesTable({ supabase, q, pattern }: TableProps) {
         {rows.length ? null : <EmptyRow span={3} searched={Boolean(q)} />}
       </TableBody>
     </Table>
+    </TableShell>
   );
 }

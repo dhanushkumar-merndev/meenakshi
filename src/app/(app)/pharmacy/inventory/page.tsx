@@ -9,6 +9,7 @@ import {
   ProcedureBillDialog,
   type InventoryItem,
 } from "@/features/pharmacy/inventory-dialogs";
+import { PAGE_SIZE, TablePagination, pageFromParam } from "@/components/shared/table-pagination";
 import { PageHeader } from "@/components/shared/page-header";
 import { FilterTabs } from "@/components/shared/filter-tabs";
 import { StatusBadge } from "@/components/shared/status-badge";
@@ -42,25 +43,35 @@ type Sale = {
 export default async function InventoryPage({
   searchParams,
 }: {
-  searchParams: Promise<{ tab?: string; q?: string }>;
+  searchParams: Promise<{ tab?: string; q?: string; page?: string }>;
 }) {
   await requireRoute("/pharmacy");
   const params = await searchParams;
   const q = params.q?.trim() ?? "";
   const tab = params.tab === "bills" ? "bills" : "stock";
+  const page = pageFromParam(params.page);
+  const offset = (page - 1) * PAGE_SIZE;
   const supabase = await createSupabaseServerClient();
 
   const [itemsResult, doctorsResult, salesResult] = await Promise.all([
-    supabase.rpc("search_inventory_items", { p_query: tab === "stock" ? q || null : null, p_limit: 100 }),
+    supabase.rpc("search_inventory_items", {
+      p_query: tab === "stock" ? q || null : null,
+      p_limit: PAGE_SIZE,
+      p_offset: tab === "stock" ? offset : 0,
+    }),
     supabase.from("doctors").select("id,display_name").eq("active", true).order("display_name"),
     tab === "bills"
-      ? supabase.rpc("list_procedure_sales", { p_query: null, p_limit: 50 })
+      ? supabase.rpc("list_procedure_sales", { p_query: null, p_limit: PAGE_SIZE, p_offset: offset })
       : Promise.resolve({ data: [] }),
   ]);
 
   const items = (itemsResult.data ?? []) as unknown as InventoryItem[];
   const doctors = (doctorsResult.data ?? []).map((d) => ({ id: d.id, label: d.display_name }));
   const sales = (salesResult.data ?? []) as unknown as Sale[];
+  const totalOf = (rows: Array<{ total_count?: number }>) => Number(rows[0]?.total_count ?? 0);
+  const total = tab === "bills"
+    ? totalOf(sales as unknown as Array<{ total_count?: number }>)
+    : totalOf(items as unknown as Array<{ total_count?: number }>);
 
   return (
     <div>
@@ -145,6 +156,7 @@ export default async function InventoryPage({
                   </TableBody>
                 </Table>
               </div>
+            <TablePagination page={page} total={total} noun="items" params={{ q, tab }} size={PAGE_SIZE} />
             </CardContent>
           </Card>
         </>
@@ -214,6 +226,7 @@ export default async function InventoryPage({
                 </TableBody>
               </Table>
             </div>
+            <TablePagination page={page} total={total} noun="bills" params={{ q, tab }} size={PAGE_SIZE} />
           </CardContent>
         </Card>
       )}

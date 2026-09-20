@@ -16,6 +16,12 @@ describe("role authorization matrix", () => {
     expect(canAccessRoute("pharmacy", "/patients")).toBe(false);
   });
 
+  it("keeps audit logs exclusive to administrators", () => {
+    for (const role of APP_ROLES) {
+      expect(canAccessRoute(role, "/audit"), `${role} audit access`).toBe(role === "admin");
+    }
+  });
+
   it("lets IP staff view drug availability without pharmacy access", () => {
     expect(canAccessRoute("ip", "/drug-stock")).toBe(true);
     expect(canAccessRoute("ip", "/pharmacy/stock")).toBe(false);

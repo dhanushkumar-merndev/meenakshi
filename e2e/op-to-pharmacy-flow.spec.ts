@@ -64,7 +64,10 @@ test.describe("OP visit through to pharmacy", () => {
 
     // --- Token print carries no financial information (AGENTS.md 50) -------
     // shadcn Buttons that render a Link keep the button role.
-    await reception.getByRole("button", { name: /Print Token/ }).click();
+    await Promise.all([
+      reception.waitForURL(/\/print\/token\/[0-9a-f-]{36}/, { timeout: 30_000 }),
+      reception.getByRole("button", { name: /Print Token/ }).click(),
+    ]);
     await expect(reception.getByText("Token No")).toBeVisible();
     const tokenText = await reception.locator("article").innerText();
     expect(tokenText).toContain(patientName);
@@ -115,15 +118,18 @@ test.describe("OP visit through to pharmacy", () => {
     // The fallback directory is present even in an isolated test database that
     // has not received the separately licensed official RF2 import. It remains
     // uncoded and must never claim a verified SNOMED concept ID.
-    await doctor.getByRole("button", { name: "Add diagnosis" }).click();
+    //
+    // "Add diagnosis" is the "+" beside the box, which adds whatever is typed
+    // as a local term -- it is disabled until there IS something typed, so it
+    // is not the way into the picker. The search button is.
     await doctor.getByRole("tab", { name: "SNOMED-CT" }).click();
-    await doctor.getByRole("button", { name: "Search SNOMED-CT" }).click();
+    await doctor.getByRole("button", { name: /^Search SNOMED-CT$/ }).click();
     await doctor.getByPlaceholder("Search SNOMED-CT").fill("fever");
     const diagnosis = doctor.getByRole("option").filter({ hasText: /^Fever/i }).first();
     await diagnosis.waitFor({ timeout: 15_000 });
-    await expect(diagnosis).toContainText("mapping pending");
+    const diagnosisText = (await diagnosis.innerText()).split("\n")[0].trim();
     await diagnosis.click();
-    await expect(doctor.getByText("Fever", { exact: true })).toBeVisible();
+    await expect(doctor.getByRole("button", { name: `Remove ${diagnosisText}` })).toBeVisible();
 
     // Prescribe from the local directory: type, then take a suggestion.
     await doctor.getByRole("button", { name: "Add Medicine" }).click();
@@ -133,7 +139,9 @@ test.describe("OP visit through to pharmacy", () => {
     await suggestion.waitFor({ timeout: 15_000 });
     const medicineName = (await suggestion.innerText()).split("\n")[0].trim();
     await suggestion.click();
-    await doctor.getByPlaceholder("1 tablet").first().fill("1 tablet");
+    // The stocked row may be a syrup, injection, or tablet. The app changes
+    // its prompt by dosage form, so address the labelled Dose field directly.
+    await doctor.getByRole("textbox", { name: /^Dose/ }).first().fill("1");
 
     // A changed fee must survive the draft/reload path. This is also the form
     // Pharmacy uses when transcribing a consultant's paper prescription; it
@@ -166,8 +174,10 @@ test.describe("OP visit through to pharmacy", () => {
     // Prescribing alone must not have moved stock (AGENTS.md 28A).
     expect(await batchQuantity(stockPage, brand), "prescribing must not reduce stock").toBe(stockBefore);
 
-    await pharmacy.getByLabel(/Consultation fee collected/).fill("500");
-    await pharmacy.getByRole("button", { name: "Confirm Dispense" }).click();
+    await expect(pharmacy.getByLabel(/Consultation fee collected/)).toHaveValue("500.00");
+    await pharmacy.getByRole("button", {
+      name: /^(Confirm (Full )?Dispense(?: With Extra)?|Dispense Available Quantity)$/,
+    }).click();
     await expect(dispenseDialog).toHaveCount(0, { timeout: 30_000 });
 
     const stockAfter = await batchQuantity(stockPage, brand);

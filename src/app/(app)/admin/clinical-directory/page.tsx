@@ -6,9 +6,11 @@ import { PageHeader } from "@/components/shared/page-header";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { ClinicalTermDialog } from "@/features/admin/master-dialogs";
 import { DebouncedSearchInput } from "@/components/shared/debounced-search-input";
+import { PAGE_SIZE, TablePagination, pageFromParam, rangeFor } from "@/components/shared/table-pagination";
 import { containsSearchPattern } from "@/lib/domain/search";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   Table,
   TableBody,
@@ -17,21 +19,64 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-export default async function ClinicalDirectoryPage({ searchParams }: { searchParams: Promise<{ q?: string }> }) {
+
+function SearchAliases({ aliases }: { aliases: string[] }) {
+  const fullAliases = aliases.join(", ");
+  if (!fullAliases) return "—";
+  if (fullAliases.length <= 20) return fullAliases;
+
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <span className="block max-w-40 cursor-help truncate" tabIndex={0}>
+            {fullAliases.slice(0, 20)}…
+          </span>
+        }
+      />
+      <TooltipContent className="max-w-sm break-words">{fullAliases}</TooltipContent>
+    </Tooltip>
+  );
+}
+
+function DisplayText({ text }: { text: string }) {
+  if (text.length <= 20) return text;
+
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <span className="block max-w-40 cursor-help truncate" tabIndex={0}>
+            {text.slice(0, 20)}…
+          </span>
+        }
+      />
+      <TooltipContent className="max-w-sm break-words">{text}</TooltipContent>
+    </Tooltip>
+  );
+}
+
+export default async function ClinicalDirectoryPage({ searchParams }: { searchParams: Promise<{ q?: string; page?: string }> }) {
   await requireRoute("/admin/clinical-directory");
-  const q = (await searchParams).q?.trim() ?? "";
+  const params = await searchParams;
+  const q = params.q?.trim() ?? "";
+  const page = pageFromParam(params.page);
   const supabase = await createSupabaseServerClient();
+  // This table is the target of the ICD-10 / SNOMED bulk import, so it is the
+  // one master that genuinely reaches five figures. It used to be capped at
+  // the first hundred rows with no way to reach the rest.
   let query = supabase
     .from("clinical_terms")
-    .select("id,term_type,display_text,search_aliases,active,source,code,code_system")
+    .select("id,term_type,display_text,search_aliases,active,source,code,code_system", { count: "exact" })
     .order("term_type")
     .order("display_text")
-    .range(0, 99);
+    .range(...rangeFor(page));
   // Code and code_system are searchable too -- "SNOMED" or "J45" finds a
   // coded term the same way a display-text search does.
   if (q) { const pattern = containsSearchPattern(q); query = query.or(`display_text.ilike.${pattern},term_type.ilike.${pattern},source.ilike.${pattern},code.ilike.${pattern},code_system.ilike.${pattern}`); }
-  const { data } = await query;
+  const { data, count } = await query;
   const rows = data ?? [];
+  const total = count ?? 0;
   return (
     <div>
       <PageHeader
@@ -68,11 +113,11 @@ export default async function ClinicalDirectoryPage({ searchParams }: { searchPa
                 <TableRow key={term.id}>
                   <TableCell className="capitalize">{term.term_type}</TableCell>
                   <TableCell className="font-medium">
-                    {term.display_text}
+                    <DisplayText text={term.display_text} />
                   </TableCell>
                   <TableCell className="font-mono text-xs">{term.code || "—"}</TableCell>
                   <TableCell>{term.code_system || "—"}</TableCell>
-                  <TableCell>{term.search_aliases.join(", ") || "—"}</TableCell>
+                  <TableCell><SearchAliases aliases={term.search_aliases} /></TableCell>
                   <TableCell>
                     <StatusBadge status={term.active ? "active" : "inactive"} />
                   </TableCell>
@@ -86,6 +131,7 @@ export default async function ClinicalDirectoryPage({ searchParams }: { searchPa
             </TableBody>
           </Table>
           </div>
+          <TablePagination page={page} total={total} noun="clinical terms" params={{ q }} size={PAGE_SIZE} />
         </CardContent>
       </Card>
     </div>

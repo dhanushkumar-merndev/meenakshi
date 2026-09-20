@@ -17,6 +17,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useAutoCloseDialog } from "@/hooks/use-auto-close-dialog";
+import { DeleteMasterButton, DeleteStaffButton } from "./delete-master-button";
 import {
   Select,
   SelectContent,
@@ -223,7 +224,7 @@ export function EditStaffDialog({ user }: { user: { id: string; fullName: string
             </div>
             <div className="space-y-2"><Label htmlFor={`staff-password-${user.id}`}>New password (optional)</Label><Input id={`staff-password-${user.id}`} name="password" type="password" minLength={10} /></div>
           </div>
-          <DialogFooter showCloseButton><Button disabled={pending} type="submit">{pending ? <LoaderCircle className="animate-spin" /> : <UserCog />} Save Changes</Button></DialogFooter>
+          <DialogFooter showCloseButton><DeleteStaffButton id={user.id} label={user.fullName} /><Button disabled={pending} type="submit">{pending ? <LoaderCircle className="animate-spin" /> : <UserCog />} Save Changes</Button></DialogFooter>
         </form>
       </DialogContent>
     </Dialog>
@@ -250,7 +251,7 @@ export function EditDoctorDialog({ doctor, departments, triggerLabel = "Edit" }:
             <div className="space-y-2"><Label htmlFor={`edit-doctor-department-${doctor.id}`}>Department</Label><Select value={department} onValueChange={(value) => setDepartment(String(value))}><SelectTrigger id={`edit-doctor-department-${doctor.id}`} className="w-full"><SelectValue placeholder="Select department">{() => departmentName}</SelectValue></SelectTrigger><SelectContent>{departments.map((item) => <SelectItem key={item.id} value={item.id} label={item.name}>{item.name}</SelectItem>)}</SelectContent></Select></div>
             <label className="flex items-center gap-2 self-end text-sm"><Checkbox name="active" defaultChecked={doctor.active} /> Active</label>
           </div>
-          <DialogFooter showCloseButton><Button disabled={pending} type="submit">{pending ? <LoaderCircle className="animate-spin" /> : <UserCog />} Save Doctor</Button></DialogFooter>
+          <DialogFooter showCloseButton><DeleteMasterButton entity="doctor" id={doctor.id} label={doctor.displayName} /><Button disabled={pending} type="submit">{pending ? <LoaderCircle className="animate-spin" /> : <UserCog />} Save Doctor</Button></DialogFooter>
         </form>
       </DialogContent>
     </Dialog>

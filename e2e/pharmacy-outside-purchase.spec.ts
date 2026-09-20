@@ -1,13 +1,18 @@
 import { expect, test } from "@playwright/test";
 import { credentialsConfigured, missingCredentials, signIn } from "./support/auth";
+import { lookupPrescriptions } from "./support/fixtures";
 
 test.skip(!credentialsConfigured, missingCredentials);
 
 test("an unsupplied prescription prints a slip for buying outside", async ({ page }) => {
+  // Looked up, not hardcoded: the literal id this used to carry became a 404
+  // once that row was cleared, which read as a broken print route.
+  const { undispensed } = await lookupPrescriptions();
+  test.skip(!undispensed, "This database has no prescription with undispensed items.");
+
   await signIn(page, "pharmacy");
-  // RX-000024: an IP prescription whose items were never dispensed.
-  const response = await page.goto("/print/outside-purchase/ff4a9a64-e71a-471d-b1e6-1f74fbfae250");
-  expect(response?.status()).toBe(200);
+  const response = await page.goto(`/print/outside-purchase/${undispensed}`);
+  expect(response?.status(), `outside-purchase slip for ${undispensed}`).toBe(200);
   await expect(page.getByText(/Outside Purchase Prescription/i)).toBeVisible();
   await expect(page.getByText(/Nothing on this sheet has been billed/i)).toBeVisible();
   await expect(page.getByRole("button", { name: /Print Outside Purchase Slip/i })).toBeVisible();
