@@ -59,3 +59,8 @@ export function isHospitalToday(value: Date | string, now = new Date()) {
   const formatter = new Intl.DateTimeFormat("en-CA", { timeZone: process.env.APP_TIMEZONE ?? "Asia/Kolkata" });
   return formatter.format(new Date(value)) === formatter.format(now);
 }
+
+/** Today's calendar date (YYYY-MM-DD) in the hospital timezone, not UTC. */
+export function hospitalTodayIso(now = new Date()) {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: process.env.APP_TIMEZONE ?? "Asia/Kolkata" }).format(now);
+}

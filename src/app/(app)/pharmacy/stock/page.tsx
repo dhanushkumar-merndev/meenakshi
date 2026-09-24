@@ -1,7 +1,8 @@
 import { requireRoute } from "@/lib/auth/dal";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { formatInr, packBreakdown, piecePricePaise } from "@/lib/domain/money";
-import { stockStatus } from "@/lib/domain/stock";
+import { batchAlertStatus } from "@/lib/domain/stock";
+import { hospitalTodayIso } from "@/lib/domain/date";
 import { PageHeader } from "@/components/shared/page-header";
 import { DebouncedSearchInput } from "@/components/shared/debounced-search-input";
 import { TablePager } from "@/components/shared/table-pager";
@@ -66,6 +67,7 @@ export default async function StockPage({
     },
   }));
   const total = Number(source[0]?.total_count ?? 0);
+  const today = hospitalTodayIso();
   return (
     <div>
       <PageHeader
@@ -110,7 +112,15 @@ export default async function StockPage({
                         {batch.medicine_directory?.generic_name ?? "—"}
                       </TableCell>
                       <TableCell>{batch.batch_number}</TableCell>
-                      <TableCell>{batch.expiry_date}</TableCell>
+                      <TableCell
+                        className={
+                          batch.expiry_date < today
+                            ? "font-medium text-destructive"
+                            : undefined
+                        }
+                      >
+                        {batch.expiry_date}
+                      </TableCell>
                       <TableCell>
                         <span className="font-medium tabular-nums">{batch.quantity}</span>
                         {/* Stock is pieces; the pack breakdown is what the
@@ -133,9 +143,11 @@ export default async function StockPage({
                       </TableCell>
                       <TableCell>
                         <StatusBadge
-                          status={stockStatus(
+                          status={batchAlertStatus(
                             batch.quantity,
                             batch.low_stock_threshold,
+                            batch.expiry_date,
+                            today,
                           )}
                         />
                       </TableCell>

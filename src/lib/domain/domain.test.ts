@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { normalizeIndianPhone } from "./phone";
 import { formatInr, paymentSummary, rupeesToPaise } from "./money";
-import { remainingPrescriptionQuantity, stockStatus } from "./stock";
+import { batchAlertStatus, remainingPrescriptionQuantity, stockStatus } from "./stock";
 import { formatTokenNumber } from "./date";
 import { ipTotals } from "./ip";
 
@@ -23,6 +23,12 @@ describe("hospital domain rules", () => {
     expect(stockStatus(0, 10)).toBe("out_of_stock");
     expect(stockStatus(8, 10)).toBe("low_stock");
     expect(remainingPrescriptionQuantity(10, 6)).toBe(4);
+    expect(batchAlertStatus(30, 10, "2026-09-23", "2026-09-24")).toBe("expired");
+    expect(batchAlertStatus(0, 10, "2026-01-01", "2026-09-24")).toBe("expired");
+    expect(batchAlertStatus(30, 10, "2026-09-24", "2026-09-24")).toBe("expiring_soon");
+    expect(batchAlertStatus(30, 10, "2026-10-24", "2026-09-24")).toBe("expiring_soon");
+    expect(batchAlertStatus(30, 10, "2026-10-25", "2026-09-24")).toBe("in_stock");
+    expect(batchAlertStatus(5, 10, "2027-01-01", "2026-09-24")).toBe("low_stock");
     expect(() => remainingPrescriptionQuantity(10, 11)).toThrow();
   });
   it("rejects invalid tokens", () => {
