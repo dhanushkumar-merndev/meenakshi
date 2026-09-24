@@ -20,6 +20,7 @@ export async function GET(request: NextRequest) {
   if (q.length > 120)
     return NextResponse.json({ error: "Search is too long" }, { status: 400 });
 
+  if (q.length < 2) return NextResponse.json({ items: [], nextOffset: null }, { headers: { "Cache-Control": "private, no-store" } });
   const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase.rpc("search_ip_stock_catalog", {
     p_query: q,

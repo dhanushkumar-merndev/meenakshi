@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { SEARCH_DEBOUNCE_MS } from "@/lib/domain/search";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
@@ -35,12 +36,13 @@ export function CatalogSelect<T>({ endpoint, value, onChange, placeholder, disab
   const [results, setResults] = useState<Results<T> | null>(null);
   const [retry, setRetry] = useState(0);
   const requestKey = JSON.stringify([endpoint, request.query, request.offset, retry]);
-  const loading = open && results?.key !== requestKey;
+  const canSearch = request.query.trim().length >= 2;
+  const loading = open && canSearch && results?.key !== requestKey;
   // Old query results must not stay selectable while a new search is pending.
-  const items = results?.key === requestKey || request.offset > 0 ? results?.items ?? [] : [];
+  const items = canSearch && (results?.key === requestKey || request.offset > 0) ? results?.items ?? [] : [];
 
   useEffect(() => {
-    if (!open) return;
+    if (!open || !canSearch) return;
     const controller = new AbortController();
     const timer = setTimeout(async () => {
       try {
@@ -66,9 +68,9 @@ export function CatalogSelect<T>({ endpoint, value, onChange, placeholder, disab
           error: true,
         }));
       }
-    }, request.query ? 250 : 0);
+    }, request.offset > 0 ? 0 : SEARCH_DEBOUNCE_MS);
     return () => { clearTimeout(timer); controller.abort(); };
-  }, [endpoint, open, request.query, request.offset, requestKey]);
+  }, [endpoint, open, canSearch, request.query, request.offset, requestKey]);
 
   return <Select
     open={open}
@@ -90,10 +92,10 @@ export function CatalogSelect<T>({ endpoint, value, onChange, placeholder, disab
       <SelectValue>{() => value?.label ?? placeholder}</SelectValue>
     </SelectTrigger>
     <SelectContent
-      searchPlaceholder="Type a name to search…"
-      emptyMessage={loading ? "Searching…" : results?.error ? "Search unavailable. Please retry." : "No matching items."}
+      searchPlaceholder="Type at least 2 characters…"
+      emptyMessage={!canSearch ? "Type at least 2 characters to search." : loading ? "Searching…" : results?.error ? "Search unavailable. Please retry." : "No matching items."}
       footer={<div className="shrink-0 border-t p-2 text-xs text-muted-foreground" aria-live="polite">
-        {loading ? "Searching…" : results?.error
+        {!canSearch ? "Type at least 2 characters to search." : loading ? "Searching…" : results?.error
           ? <Button type="button" size="sm" variant="ghost" onClick={() => setRetry((n) => n + 1)}>Retry search</Button>
           : results?.nextOffset != null
             ? <Button type="button" size="sm" variant="ghost" className="w-full" onClick={() => setRequest((current) => ({ ...current, offset: results.nextOffset! }))}>Show more items</Button>

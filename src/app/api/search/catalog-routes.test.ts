@@ -21,7 +21,7 @@ describe("catalog search routes", () => {
       expect((await handler(request(`?q=${"x".repeat(121)}`))).status).toBe(400);
       expect(rpc).not.toHaveBeenCalled();
       rpc.mockResolvedValue({ data: null, error: { message: "internal details" } });
-      const response = await handler(request());
+      const response = await handler(request("?q=test"));
       expect(response.status).toBe(500);
       expect(await response.json()).toEqual({ error: "Search unavailable" });
     });
@@ -45,6 +45,33 @@ describe("catalog search routes", () => {
   it.each(["-1", "1.5", "NaN"])("rejects invalid offset %s", async (offset) => {
     expect((await inventory(request(`?offset=${offset}`))).status).toBe(400);
     expect((await medicines(request(`?offset=${offset}`))).status).toBe(400);
+    expect((await stock(request(`?offset=${offset}`))).status).toBe(400);
     expect(rpc).not.toHaveBeenCalled();
   });
+});
+
+it("paginates IP stock beyond the old 500-row cap with one lookahead row", async () => {
+  const rows = Array.from({ length: 26 }, (_, index) => ({ stock_type: "medicine", stock_id: `medicine-${500 + index}`, name: "Same medicine name", quantity: 10, selling_price_paise: 200 }));
+  rpc.mockResolvedValue({ data: rows, error: null });
+  const response = await stock(request("?q=same&offset=500"));
+  expect(rpc).toHaveBeenCalledWith("search_ip_stock_catalog_page", { p_query: "same", p_limit: 26, p_offset: 500 });
+  const body = await response.json();
+  expect(body.items).toHaveLength(25);
+  expect(body.items[0].value).toBe("medicine:medicine-500");
+  expect(body.nextOffset).toBe(525);
+});
+
+it.each([0, 1, 25])("ends IP pagination when only %i rows remain", async (count) => {
+  rpc.mockResolvedValue({ data: Array.from({ length: count }, (_, index) => ({ stock_type: "inventory", stock_id: `item-${index}`, name: "Dressing", quantity: 1, selling_price_paise: 10 })), error: null });
+  const body = await (await stock(request("?q=test&offset=525"))).json();
+  expect(body.items).toHaveLength(count);
+  expect(body.nextOffset).toBeNull();
+});
+
+it.each([inventory, medicines, stock])("does not query the database below two characters", async (handler) => {
+  for (const q of ["", "a", "a%20"]) {
+    const response = await handler(request(`?q=${q}`));
+    expect(await response.json()).toEqual({ items: [], nextOffset: null });
+  }
+  expect(rpc).not.toHaveBeenCalled();
 });

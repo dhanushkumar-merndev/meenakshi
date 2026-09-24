@@ -8,6 +8,7 @@ export async function GET(request: NextRequest) {
   const q = request.nextUrl.searchParams.get("q")?.trim() ?? "";
   const offset = Number(request.nextUrl.searchParams.get("offset") ?? 0);
   if (q.length > 120 || !Number.isSafeInteger(offset) || offset < 0) return NextResponse.json({ error: "Invalid search" }, { status: 400 });
+  if (q.length < 2) return NextResponse.json({ items: [], nextOffset: null }, { headers: { "Cache-Control": "private, no-store" } });
   const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase.rpc("list_medicine_directory", { p_query: q, p_limit: 25, p_offset: offset, p_include_archived: false });
   if (error) return NextResponse.json({ error: "Search unavailable" }, { status: 500 });

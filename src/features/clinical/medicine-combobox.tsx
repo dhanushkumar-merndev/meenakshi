@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
+import { SEARCH_DEBOUNCE_MS } from "@/lib/domain/search";
 import { Check, ChevronsUpDown, LoaderCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -48,7 +49,7 @@ export function MedicineCombobox({
   const [loading, setLoading] = useState(false);
   const [searchError, setSearchError] = useState(false);
   useEffect(() => {
-    if (!open) {
+    if (!open || query.trim().length < 2) {
       return;
     }
     const controller = new AbortController();
@@ -70,7 +71,7 @@ export function MedicineCombobox({
       } finally {
         if (!controller.signal.aborted) setLoading(false);
       }
-    }, query.trim() ? 250 : 0);
+    }, SEARCH_DEBOUNCE_MS);
     return () => {
       clearTimeout(timer);
       controller.abort();
@@ -79,7 +80,7 @@ export function MedicineCombobox({
   return (
     <Popover open={open} onOpenChange={(next) => {
       setOpen(next);
-      if (next) { setQuery(""); setItems([]); setLoading(true); setSearchError(false); }
+      if (next) { setQuery(""); setItems([]); setLoading(false); setSearchError(false); }
     }}>
       <PopoverTrigger
         render={
@@ -106,14 +107,14 @@ export function MedicineCombobox({
             onValueChange={(text) => {
               setQuery(text);
               setItems([]);
-              setLoading(true);
+              setLoading(text.trim().length >= 2);
               setSearchError(false);
               // Free text is no longer the directory medicine that was
               // picked, so its id and dosage form go with it -- otherwise the
               // dose box keeps prompting in the old medicine's unit.
               onChange({ medicine_name: text, medicine_id: undefined, form: undefined });
             }}
-            placeholder="Type a medicine name or select below"
+            placeholder="Type at least 2 characters"
             maxLength={120}
           />
           <CommandList>
@@ -123,7 +124,7 @@ export function MedicineCombobox({
               </div>
             ) : null}
             {!loading ? <CommandEmpty>
-              {searchError
+              {query.trim().length < 2 ? "Type at least 2 characters to search." : searchError
                 ? "Stock search is temporarily unavailable. Typed text can still be entered."
                 : emptyMessage}
             </CommandEmpty> : null}

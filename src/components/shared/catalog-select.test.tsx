@@ -5,7 +5,7 @@ import { CatalogSelect } from "./catalog-select";
 const fetchMock = vi.fn();
 const option = (value: string, label: string) => ({ value, label, data: { id: value } });
 const respond = (items: ReturnType<typeof option>[], nextOffset: number | null = null) => ({ ok: true, json: async () => ({ items, nextOffset }) });
-async function tick(ms = 300) { await act(async () => { vi.advanceTimersByTime(ms); await Promise.resolve(); }); }
+async function tick(ms = 500) { await act(async () => { vi.advanceTimersByTime(ms); await Promise.resolve(); }); }
 
 beforeEach(() => {
   vi.useFakeTimers();
@@ -16,9 +16,10 @@ beforeEach(() => {
 });
 afterEach(() => { cleanup(); vi.useRealTimers(); vi.unstubAllGlobals(); });
 
-function setup(onChange = vi.fn()) {
+function setup(onChange = vi.fn(), query = "ga") {
   render(<CatalogSelect endpoint="/api/search/inventory-items" value={null} onChange={onChange} placeholder="Select item" />);
   fireEvent.click(screen.getByRole("combobox", { name: "Select item" }));
+  if (query) fireEvent.change(screen.getByRole("combobox", { name: "Search options" }), { target: { value: query } });
 }
 
 describe("CatalogSelect", () => {
@@ -32,7 +33,7 @@ describe("CatalogSelect", () => {
     expect(screen.getByRole("option", { name: "Gauze" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Show more items" }));
     await tick();
-    expect(fetchMock.mock.calls[1][0]).toBe("/api/search/inventory-items?q=&offset=25");
+    expect(fetchMock.mock.calls[1][0]).toBe("/api/search/inventory-items?q=ga&offset=25");
     expect(screen.getAllByRole("option")).toHaveLength(2);
     fireEvent.change(screen.getByRole("combobox", { name: "Search options" }), { target: { value: "zinc" } });
     expect(screen.queryByRole("option", { name: "Gauze" })).not.toBeInTheDocument();
@@ -67,4 +68,24 @@ describe("CatalogSelect", () => {
     await tick();
     expect(screen.getByRole("option", { name: "Recovered item" })).toBeInTheDocument();
   });
+});
+
+it("requires two trimmed characters and debounces before requesting", async () => {
+  fetchMock.mockResolvedValue(respond([option("one", "Gauze")]));
+  setup(vi.fn(), "");
+  await tick();
+  expect(fetchMock).not.toHaveBeenCalled();
+  const input = screen.getByRole("combobox", { name: "Search options" });
+  fireEvent.change(input, { target: { value: "g " } });
+  await tick();
+  expect(fetchMock).not.toHaveBeenCalled();
+  fireEvent.change(input, { target: { value: "ga" } });
+  await tick(499);
+  expect(fetchMock).not.toHaveBeenCalled();
+  await tick(1);
+  expect(fetchMock).toHaveBeenCalledTimes(1);
+  fireEvent.change(input, { target: { value: "g" } });
+  expect(screen.queryByRole("option", { name: "Gauze" })).not.toBeInTheDocument();
+  await tick();
+  expect(fetchMock).toHaveBeenCalledTimes(1);
 });

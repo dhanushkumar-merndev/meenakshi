@@ -126,7 +126,9 @@ function SelectContent({
               className="w-full"
             />
           </div>
-          <SelectPrimitive.Empty className="p-3 text-sm text-muted-foreground">{emptyMessage}</SelectPrimitive.Empty>
+          <SelectPrimitive.Empty>
+            <div className="p-3 text-sm text-muted-foreground">{emptyMessage}</div>
+          </SelectPrimitive.Empty>
           <SelectPrimitive.List className="max-h-64 min-h-0 scroll-py-1 overflow-y-auto overscroll-contain p-1">
             {(value: string) => options.find((option) => option.props.value === value)}
           </SelectPrimitive.List>
