@@ -2,6 +2,8 @@ import { defineConfig, devices } from "@playwright/test";
 
 const { viewport: _desktopViewport, deviceScaleFactor: _desktopScale, ...desktopSystemViewport } =
   devices["Desktop Chrome"];
+const desktopViewport = { width: 1920, height: 1080 };
+const mobileViewport = { width: 1080, height: 1920 };
 
 // Next loads .env for the app, but the Playwright process does not, so the
 // staff sign-in credentials would be missing and every authenticated spec
@@ -53,11 +55,17 @@ export default defineConfig({
     {
       name: "desktop",
       use: {
-        ...(process.env.PW_MAXIMIZED === "1"
-          ? { ...desktopSystemViewport, viewport: null }
-          : devices["Desktop Chrome"]),
+        ...desktopSystemViewport,
+        viewport: desktopViewport,
       },
     },
-    { name: "mobile", use: { ...devices["iPhone 13"], browserName: "chromium" } },
+    {
+      name: "mobile",
+      use: {
+        ...devices["iPhone 13"],
+        browserName: "chromium",
+        viewport: mobileViewport,
+      },
+    },
   ],
 });

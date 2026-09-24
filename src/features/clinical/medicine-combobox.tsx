@@ -15,7 +15,6 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { SEARCH_DEBOUNCE_MS } from "@/lib/domain/search";
 
 export type MedicineSuggestion = {
   id: string;
@@ -49,7 +48,7 @@ export function MedicineCombobox({
   const [loading, setLoading] = useState(false);
   const [searchError, setSearchError] = useState(false);
   useEffect(() => {
-    if (!open || query.trim().length < 2) {
+    if (!open) {
       return;
     }
     const controller = new AbortController();
@@ -63,7 +62,7 @@ export function MedicineCombobox({
         );
         if (!response.ok) throw new Error("Medicine search failed");
         const body = await response.json();
-        setItems(body.items ?? []);
+        if (!controller.signal.aborted) setItems(body.items ?? []);
       } catch (error) {
         if (error instanceof Error && error.name === "AbortError") return;
         setItems([]);
@@ -71,14 +70,17 @@ export function MedicineCombobox({
       } finally {
         if (!controller.signal.aborted) setLoading(false);
       }
-    }, SEARCH_DEBOUNCE_MS);
+    }, query.trim() ? 250 : 0);
     return () => {
       clearTimeout(timer);
       controller.abort();
     };
   }, [open, query, searchEndpoint]);
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover open={open} onOpenChange={(next) => {
+      setOpen(next);
+      if (next) { setQuery(""); setItems([]); setLoading(true); setSearchError(false); }
+    }}>
       <PopoverTrigger
         render={
           <Button
@@ -103,12 +105,16 @@ export function MedicineCombobox({
             value={query}
             onValueChange={(text) => {
               setQuery(text);
+              setItems([]);
+              setLoading(true);
+              setSearchError(false);
               // Free text is no longer the directory medicine that was
               // picked, so its id and dosage form go with it -- otherwise the
               // dose box keeps prompting in the old medicine's unit.
               onChange({ medicine_name: text, medicine_id: undefined, form: undefined });
             }}
-            placeholder="Type at least 2 letters"
+            placeholder="Type a medicine name or select below"
+            maxLength={120}
           />
           <CommandList>
             {loading ? (
@@ -116,11 +122,11 @@ export function MedicineCombobox({
                 <LoaderCircle className="animate-spin" />
               </div>
             ) : null}
-            <CommandEmpty>
+            {!loading ? <CommandEmpty>
               {searchError
                 ? "Stock search is temporarily unavailable. Typed text can still be entered."
                 : emptyMessage}
-            </CommandEmpty>
+            </CommandEmpty> : null}
             <CommandGroup>
               {items.map((item) => (
                 <CommandItem
@@ -154,6 +160,7 @@ export function MedicineCombobox({
               ))}
             </CommandGroup>
           </CommandList>
+          {items.length >= 20 ? <p className="border-t p-2 text-xs text-muted-foreground">Type more of the name to narrow the results.</p> : null}
         </Command>
       </PopoverContent>
     </Popover>

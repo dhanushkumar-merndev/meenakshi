@@ -92,7 +92,7 @@ export default async function InventoryPage({
               className="mb-0"
             />
             <InventoryItemDialog />
-            <ProcedureBillDialog items={items} doctors={doctors} />
+            <ProcedureBillDialog doctors={doctors} />
           </>
         }
       />

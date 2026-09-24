@@ -1,4 +1,5 @@
 "use client";
+import { CatalogSelect } from "@/components/shared/catalog-select";
 
 import { useActionState, useState } from "react";
 import { LoaderCircle, PackagePlus, Pencil, Plus } from "lucide-react";
@@ -17,13 +18,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+
 import { useAutoCloseDialog } from "@/hooks/use-auto-close-dialog";
 import { DeleteMasterButton } from "@/features/admin/delete-master-button";
 import { DeleteMedicineButton } from "./medicine-removal-buttons";
@@ -144,11 +139,11 @@ export function MedicineDialog({
 
 type MedicineOption = { id: string; name: string };
 export function BatchDialog({
-  medicines,
+  medicines = [],
   item,
   canDelete = false,
 }: {
-  medicines: MedicineOption[];
+  medicines?: MedicineOption[];
   item?: {
     id: string;
     medicineId: string;
@@ -166,6 +161,10 @@ export function BatchDialog({
   const [medicineId, setMedicineId] = useState(
     item?.medicineId ?? medicines[0]?.id ?? "",
   );
+  const [selectedMedicine, setSelectedMedicine] = useState<{ value: string; label: string } | null>(() => {
+    const selected = medicines.find((medicine) => medicine.id === medicineId);
+    return selected ? { value: selected.id, label: selected.name } : null;
+  });
   const [key] = useState(() => crypto.randomUUID());
   const [unitsPerPack, setUnitsPerPack] = useState(item?.unitsPerPack ?? 1);
   const [packCount, setPackCount] = useState(0);
@@ -218,22 +217,13 @@ export function BatchDialog({
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-2 sm:col-span-2">
               <Label>Medicine</Label>
-              <Select
-                value={medicineId}
-                onValueChange={(value) => setMedicineId(value as string)}
+              <CatalogSelect<{ id: string }>
+                endpoint="/api/search/medicine-directory"
+                placeholder="Select medicine"
+                value={selectedMedicine}
+                onChange={(option) => { setMedicineId(option.value); setSelectedMedicine(option); }}
                 disabled={Boolean(item)}
-              >
-                <SelectTrigger className="w-full">
-                  <SelectValue>{() => medicines.find((medicine) => medicine.id === medicineId)?.name ?? "Select medicine"}</SelectValue>
-                </SelectTrigger>
-                <SelectContent>
-                  {medicines.map((medicine) => (
-                    <SelectItem key={medicine.id} value={medicine.id} label={medicine.name}>
-                      {medicine.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              />
             </div>
             {[
               ["batchNumber", "Batch number", item?.batchNumber ?? "", "text"],

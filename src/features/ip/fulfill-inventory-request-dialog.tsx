@@ -1,5 +1,6 @@
 "use client";
 import Link from "next/link";
+import { CatalogSelect } from "@/components/shared/catalog-select";
 import { useActionState, useMemo, useState } from "react";
 import { CheckCircle2, LoaderCircle, PackageCheck, Printer } from "lucide-react";
 import { fulfillIpInventoryRequest } from "./inventory-request-actions";
@@ -73,13 +74,14 @@ export function FulfillInventoryRequestDialog({
   requestId,
   patientName,
   items,
-  stock,
+  stock: initialStock,
 }: {
   requestId: string;
   patientName: string;
   items: RequestItem[];
   stock: IpStockOption[];
 }) {
+  const [stock, setStock] = useState(initialStock);
   const [state, action, pending] = useActionState(fulfillIpInventoryRequest, { ok: false });
   const [key] = useState(() => crypto.randomUUID());
   const [settlement, setSettlement] = useState<"ip_ticket" | "collect_now">("ip_ticket");
@@ -92,7 +94,7 @@ export function FulfillInventoryRequestDialog({
       ) as Record<string, number>,
     [stock],
   );
-  const reconcileLines = (candidate: Line[]) => {
+  const reconcileLines = (candidate: Line[], available = availableByStockKey) => {
     const allocations = allocateVisibleStock(
       candidate.map((line) => ({
         stockKey: isTrackedStockKey(line.stockKey) ? line.stockKey : null,
@@ -100,7 +102,7 @@ export function FulfillInventoryRequestDialog({
         selectedQuantity:
           line.stockKey === UNAVAILABLE_STOCK_KEY ? 0 : line.fulfilledQuantity,
       })),
-      availableByStockKey,
+      available,
     );
     return candidate.map((line, index) => ({
       ...line,
@@ -130,12 +132,13 @@ export function FulfillInventoryRequestDialog({
     ),
   );
 
-  const updateLine = (requestItemId: string, patch: Partial<Line>) =>
+  const updateLine = (requestItemId: string, patch: Partial<Line>, available = availableByStockKey) =>
     setLines((rows) =>
       reconcileLines(
         rows.map((row) =>
           row.requestItemId === requestItemId ? { ...row, ...patch } : row,
         ),
+        available,
       ),
     );
 
@@ -354,60 +357,23 @@ export function FulfillInventoryRequestDialog({
                         )}
                       </TableCell>
                       <TableCell>
-                        <Select
-                          value={line.stockKey}
-                          onValueChange={(value) => {
-                            const stockKey = String(value);
-                            const selected = stock.find((option) => stockKeyFor(option) === stockKey);
+                        <CatalogSelect<IpStockOption | null>
+                          endpoint="/api/search/ip-stock"
+                          placeholder="Select stock to supply"
+                          value={{ value: line.stockKey, label: matched ? `${matched.name} · ${matched.quantity} in stock` : isManual ? "Manual / off-catalog supply" : "Not supplied / outside purchase" }}
+                          options={[
+                            { value: UNAVAILABLE_STOCK_KEY, label: "Not supplied / outside purchase", data: null },
+                            { value: MANUAL_STOCK_KEY, label: "Manual / off-catalog supply", data: null },
+                          ]}
+                          onChange={(option) => {
+                            const selected = option.data;
+                            if (selected) setStock((rows) => [...rows.filter((row) => stockKeyFor(row) !== option.value), selected]);
                             updateLine(line.requestItemId, {
-                              stockKey,
-                              fulfilledQuantity:
-                                stockKey === UNAVAILABLE_STOCK_KEY
-                                  ? 0
-                                  : selected
-                                    ? Math.min(line.requestedQuantity, selected.quantity)
-                                    : line.fulfilledQuantity || line.requestedQuantity,
-                            });
+                              stockKey: option.value,
+                              fulfilledQuantity: option.value === UNAVAILABLE_STOCK_KEY ? 0 : selected ? Math.min(line.requestedQuantity, selected.quantity) : line.fulfilledQuantity || line.requestedQuantity,
+                            }, selected ? { ...availableByStockKey, [option.value]: Number(selected.quantity) } : availableByStockKey);
                           }}
-                        >
-                          <SelectTrigger className="w-full">
-                            <SelectValue placeholder="Not supplied">
-                              {() =>
-                                matched
-                                  ? `${matched.name} · ${matched.quantity} in stock`
-                                  : isManual
-                                    ? "Manual / off-catalog supply"
-                                    : "Not supplied / outside purchase"}
-                            </SelectValue>
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem
-                              value={UNAVAILABLE_STOCK_KEY}
-                              label="Not supplied / outside purchase"
-                            >
-                              Not supplied / outside purchase
-                            </SelectItem>
-                            <SelectItem
-                              value={MANUAL_STOCK_KEY}
-                              label="Manual / off-catalog supply"
-                            >
-                              Manual / off-catalog supply
-                            </SelectItem>
-                            {stock.map((option) => {
-                              const value = stockKeyFor(option);
-                              const source = option.stock_type === "medicine" ? "Medicine" : "Inventory";
-                              return (
-                                <SelectItem
-                                  key={value}
-                                  value={value}
-                                  label={`${option.name} · ${source} · ${option.quantity} left`}
-                                >
-                                  {option.name} · {source} · {formatInr(option.selling_price_paise)} · {option.quantity} left
-                                </SelectItem>
-                              );
-                            })}
-                          </SelectContent>
-                        </Select>
+                        />
                       </TableCell>
                       <TableCell>
                         <Input

@@ -17,7 +17,6 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   const q = request.nextUrl.searchParams.get("q")?.trim() ?? "";
-  if (q.length < 2) return NextResponse.json({ items: [] });
   if (q.length > 120)
     return NextResponse.json({ error: "Search is too long" }, { status: 400 });
 

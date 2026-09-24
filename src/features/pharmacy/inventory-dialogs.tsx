@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { CatalogSelect } from "@/components/shared/catalog-select";
 import { useActionState, useMemo, useState } from "react";
 import { CheckCircle2, LoaderCircle, Pencil, Plus, Printer, Receipt } from "lucide-react";
 import { createProcedureSale, saveInventoryItem } from "./inventory-actions";
@@ -148,10 +149,8 @@ export function InventoryItemDialog({ item }: { item?: InventoryItem }) {
  * collecting it here.
  */
 export function ProcedureBillDialog({
-  items,
   doctors,
 }: {
-  items: InventoryItem[];
   doctors: Array<{ id: string; label: string }>;
 }) {
   const [open, setOpen] = useState(false);
@@ -161,15 +160,15 @@ export function ProcedureBillDialog({
   const [mode, setMode] = useState("cash");
   const [fee, setFee] = useState("");
   const [key] = useState(() => crypto.randomUUID());
-  const [lines, setLines] = useState<Array<{ key: string; itemId: string; quantity: number }>>([]);
+  const [lines, setLines] = useState<Array<{ key: string; itemId: string; item?: InventoryItem; quantity: number }>>([]);
 
   const payload = useMemo(
     () => lines.filter((l) => l.itemId && l.quantity > 0).map((l) => ({ inventory_item_id: l.itemId, quantity: l.quantity })),
     [lines],
   );
   const itemsTotal = useMemo(
-    () => payload.reduce((sum, l) => sum + (items.find((i) => i.id === l.inventory_item_id)?.selling_price_paise ?? 0) * l.quantity, 0),
-    [payload, items],
+    () => lines.reduce((sum, line) => sum + (line.item?.selling_price_paise ?? 0) * line.quantity, 0),
+    [lines],
   );
   const feePaise = Math.round((Number(fee) || 0) * 100);
   const total = itemsTotal + feePaise;
@@ -270,7 +269,7 @@ export function ProcedureBillDialog({
             </div>
           </div>
 
-          <div className="space-y-2">
+          <div className="min-w-0 space-y-2">
             <div className="flex items-center justify-between">
               <Label>Inventory items used</Label>
               <Button type="button" size="sm" variant="outline"
@@ -291,22 +290,16 @@ export function ProcedureBillDialog({
                 </TableHeader>
                 <TableBody>
                   {lines.length ? lines.map((line, index) => {
-                    const selected = items.find((i) => i.id === line.itemId);
+                    const selected = line.item;
                     return (
                       <TableRow key={line.key}>
                         <TableCell className="min-w-56">
-                          <Select value={line.itemId} onValueChange={(v) => setLines((r) => r.map((l, i) => i === index ? { ...l, itemId: String(v) } : l))}>
-                            <SelectTrigger className="w-full">
-                              <SelectValue placeholder="Select item">{() => selected?.name ?? "Select item"}</SelectValue>
-                            </SelectTrigger>
-                            <SelectContent>
-                              {items.filter((i) => i.active && i.quantity > 0).map((i) => (
-                                <SelectItem key={i.id} value={i.id} label={i.name}>
-                                  {i.name} · {formatInr(i.selling_price_paise)} · {i.quantity} left
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
+                          <CatalogSelect<InventoryItem>
+                            endpoint="/api/search/inventory-items"
+                            placeholder="Select item"
+                            value={selected ? { value: selected.id, label: selected.name } : null}
+                            onChange={(option) => setLines((rows) => rows.map((row) => row.key === line.key ? { ...row, itemId: option.value, item: option.data } : row))}
+                          />
                         </TableCell>
                         <TableCell className="tabular-nums">{selected?.quantity ?? "—"}</TableCell>
                         <TableCell>

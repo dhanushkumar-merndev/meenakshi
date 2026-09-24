@@ -44,19 +44,11 @@ export default async function StockPage({
   const size = 50;
   const q = params.q?.trim() ?? "";
   const supabase = await createSupabaseServerClient();
-  const [{ data }, { data: medicines }] = await Promise.all([
-    supabase.rpc("list_pharmacy_batches", {
-      p_query: q,
-      p_limit: size,
-      p_offset: (page - 1) * size,
-    }),
-    supabase
-      .from("medicine_directory")
-      .select("id,brand_name,strength")
-      .eq("active", true)
-      .order("brand_name")
-      .limit(500),
-  ]);
+  const { data } = await supabase.rpc("list_pharmacy_batches", {
+    p_query: q,
+    p_limit: size,
+    p_offset: (page - 1) * size,
+  });
   const source = (data ?? []) as unknown as Array<
     Omit<Batch, "medicine_directory"> & {
       brand_name: string;
@@ -82,10 +74,6 @@ export default async function StockPage({
         actions={
           <BatchDialog
             canDelete={profile.role === "admin"}
-            medicines={(medicines ?? []).map((medicine) => ({
-              id: medicine.id,
-              name: `${medicine.brand_name}${medicine.strength ? ` ${medicine.strength}` : ""}`,
-            }))}
           />
         }
       />

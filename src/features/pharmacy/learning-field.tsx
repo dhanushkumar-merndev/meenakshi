@@ -45,8 +45,7 @@ export function LearningField({
     .filter((option) => {
       const candidate = option.toLowerCase();
       return candidate !== needle && (!needle || candidate.includes(needle));
-    })
-    .slice(0, 8);
+    });
   const showList = open && matches.length > 0;
 
   const choose = (option: string) => {

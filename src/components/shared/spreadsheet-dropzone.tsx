@@ -1,8 +1,12 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState, useSyncExternalStore } from "react";
 import { FileSpreadsheet } from "lucide-react";
 import { Input } from "@/components/ui/input";
+
+const subscribeToHydration = () => () => {};
+const clientReady = () => true;
+const serverReady = () => false;
 
 const ACCEPT =
   ".xlsx,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv";
@@ -26,15 +30,12 @@ export function SpreadsheetDropzone({
   disabled?: boolean;
 }) {
   const [dragging, setDragging] = useState(false);
-  const [ready, setReady] = useState(false);
+  const ready = useSyncExternalStore(subscribeToHydration, clientReady, serverReady);
   const depth = useRef(0);
 
   // A user can only choose a file after this client component is interactive.
   // Exposing that moment also lets automated tests avoid firing a synthetic
   // file event into server-rendered markup before React has attached it.
-  useEffect(() => {
-    setReady(true);
-  }, []);
 
   const reset = () => {
     depth.current = 0;

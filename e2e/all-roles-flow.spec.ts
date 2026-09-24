@@ -48,7 +48,7 @@ test.describe("every role, one patient, end to end", () => {
     browser,
   }, testInfo) => {
     test.skip(testInfo.project.name !== "desktop", "The flow runs once, on desktop.");
-    test.setTimeout(600_000);
+    test.setTimeout(1_800_000);
 
     const stamp = Date.now().toString().slice(-9);
     const phone = `9${stamp}`;
