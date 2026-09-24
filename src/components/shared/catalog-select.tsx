@@ -36,7 +36,8 @@ export function CatalogSelect<T>({ endpoint, value, onChange, placeholder, disab
   const [results, setResults] = useState<Results<T> | null>(null);
   const [retry, setRetry] = useState(0);
   const requestKey = JSON.stringify([endpoint, request.query, request.offset, retry]);
-  const canSearch = request.query.trim().length >= 2;
+  const isBrowsing = request.query.trim().length === 0;
+  const canSearch = isBrowsing || request.query.trim().length >= 2;
   const loading = open && canSearch && results?.key !== requestKey;
   // Old query results must not stay selectable while a new search is pending.
   const items = canSearch && (results?.key === requestKey || request.offset > 0) ? results?.items ?? [] : [];
@@ -68,9 +69,9 @@ export function CatalogSelect<T>({ endpoint, value, onChange, placeholder, disab
           error: true,
         }));
       }
-    }, request.offset > 0 ? 0 : SEARCH_DEBOUNCE_MS);
+    }, isBrowsing || request.offset > 0 ? 0 : SEARCH_DEBOUNCE_MS);
     return () => { clearTimeout(timer); controller.abort(); };
-  }, [endpoint, open, canSearch, request.query, request.offset, requestKey]);
+  }, [endpoint, open, canSearch, isBrowsing, request.query, request.offset, requestKey]);
 
   return <Select
     open={open}
@@ -94,13 +95,13 @@ export function CatalogSelect<T>({ endpoint, value, onChange, placeholder, disab
     <SelectContent
       searchPlaceholder="Type at least 2 characters…"
       emptyMessage={!canSearch ? "Type at least 2 characters to search." : loading ? "Searching…" : results?.error ? "Search unavailable. Please retry." : "No matching items."}
-      footer={<div className="shrink-0 border-t p-2 text-xs text-muted-foreground" aria-live="polite">
+      footer={canSearch ? <div className="shrink-0 border-t p-2 text-xs text-muted-foreground" aria-live="polite">
         {!canSearch ? "Type at least 2 characters to search." : loading ? "Searching…" : results?.error
           ? <Button type="button" size="sm" variant="ghost" onClick={() => setRetry((n) => n + 1)}>Retry search</Button>
           : results?.nextOffset != null
             ? <Button type="button" size="sm" variant="ghost" className="w-full" onClick={() => setRequest((current) => ({ ...current, offset: results.nextOffset! }))}>Show more items</Button>
             : results?.refine ? "Type more of the name to narrow the results." : "Type to search or select an item."}
-      </div>}
+      </div> : null}
     >
       {[...options, ...items].map((option) => <SelectItem key={option.value} value={option.value} label={option.label} disabled={option.disabled}>
         <span className="block">{option.label}</span>

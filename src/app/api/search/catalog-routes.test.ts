@@ -69,9 +69,16 @@ it.each([0, 1, 25])("ends IP pagination when only %i rows remain", async (count)
 });
 
 it.each([inventory, medicines, stock])("does not query the database below two characters", async (handler) => {
-  for (const q of ["", "a", "a%20"]) {
+  for (const q of ["a", "a%20"]) {
     const response = await handler(request(`?q=${q}`));
     expect(await response.json()).toEqual({ items: [], nextOffset: null });
   }
   expect(rpc).not.toHaveBeenCalled();
+});
+
+it.each([inventory, medicines, stock])("allows the initial browse page without typed text", async (handler) => {
+  const response = await handler(request("?offset=0"));
+  expect(response.status).toBe(200);
+  expect(rpc).toHaveBeenCalledOnce();
+  expect(rpc.mock.calls[0][1]).toMatchObject({ p_query: "", p_offset: 0 });
 });

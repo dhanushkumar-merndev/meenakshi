@@ -10,7 +10,7 @@ export async function GET(request: NextRequest) {
   const q = request.nextUrl.searchParams.get("q")?.trim() ?? "";
   const offset = Number(request.nextUrl.searchParams.get("offset") ?? 0);
   if (q.length > 120 || !Number.isSafeInteger(offset) || offset < 0 || offset > 2147483647) return NextResponse.json({ error: "Invalid search" }, { status: 400 });
-  if (q.length < 2) return NextResponse.json({ items: [], nextOffset: null }, { headers: { "Cache-Control": "private, no-store" } });
+  if (q.length > 0 && q.length < 2) return NextResponse.json({ items: [], nextOffset: null }, { headers: { "Cache-Control": "private, no-store" } });
   const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase.rpc("search_ip_stock_catalog_page", { p_query: q, p_limit: 26, p_offset: offset });
   if (error) return NextResponse.json({ error: "Search unavailable" }, { status: 500 });

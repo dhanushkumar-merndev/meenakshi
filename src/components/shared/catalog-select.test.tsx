@@ -28,12 +28,12 @@ describe("CatalogSelect", () => {
     fetchMock.mockResolvedValueOnce(respond([option("later", "Suture")]));
     fetchMock.mockResolvedValueOnce(respond([option("last", "Zinc dressing")]));
     const onChange = vi.fn();
-    setup(onChange);
-    await tick();
+    setup(onChange, "");
+    await tick(0);
     expect(screen.getByRole("option", { name: "Gauze" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Show more items" }));
     await tick();
-    expect(fetchMock.mock.calls[1][0]).toBe("/api/search/inventory-items?q=ga&offset=25");
+    expect(fetchMock.mock.calls[1][0]).toBe("/api/search/inventory-items?q=&offset=25");
     expect(screen.getAllByRole("option")).toHaveLength(2);
     fireEvent.change(screen.getByRole("combobox", { name: "Search options" }), { target: { value: "zinc" } });
     expect(screen.queryByRole("option", { name: "Gauze" })).not.toBeInTheDocument();
@@ -70,22 +70,28 @@ describe("CatalogSelect", () => {
   });
 });
 
-it("requires two trimmed characters and debounces before requesting", async () => {
+it("browses on open, debounces typed searches and restores browsing when cleared", async () => {
   fetchMock.mockResolvedValue(respond([option("one", "Gauze")]));
   setup(vi.fn(), "");
-  await tick();
-  expect(fetchMock).not.toHaveBeenCalled();
+  await tick(0);
+  expect(fetchMock).toHaveBeenCalledTimes(1);
+  expect(fetchMock.mock.calls[0][0]).toBe("/api/search/inventory-items?q=&offset=0");
   const input = screen.getByRole("combobox", { name: "Search options" });
   fireEvent.change(input, { target: { value: "g " } });
   await tick();
-  expect(fetchMock).not.toHaveBeenCalled();
+  expect(fetchMock).toHaveBeenCalledTimes(1);
+  expect(screen.getAllByText("Type at least 2 characters to search.")).toHaveLength(1);
   fireEvent.change(input, { target: { value: "ga" } });
   await tick(499);
-  expect(fetchMock).not.toHaveBeenCalled();
-  await tick(1);
   expect(fetchMock).toHaveBeenCalledTimes(1);
+  await tick(1);
+  expect(fetchMock).toHaveBeenCalledTimes(2);
   fireEvent.change(input, { target: { value: "g" } });
   expect(screen.queryByRole("option", { name: "Gauze" })).not.toBeInTheDocument();
   await tick();
-  expect(fetchMock).toHaveBeenCalledTimes(1);
+  expect(fetchMock).toHaveBeenCalledTimes(2);
+  fireEvent.change(input, { target: { value: "" } });
+  await tick(0);
+  expect(fetchMock).toHaveBeenCalledTimes(3);
+  expect(screen.getByRole("option", { name: "Gauze" })).toBeInTheDocument();
 });
