@@ -104,7 +104,10 @@ export default async function StockPage({
               <TableBody>
                 {rows.length ? (
                   rows.map((batch) => (
-                    <TableRow key={batch.id}>
+                    <TableRow
+                      key={batch.id}
+                      className={batch.active ? undefined : "text-muted-foreground"}
+                    >
                       <TableCell className="font-medium">
                         {batch.medicine_directory?.brand_name}
                       </TableCell>
@@ -143,12 +146,16 @@ export default async function StockPage({
                       </TableCell>
                       <TableCell>
                         <StatusBadge
-                          status={batchAlertStatus(
-                            batch.quantity,
-                            batch.low_stock_threshold,
-                            batch.expiry_date,
-                            today,
-                          )}
+                          status={
+                            batch.active
+                              ? batchAlertStatus(
+                                  batch.quantity,
+                                  batch.low_stock_threshold,
+                                  batch.expiry_date,
+                                  today,
+                                )
+                              : "inactive"
+                          }
                         />
                       </TableCell>
                       <TableCell className="text-right">
