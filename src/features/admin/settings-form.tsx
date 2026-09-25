@@ -14,20 +14,53 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 
-type Settings = { hospital_name: string; tagline?: string | null; address: string | null; phone: string | null; email: string | null; prescription_footer: string | null; token_footer: string | null; digital_prescription_text: string | null; print_fee_on_prescription?: boolean };
+type Settings = { hospital_name: string; tagline?: string | null; address: string | null; phone: string | null; email: string | null; prescription_footer: string | null; token_footer: string | null; digital_prescription_text: string | null; print_fee_on_prescription?: boolean; max_discount_percent?: number | null };
 
 export function SettingsForm({ settings }: { settings: Settings }) {
   const [state, action, pending] = useActionState(saveHospitalSettings, { ok: false } as ActionState);
   return (
     <form action={action} className="space-y-5">
       {state.message ? <Alert variant={state.ok ? "default" : "destructive"}><AlertDescription>{state.message}</AlertDescription></Alert> : null}
+      {/* keepMounted on every panel: one form spans all tabs, and an unmounted
+          panel's fields are simply missing from the submission -- saving from
+          one tab would otherwise fail validation or blank the other tabs. */}
       <Tabs defaultValue="hospital">
-        <TabsList><TabsTrigger value="hospital">Hospital</TabsTrigger><TabsTrigger value="print">Print</TabsTrigger></TabsList>
-        <TabsContent value="hospital">
+        <TabsList><TabsTrigger value="hospital">Hospital</TabsTrigger><TabsTrigger value="print">Print</TabsTrigger><TabsTrigger value="billing">Billing</TabsTrigger></TabsList>
+        <TabsContent value="hospital" keepMounted>
           <Card><CardHeader><CardTitle className="text-base">Hospital identity</CardTitle><CardDescription>Printed on the letterhead of every token, prescription, IP bill and discharge summary.</CardDescription></CardHeader><CardContent className="grid gap-4 sm:grid-cols-2"><div className="space-y-2"><Label>Hospital Name</Label><Input name="hospitalName" defaultValue={settings.hospital_name} required /></div><div className="space-y-2"><Label>Motto</Label><Input name="tagline" defaultValue={settings.tagline ?? ""} placeholder="Care • Healing • Hope." /></div><div className="space-y-2"><Label>Phone</Label><Input name="phone" defaultValue={settings.phone ?? ""} /></div><div className="space-y-2"><Label>Email</Label><Input name="email" type="email" defaultValue={settings.email ?? ""} /></div><div className="space-y-2 sm:col-span-2"><Label htmlFor="hospital-address">Address</Label><LocationAutocomplete id="hospital-address" name="address" defaultValue={settings.address ?? ""} /></div></CardContent></Card>
         </TabsContent>
-        <TabsContent value="print">
+        <TabsContent value="print" keepMounted>
           <Card><CardHeader><CardTitle className="text-base">Print text</CardTitle><CardDescription>Concise footer text for clinical and token documents.</CardDescription></CardHeader><CardContent className="space-y-4"><div className="space-y-2"><Label>Prescription footer</Label><Textarea name="prescriptionFooter" defaultValue={settings.prescription_footer ?? ""} /></div><div className="space-y-2"><Label>Token footer</Label><Textarea name="tokenFooter" defaultValue={settings.token_footer ?? ""} /></div><div className="space-y-2"><Label>Digital prescription statement</Label><Textarea name="digitalText" defaultValue={settings.digital_prescription_text ?? ""} /></div><div className="flex items-start gap-3 rounded-md border p-3"><Checkbox id="print-fee" name="printFeeOnPrescription" defaultChecked={settings.print_fee_on_prescription ?? false} /><div className="space-y-1"><Label htmlFor="print-fee">Print consultation fee on the A4 prescription</Label><p className="text-xs text-muted-foreground">Off by default. A prescription is a clinical document the patient may show at another hospital or lab, so the amount normally belongs on a receipt instead.</p></div></div></CardContent></Card>
+        </TabsContent>
+        <TabsContent value="billing" keepMounted>
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Discounts</CardTitle>
+              <CardDescription>
+                Reception, pharmacy and IP staff may give a discount up to this share of a bill. Admin can always discount up to the full bill.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              <Label htmlFor="max-discount">Maximum discount for staff (%)</Label>
+              <Input
+                id="max-discount"
+                name="maxDiscountPercent"
+                type="number"
+                inputMode="numeric"
+                min={1}
+                max={100}
+                step={1}
+                required
+                className="w-32"
+                defaultValue={settings.max_discount_percent ?? 10}
+                aria-describedby="max-discount-help"
+              />
+              <p id="max-discount-help" className="text-xs text-muted-foreground">
+                A whole number from 1 to 100. Changes apply to the next discount immediately and are recorded in the audit log.
+              </p>
+              <p className="text-xs text-destructive">{state.fieldErrors?.maxDiscountPercent?.[0]}</p>
+            </CardContent>
+          </Card>
         </TabsContent>
       </Tabs>
       <div className="flex justify-end"><Button disabled={pending} type="submit">{pending ? <LoaderCircle className="animate-spin" /> : <Save />} Save Settings</Button></div>

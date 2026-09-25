@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Printer } from "lucide-react";
 import { requireRoute } from "@/lib/auth/dal";
+import { getDiscountPolicy } from "@/lib/discount-policy";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { formatHospitalDate } from "@/lib/domain/date";
 import { formatInr } from "@/lib/domain/money";
@@ -59,7 +60,7 @@ export default async function PharmacyPage({
 }: {
   searchParams: Promise<{ q?: string; status?: string; page?: string }>;
 }) {
-  await requireRoute("/pharmacy");
+  const profile = await requireRoute("/pharmacy");
   const params = await searchParams;
   const q = params.q?.trim() ?? "";
   const selectedStatus =
@@ -71,7 +72,7 @@ export default async function PharmacyPage({
   // request only added a round-trip and Vercel function time.
   // Read through an RPC: the pharmacy role has no SELECT on public.patients, so
   // an embedded join would silently return null patient names.
-  const [rxResult, doctorsResult] = await Promise.all([
+  const [rxResult, doctorsResult, discountPolicy] = await Promise.all([
     supabase.rpc("list_pending_prescriptions", {
       p_query: q || null,
       p_limit: PAGE_SIZE,
@@ -79,6 +80,7 @@ export default async function PharmacyPage({
       p_offset: (page - 1) * PAGE_SIZE,
     }),
     supabase.from("doctors").select("id,display_name").eq("active", true).order("display_name"),
+    getDiscountPolicy(supabase, profile.role),
   ]);
   if (rxResult.error) {
     throw new Error("Pending prescriptions could not be loaded.");
@@ -212,6 +214,7 @@ export default async function PharmacyPage({
                                 rx.consultation_balance_paise
                               }
                               doctorName={rx.doctor_name}
+                              discountPolicy={discountPolicy}
                               items={rx.items.map((item) => ({
                                 id: item.id,
                                 medicineId: item.medicine_id,
@@ -235,6 +238,8 @@ export default async function PharmacyPage({
                                 <CollectPaymentDialog
                                   visitId={rx.visit_id}
                                   balancePaise={rx.consultation_balance_paise}
+                                  feePaise={rx.consultation_fee_paise}
+                                  discountPolicy={discountPolicy}
                                 />
                               ) : null}
                               {rx.latest_sale_id ? (

@@ -6,6 +6,8 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { databaseIdSchema } from "@/lib/validation/database-id";
 import { rupeesToPaise } from "@/lib/domain/money";
 import type { ActionState } from "@/types/hospital";
+import { discountFormSchema, discountRpcArgs } from "@/lib/discount-policy";
+import { discountErrorMessage } from "@/lib/domain/discount";
 
 const requestLineSchema = z
   .array(
@@ -96,7 +98,7 @@ const fulfillSchema = z.object({
   collectedAmount: z.string().trim().optional(),
   paymentMode: z.enum(["cash", "upi", "card", "bank_transfer", "other"]).optional(),
   reference: z.string().trim().max(100).optional(),
-});
+}).merge(discountFormSchema);
 
 /**
  * Pharmacy resolves a pending request line by line: linking it to a real
@@ -142,11 +144,18 @@ export async function fulfillIpInventoryRequest(_: ActionState, formData: FormDa
     p_payment_mode: parsed.data.paymentMode ?? null,
     p_reference: parsed.data.reference || null,
     p_settlement: parsed.data.settlement,
+    // A discount only applies to a counter collection; a ticket-billed request
+    // is discounted on the IP bill.
+    ...discountRpcArgs(
+      parsed.data.settlement === "pharmacy_counter"
+        ? parsed.data
+        : { ...parsed.data, discountPaise: 0 },
+    ),
   });
   if (error)
     return {
       ok: false,
-      message: error.message.includes("insufficient inventory stock") || error.message.includes("insufficient medicine stock")
+      message: discountErrorMessage(error.message) ?? (error.message.includes("insufficient inventory stock") || error.message.includes("insufficient medicine stock")
         ? error.message
         : error.message.includes("counter collection")
           ? "Collect the exact supplied-item total at the pharmacy counter."
@@ -158,7 +167,7 @@ export async function fulfillIpInventoryRequest(_: ActionState, formData: FormDa
           ? "This IP ticket has already been discharged, so no amount can be added to its bill."
         : error.message.includes("manual unit price")
           ? "Enter a manual unit price for every off-catalog item being fulfilled."
-        : "The request could not be fulfilled; no stock or charge was changed.",
+        : "The request could not be fulfilled; no stock or charge was changed."),
     };
   revalidatePath("/pharmacy/ip-requests");
   revalidatePath("/pharmacy/inventory");
@@ -170,11 +179,14 @@ export async function fulfillIpInventoryRequest(_: ActionState, formData: FormDa
     message: !hasSuppliedItems
       ? "Request resolved with no supplied items. No IP charge or pharmacy collection was recorded."
       : parsed.data.settlement === "pharmacy_counter"
-      ? "Request fulfilled and collected at the pharmacy counter. It was not added to the IP ticket."
+      ? parsed.data.discountPaise > 0
+        ? "Request fulfilled and collected at the pharmacy counter with a discount. It was not added to the IP ticket."
+        : "Request fulfilled and collected at the pharmacy counter. It was not added to the IP ticket."
       : "Request fulfilled and billed to the IP ticket.",
     data: {
       requestId: parsed.data.requestId,
       collectedPaise,
+      discountPaise: parsed.data.settlement === "pharmacy_counter" ? parsed.data.discountPaise : 0,
       hasSuppliedItems,
     },
   };

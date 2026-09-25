@@ -2,6 +2,8 @@ import { requireRoute } from "@/lib/auth/dal";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { formatHospitalDate } from "@/lib/domain/date";
 import { formatInr } from "@/lib/domain/money";
+import { discountReasonLabel } from "@/lib/domain/discount";
+import Link from "next/link";
 import { BarChart, RankedBarChart, RoseChart, TrendChart, ValueVolumeChart } from "@/features/analytics/analytics-charts";
 import { PageHeader } from "@/components/shared/page-header";
 import { Button } from "@/components/ui/button";
@@ -32,6 +34,14 @@ type Analytics = {
   collections_by_mode: Array<{ mode: string; amount_paise: number }>;
   source_balance: Array<{ source: string; collected_paise: number; outstanding_paise: number }>;
   patients_by_day: Array<{ date: string; new_patients: number; returning_patients: number }>;
+  // Discounts reduce what patients owe; they are never counted as collected.
+  discount_total_paise: number;
+  discount_count: number;
+  discounted_gross_paise: number;
+  discounts_by_day: Array<{ date: string; op: number; ip: number; pharmacy: number }>;
+  discounts_by_source: Array<{ source: string; amount_paise: number; count: number }>;
+  discounts_by_reason: Array<{ reason: string; amount_paise: number; count: number }>;
+  discounts_by_staff: Array<{ staff: string; role: string; amount_paise: number; count: number }>;
 };
 
 type StaffActivity = {
@@ -59,6 +69,8 @@ const STAFF_COLUMNS: Record<string, StaffColumn[]> = {
     { key: "vitals_recorded", label: "Vitals recorded" },
     { key: "op_payments_count", label: "Payments taken" },
     { key: "op_payments_paise", label: "Collected", money: true },
+    { key: "discounts_count", label: "Discounts" },
+    { key: "discounts_paise", label: "Discount value", money: true },
     { key: "reports_uploaded", label: "Reports uploaded" },
   ],
   doctor: [
@@ -74,10 +86,14 @@ const STAFF_COLUMNS: Record<string, StaffColumn[]> = {
     { key: "ip_charges_paise", label: "Charge value", money: true },
     { key: "ip_payments_count", label: "Payments taken" },
     { key: "ip_payments_paise", label: "Collected", money: true },
+    { key: "discounts_count", label: "Discounts" },
+    { key: "discounts_paise", label: "Discount value", money: true },
   ],
   pharmacy: [
     { key: "dispenses", label: "Dispenses" },
     { key: "dispensed_paise", label: "Value dispensed", money: true },
+    { key: "discounts_count", label: "Discounts" },
+    { key: "discounts_paise", label: "Discount value", money: true },
     { key: "stock_movements", label: "Stock movements" },
   ],
   admin: [
@@ -85,6 +101,8 @@ const STAFF_COLUMNS: Record<string, StaffColumn[]> = {
     { key: "visits_created", label: "Visits created" },
     { key: "ip_admissions", label: "Admissions" },
     { key: "dispenses", label: "Dispenses" },
+    { key: "discounts_count", label: "Discounts" },
+    { key: "discounts_paise", label: "Discount value", money: true },
   ],
 };
 
@@ -124,7 +142,16 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Pr
     ) ?? Number(row.audited_actions ?? 0),
   }));
 
-  const metrics: Array<[string, number, boolean]> = [["Total Visits", report.total_visits, false], ["Unique Patients", report.unique_patients, false], ["New Patients", report.new_patients, false], ["OP Collected", report.op_collected_paise, true], ["IP Collected", report.ip_collected_paise, true], ["Pharmacy Collected", report.pharmacy_collected_paise, true], ["Outstanding", report.outstanding_paise, true], ["Current IP", report.current_ip, false]];
+  const metrics: Array<[string, number, boolean]> = [["Total Visits", report.total_visits, false], ["Unique Patients", report.unique_patients, false], ["New Patients", report.new_patients, false], ["OP Collected", report.op_collected_paise, true], ["IP Collected", report.ip_collected_paise, true], ["Pharmacy Collected", report.pharmacy_collected_paise, true], ["Outstanding", report.outstanding_paise, true], ["Discounts Given", report.discount_total_paise, true], ["Current IP", report.current_ip, false]];
+  const collectedTotal =
+    Number(report.op_collected_paise) + Number(report.ip_collected_paise) + Number(report.pharmacy_collected_paise);
+  // Share of what was billed-and-settled in the range that was waived rather
+  // than paid: discount / (discount + money collected).
+  const discountShare =
+    collectedTotal + Number(report.discount_total_paise) > 0
+      ? (Number(report.discount_total_paise) * 100) / (collectedTotal + Number(report.discount_total_paise))
+      : 0;
+  const discountDays = report.discounts_by_day.map((row) => row.date);
   const collectionDays = report.collections_by_day.map((row) => row.date);
   const ipFlowDays = report.ip_flow_by_day.map((row) => row.date);
   const pharmacyDays = report.pharmacy_sales_by_day.map((row) => row.date);
@@ -159,6 +186,7 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Pr
           <TabsTrigger value="ip">IP</TabsTrigger>
           <TabsTrigger value="pharmacy">Pharmacy</TabsTrigger>
           <TabsTrigger value="collections">Collections</TabsTrigger>
+          <TabsTrigger value="discounts">Discounts</TabsTrigger>
           <TabsTrigger value="patients">Patients</TabsTrigger>
           <TabsTrigger value="staff">Staff</TabsTrigger>
         </TabsList>
@@ -221,6 +249,41 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Pr
             <ChartCard title="Collected against outstanding" description="Money received versus the balance still due per source">
               <BarChart horizontal money height={260} categories={balanceSources} label="Collected and outstanding by source" series={[{ name: "Collected", values: report.source_balance.map((row) => row.collected_paise) }, { name: "Outstanding", values: report.source_balance.map((row) => row.outstanding_paise) }]} />
             </ChartCard>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="discounts">
+          <div className="mb-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <Card><CardContent className="p-4"><p className="text-xs text-muted-foreground">Total discount</p><p className="mt-1 text-2xl font-semibold tabular-nums">{formatInr(report.discount_total_paise)}</p></CardContent></Card>
+            <Card><CardContent className="p-4"><p className="text-xs text-muted-foreground">Discounted bills</p><p className="mt-1 text-2xl font-semibold tabular-nums">{new Intl.NumberFormat("en-IN").format(report.discount_count)}</p></CardContent></Card>
+            <Card><CardContent className="p-4"><p className="text-xs text-muted-foreground">Share of settled amount</p><p className="mt-1 text-2xl font-semibold tabular-nums">{discountShare.toFixed(1)}%</p></CardContent></Card>
+            <Card><CardContent className="flex h-full items-center justify-between gap-2 p-4"><div><p className="text-xs text-muted-foreground">Every discount, with reason and staff</p><p className="mt-1 text-sm font-medium">Discount register</p></div><Button size="sm" variant="outline" render={<Link href={`/admin/discounts?from=${from}&to=${to}`} />}>Open</Button></CardContent></Card>
+          </div>
+          <div className="grid gap-4 xl:grid-cols-2">
+            <ChartCard title="Discounts by day" description="Amount waived each day at the OP, IP and pharmacy desks">
+              <BarChart stacked categories={discountDays} dateAxis money label="Daily discounts by desk" series={[{ name: "OP", values: report.discounts_by_day.map((row) => row.op) }, { name: "IP", values: report.discounts_by_day.map((row) => row.ip) }, { name: "Pharmacy", values: report.discounts_by_day.map((row) => row.pharmacy) }]} />
+            </ChartCard>
+            <ChartCard title="Discounts by reason" description="Why discounts were given in this range">
+              <RoseChart money data={report.discounts_by_reason.map((row) => ({ name: discountReasonLabel(row.reason), value: row.amount_paise }))} label="Discount amount by reason" />
+            </ChartCard>
+            <ChartCard title="Discounts by staff" description="Who gave discounts — to review against the limit set in Settings">
+              <RankedBarChart money data={report.discounts_by_staff.map((row) => ({ name: `${row.staff} · ${titleCase(row.role)}`, value: row.amount_paise }))} label="Discount amount by staff member" />
+            </ChartCard>
+            <Card>
+              <CardHeader><CardTitle className="text-base">By desk</CardTitle><CardDescription>Discount count and value per collection point</CardDescription></CardHeader>
+              <CardContent className="p-0">
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader><TableRow><TableHead>Desk</TableHead><TableHead className="text-right">Discounts</TableHead><TableHead className="text-right">Amount</TableHead></TableRow></TableHeader>
+                    <TableBody>
+                      {report.discounts_by_source.length ? report.discounts_by_source.map((row) => (
+                        <TableRow key={row.source}><TableCell>{row.source === "op" ? "OP" : row.source === "ip" ? "IP" : "Pharmacy"}</TableCell><TableCell className="text-right tabular-nums">{row.count}</TableCell><TableCell className="text-right tabular-nums">{formatInr(row.amount_paise)}</TableCell></TableRow>
+                      )) : <TableRow><TableCell colSpan={3} className="h-16 text-center text-muted-foreground">No discounts in this range.</TableCell></TableRow>}
+                    </TableBody>
+                  </Table>
+                </div>
+              </CardContent>
+            </Card>
           </div>
         </TabsContent>
 

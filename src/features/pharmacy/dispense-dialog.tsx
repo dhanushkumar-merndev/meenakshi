@@ -4,6 +4,12 @@ import { useActionState, useMemo, useState } from "react";
 import { CheckCircle2, LoaderCircle, PackageX, Pill, Printer, RefreshCw } from "lucide-react";
 import { dispensePrescription, markPrescriptionUnavailable } from "./actions";
 import { formatInr, packBreakdown } from "@/lib/domain/money";
+import { maxDiscountPaise } from "@/lib/domain/discount";
+import {
+  DiscountField,
+  useDiscount,
+  type DiscountPolicyProps,
+} from "@/components/shared/discount-field";
 import {
   allocateFefoStock,
   type FefoBatch,
@@ -80,6 +86,7 @@ export function DispenseDialog({
   items,
   consultationBalancePaise,
   doctorName,
+  discountPolicy,
 }: {
   prescriptionId: string;
   prescriptionNumber: string;
@@ -89,6 +96,8 @@ export function DispenseDialog({
   /** Outstanding consultation fee the doctor set, collected at this counter. */
   consultationBalancePaise?: number;
   doctorName?: string | null;
+  /** OP counter bills may be discounted; IP medicines go on the IP bill. */
+  discountPolicy: DiscountPolicyProps;
 }) {
   const [state, action, pending] = useActionState(dispensePrescription, {
     ok: false,
@@ -187,7 +196,20 @@ export function DispenseDialog({
     source === "op" && feeCollected.trim() && !Number.isNaN(feeEntered) && feeEntered > 0
       ? Math.round(feeEntered * 100)
       : 0;
-  const totalToCollectPaise = medicinesTotalPaise + feeCollectedPaise;
+  const grossToCollectPaise = medicinesTotalPaise + feeCollectedPaise;
+  // One discount on the whole counter bill; the server takes it off the
+  // medicines first, then the doctor fee.
+  const discount = useDiscount({
+    grossPaise: grossToCollectPaise,
+    maxPaise: maxDiscountPaise(
+      grossToCollectPaise,
+      discountPolicy.limitPercent,
+      discountPolicy.unlimited,
+    ),
+    policy: discountPolicy,
+  });
+  const discountPaise = source === "op" ? discount.paise : 0;
+  const totalToCollectPaise = grossToCollectPaise - discountPaise;
   const totalPending = items.reduce(
     (sum, item) => sum + item.requested - item.dispensed,
     0,
@@ -277,6 +299,7 @@ export function DispenseDialog({
     const completed = state.data?.prescriptionStatus === "dispensed";
     const medicinesPaise = Number(state.data?.medicinesPaise ?? 0);
     const consultationPaise = Number(state.data?.consultationPaise ?? 0);
+    const discountGivenPaise = Number(state.data?.discountPaise ?? 0);
     // The receipt is the point of the counter transaction: it covers the
     // medicines and, when it was taken here, the consultation fee.
     return (
@@ -293,10 +316,14 @@ export function DispenseDialog({
             <>
               Medicines {formatInr(medicinesPaise)}
               {consultationPaise > 0
-                ? ` + Doctor fee ${formatInr(consultationPaise)} = `
-                : " = "}
+                ? ` + Doctor fee ${formatInr(consultationPaise)}`
+                : ""}
+              {discountGivenPaise > 0
+                ? ` − Discount ${formatInr(discountGivenPaise)}`
+                : ""}
+              {" = "}
               <span className="font-semibold text-foreground">
-                Total {formatInr(medicinesPaise + consultationPaise)} collected
+                Total {formatInr(medicinesPaise + consultationPaise - discountGivenPaise)} collected
               </span>
             </>
           )}
@@ -668,6 +695,9 @@ export function DispenseDialog({
                   </p>
                 </div>
               ) : null}
+              <div className="w-full sm:max-w-md">
+                <DiscountField discount={discount} id={`rx-${prescriptionId}`} />
+              </div>
             </div>
           ) : null}
           {/* What the pharmacist should actually collect at the counter,
@@ -682,6 +712,12 @@ export function DispenseDialog({
                 <div className="flex justify-between gap-6">
                   <dt className="text-muted-foreground">Doctor fee</dt>
                   <dd className="tabular-nums">{formatInr(feeCollectedPaise)}</dd>
+                </div>
+              ) : null}
+              {discountPaise > 0 ? (
+                <div className="flex justify-between gap-6">
+                  <dt className="text-muted-foreground">Discount</dt>
+                  <dd className="tabular-nums">−{formatInr(discountPaise)}</dd>
                 </div>
               ) : null}
               <div className="flex justify-between gap-6 font-semibold">
@@ -752,7 +788,8 @@ export function DispenseDialog({
                 stockLoading ||
                 Boolean(stockError) ||
                 payload.length === 0 ||
-                feeUnpaid
+                feeUnpaid ||
+                (source === "op" && !discount.valid)
               }
               type="submit"
             >

@@ -24,7 +24,7 @@ export function DischargeDocument({
   ].filter(([, value]) => value);
 
   return (
-    <article className="min-h-[270mm] border border-black/20 p-7 print:min-h-0 print:border-0 print:p-0">
+    <article className="min-h-[270mm] border border-black/20 p-[10mm] print:min-h-0 print:border-0 print:p-0">
       {/* Hospital banner first, then the document title and the treating
           doctor's identity block beneath it. */}
       <header className="border-b-2 border-primary pb-3">

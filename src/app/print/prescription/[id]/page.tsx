@@ -115,11 +115,11 @@ export default async function PrescriptionPrintPage({
   const medicines = rx.prescription_items;
   const visitDate = visit?.created_at ?? ipTicket?.admission_at ?? rx.created_at;
   return (
-    <main className="mx-auto min-h-screen max-w-[210mm] bg-white p-4 text-[11px] text-black sm:p-8">
+    <main className="mx-auto min-h-screen max-w-[210mm] bg-white py-4 text-[11px] text-black sm:py-8">
       <div data-print-hidden className="mb-4 flex justify-end">
         <PrintButton label="Print Prescription" />
       </div>
-      <article className="min-h-[270mm] border border-black/20 p-7 print:min-h-0 print:border-0 print:p-0">
+      <article className="min-h-[270mm] border border-black/20 p-[10mm] print:min-h-0 print:border-0 print:p-0">
         <header>
           <HospitalLetterhead identity={identity} logoSize={56} />
           <div className="my-3 h-1 bg-primary" />

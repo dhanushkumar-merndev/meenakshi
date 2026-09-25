@@ -6,6 +6,8 @@ import { hasPermission } from "@/lib/auth/permissions";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { calculateAge, formatHospitalDate, isHospitalToday } from "@/lib/domain/date";
 import { formatInr, paymentSummary } from "@/lib/domain/money";
+import { getDiscountPolicy } from "@/lib/discount-policy";
+import { DISCOUNT_SOURCE_LABELS, discountReasonLabel } from "@/lib/domain/discount";
 import { CreateVisitDialog } from "@/features/visits/create-visit-dialog";
 import { CollectPaymentDialog } from "@/features/visits/collect-payment-dialog";
 import { EditPatientDialog } from "@/features/patients/edit-patient-dialog";
@@ -116,9 +118,40 @@ export default async function PatientProfilePage({
   if (patientResult.error || !patientResult.data) notFound();
   const patient = patientResult.data;
   const sourceVisits = (visitsResult.data ?? []) as unknown as VisitRow[];
-  const { data: financialRows } = canFinance && sourceVisits.length ? await supabase.rpc("get_visit_financial_summaries", { p_visit_ids: sourceVisits.map((visit) => visit.id) }) : { data: [] };
-  const financeByVisit = new Map(((financialRows ?? []) as Array<{ visit_id: string; fee_paise: number }>).map((row) => [row.visit_id, row.fee_paise]));
-  const visits = sourceVisits.map((visit) => ({ ...visit, fee_paise: financeByVisit.get(visit.id) ?? 0, visit_payments: visit.visit_payments ?? [] }));
+  const [{ data: financialRows }, discountPolicy, { data: discountRows }] = await Promise.all([
+    canFinance && sourceVisits.length
+      ? supabase.rpc("get_visit_financial_summaries", { p_visit_ids: sourceVisits.map((visit) => visit.id) })
+      : Promise.resolve({ data: [] }),
+    getDiscountPolicy(supabase, profile.role),
+    // RLS narrows this to the bills each desk may see the money for.
+    canFinance
+      ? supabase
+          .from("discounts")
+          .select("id,created_at,source,amount_paise,reason,voided_at")
+          .eq("patient_id", id)
+          .order("created_at", { ascending: false })
+          .limit(100)
+      : Promise.resolve({ data: [] }),
+  ]);
+  const discounts = (discountRows ?? []) as Array<{
+    id: string;
+    created_at: string;
+    source: string;
+    amount_paise: number;
+    reason: string;
+    voided_at: string | null;
+  }>;
+  const financeByVisit = new Map(
+    ((financialRows ?? []) as Array<{ visit_id: string; fee_paise: number; discount_paise: number }>).map(
+      (row) => [row.visit_id, row] as const,
+    ),
+  );
+  const visits = sourceVisits.map((visit) => ({
+    ...visit,
+    fee_paise: Number(financeByVisit.get(visit.id)?.fee_paise ?? 0),
+    discount_paise: Number(financeByVisit.get(visit.id)?.discount_paise ?? 0),
+    visit_payments: visit.visit_payments ?? [],
+  }));
   const age = patient.dob ? calculateAge(patient.dob) : null;
   const doctors = ((doctorsResult.data ?? []) as unknown as DoctorRow[]).map(
     (doctor) => ({
@@ -202,6 +235,7 @@ export default async function PatientProfilePage({
                           visit.fee_paise,
                           visit.visit_payments?.map((p) => p.amount_paise) ??
                             [],
+                          visit.discount_paise,
                         );
                         return (
                           <TableRow key={visit.id} historical={!isHospitalToday(visit.visit_date)}>
@@ -222,6 +256,11 @@ export default async function PatientProfilePage({
                               <>
                                 <TableCell>
                                   {formatInr(visit.fee_paise)}
+                                  {visit.discount_paise > 0 ? (
+                                    <span className="block text-xs text-muted-foreground">
+                                      −{formatInr(visit.discount_paise)} discount
+                                    </span>
+                                  ) : null}
                                 </TableCell>
                                 <TableCell>
                                   {formatInr(money.totalCollectedPaise)}
@@ -241,6 +280,9 @@ export default async function PatientProfilePage({
                                     visitId={visit.id}
                                     patientId={patient.id}
                                     balancePaise={money.balancePaise}
+                                    feePaise={visit.fee_paise}
+                                    discountedPaise={visit.discount_paise}
+                                    discountPolicy={discountPolicy}
                                   />
                                 ) : null}
                                 <Button
@@ -389,6 +431,19 @@ export default async function PatientProfilePage({
                         </TableRow>
                       )),
                     )}
+                    {/* Discounts settle part of a bill but are not money
+                        received, so they are listed as such, never as a mode. */}
+                    {discounts.map((discount) => (
+                      <TableRow key={discount.id} className={discount.voided_at ? "text-muted-foreground line-through" : undefined}>
+                        <TableCell>{formatHospitalDate(discount.created_at)}</TableCell>
+                        <TableCell>{DISCOUNT_SOURCE_LABELS[discount.source] ?? discount.source}</TableCell>
+                        <TableCell>−{formatInr(discount.amount_paise)}</TableCell>
+                        <TableCell>
+                          Discount · {discountReasonLabel(discount.reason)}
+                          {discount.voided_at ? " (voided)" : ""}
+                        </TableCell>
+                      </TableRow>
+                    ))}
                   </TableBody>
                 </Table>
                 </div>

@@ -69,6 +69,7 @@ const WIPE = [
   "ip_tickets",
   "ip_charges",
   "ip_payments",
+  "discounts",
   "ip_progress_notes",
   "bulk_import_jobs",
   "bulk_import_errors",

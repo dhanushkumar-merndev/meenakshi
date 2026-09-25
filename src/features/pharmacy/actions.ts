@@ -7,6 +7,8 @@ import type { ActionState } from "@/types/hospital";
 import { validateMedicineImportRows } from "./import-schema";
 import { rupeesToPaise } from "@/lib/domain/money";
 import { databaseIdSchema } from "@/lib/validation/database-id";
+import { discountFormSchema, discountRpcArgs } from "@/lib/discount-policy";
+import { discountErrorMessage } from "@/lib/domain/discount";
 
 const lineSchema = z
   .array(
@@ -19,14 +21,16 @@ const lineSchema = z
   .min(1)
   // One prescription item may split across several physical batches.
   .max(200);
-const schema = z.object({
-  prescriptionId: databaseIdSchema,
-  lines: z.string(),
-  paymentMode: z.enum(["cash", "upi", "card", "bank_transfer", "other"]),
-  idempotencyKey: databaseIdSchema,
-  /** Consultation fee taken at the counter; the doctor set the amount. */
-  consultationCollected: z.string().optional(),
-});
+const schema = z
+  .object({
+    prescriptionId: databaseIdSchema,
+    lines: z.string(),
+    paymentMode: z.enum(["cash", "upi", "card", "bank_transfer", "other"]),
+    idempotencyKey: databaseIdSchema,
+    /** Consultation fee taken at the counter; the doctor set the amount. */
+    consultationCollected: z.string().optional(),
+  })
+  .merge(discountFormSchema);
 export async function dispensePrescription(
   _: ActionState,
   formData: FormData,
@@ -61,11 +65,12 @@ export async function dispensePrescription(
     p_payment_mode: parsed.data.paymentMode,
     p_idempotency_key: parsed.data.idempotencyKey,
     p_consultation_collected_paise: collectedPaise,
+    ...discountRpcArgs(parsed.data),
   });
   if (error)
     return {
       ok: false,
-      message: error.message.includes("expired or unavailable")
+      message: discountErrorMessage(error.message) ?? (error.message.includes("expired or unavailable")
         ? "This prescription has expired or is no longer available. No stock was changed."
         : error.message.includes("stock unavailable")
           ? "Selected batch does not have enough unexpired stock."
@@ -77,7 +82,7 @@ export async function dispensePrescription(
               ? "The consultation collection must match the current outstanding fee. Refresh and try again."
           : error.message.includes("exceeds outstanding balance")
             ? "That is more than the outstanding consultation fee. Nothing was dispensed or collected."
-            : "Dispensing failed; no stock was changed.",
+            : "Dispensing failed; no stock was changed."),
     };
   const [{ data: prescription }, { data: sale }] = await Promise.all([
     supabase.from("prescriptions").select("status").eq("id", parsed.data.prescriptionId).single(),
@@ -102,6 +107,7 @@ export async function dispensePrescription(
       prescriptionStatus,
       medicinesPaise: Number(sale?.total_paise ?? 0),
       consultationPaise: collectedPaise,
+      discountPaise: parsed.data.discountPaise,
     },
   };
 }

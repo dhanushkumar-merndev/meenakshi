@@ -1,5 +1,6 @@
 import { formatHospitalDate } from "@/lib/domain/date";
 import { formatInr } from "@/lib/domain/money";
+import { discountReasonLabel } from "@/lib/domain/discount";
 import { HospitalLetterhead } from "@/components/shared/hospital-letterhead";
 import type { HospitalIdentity } from "@/lib/print/hospital-identity";
 import type { IpPrintData } from "./print-data";
@@ -21,9 +22,12 @@ export function IpBillDocument({
     (sum, item) => sum + item.amount_paise,
     0,
   );
+  // Voided discounts were corrections; they no longer reduce the bill.
+  const discounts = (ticket.discounts ?? []).filter((row) => !row.voided_at);
+  const discounted = discounts.reduce((sum, row) => sum + row.amount_paise, 0);
 
   return (
-    <article className="min-h-[270mm] border border-black/20 p-7 print:min-h-0 print:border-0 print:p-0">
+    <article className="min-h-[270mm] border border-black/20 p-[10mm] print:min-h-0 print:border-0 print:p-0">
       {/* Hospital banner first, document title under it: three columns across
           the top squeezed the title into one word per line. */}
       <header className="border-b-2 border-primary pb-3">
@@ -80,9 +84,18 @@ export function IpBillDocument({
       </table>
       <section className="ml-auto mt-5 w-full max-w-sm space-y-2 text-sm">
         <div className="flex justify-between"><b>Total</b><b>{formatInr(total)}</b></div>
+        {discounts.map((row) => (
+          <div className="flex justify-between" key={row.id}>
+            <span>Discount ({discountReasonLabel(row.reason)})</span>
+            <span>−{formatInr(row.amount_paise)}</span>
+          </div>
+        ))}
+        {discounted > 0 ? (
+          <div className="flex justify-between"><b>Net payable</b><b>{formatInr(total - discounted)}</b></div>
+        ) : null}
         <div className="flex justify-between"><span>Collected</span><span>{formatInr(paid)}</span></div>
         <div className="flex justify-between border-t pt-2 text-base">
-          <b>Balance</b><b>{formatInr(Math.max(0, total - paid))}</b>
+          <b>Balance</b><b>{formatInr(Math.max(0, total - discounted - paid))}</b>
         </div>
       </section>
       {ticket.ip_payments.length ? (

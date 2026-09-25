@@ -38,8 +38,9 @@ type Ticket = {
   doctors: { display_name: string } | null;
   total_paise: number;
   paid_paise: number;
+  balance_paise: number;
 };
-type TicketFinancial = { ticket_id: string; total_paise: number; paid_paise: number };
+type TicketFinancial = { ticket_id: string; total_paise: number; paid_paise: number; balance_paise: number };
 export type IpTicketScope = "active" | "mine" | "discharge_pending" | "discharged" | "all";
 type IpSearchParams = { status?: string; page?: string; q?: string; view?: string };
 
@@ -101,7 +102,7 @@ export default async function IpWorkspacePage({
     supabase.rpc("list_ip_staff_workload"),
   ]);
   const canFinance = profile.role === "admin" || profile.role === "ip";
-  const sourceTickets = (ticketsResult.data ?? []) as unknown as Omit<Ticket, "total_paise" | "paid_paise">[];
+  const sourceTickets = (ticketsResult.data ?? []) as unknown as Omit<Ticket, "total_paise" | "paid_paise" | "balance_paise">[];
   const { data: financialRows } = canFinance && sourceTickets.length
     ? await supabase.rpc("get_ip_financial_summaries", {
         p_ticket_ids: sourceTickets.map((ticket) => ticket.id),
@@ -114,6 +115,8 @@ export default async function IpWorkspacePage({
     ...ticket,
     total_paise: Number(financeByTicket.get(ticket.id)?.total_paise ?? 0),
     paid_paise: Number(financeByTicket.get(ticket.id)?.paid_paise ?? 0),
+    // Net of any discount on the ticket, as the RPC computes it.
+    balance_paise: Number(financeByTicket.get(ticket.id)?.balance_paise ?? 0),
   }));
   const referrals = (referralResult.data ?? []) as unknown as Referral[];
   const occupied = new Set(
@@ -317,7 +320,7 @@ export default async function IpWorkspacePage({
                           {formatHospitalDate(ticket.admission_at)}
                         </TableCell>
                         {canFinance ? <><TableCell>{formatInr(total)}</TableCell><TableCell>{formatInr(paid)}</TableCell><TableCell>
-                          {formatInr(Math.max(0, total - paid))}
+                          {formatInr(ticket.balance_paise)}
                         </TableCell></> : null}
                         <TableCell>
                           <StatusBadge status={ticket.status} />

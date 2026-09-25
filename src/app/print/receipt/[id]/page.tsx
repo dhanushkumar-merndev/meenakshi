@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { formatInr } from "@/lib/domain/money";
+import { discountReasonLabel } from "@/lib/domain/discount";
 import { formatPrescriptionNumber } from "@/lib/domain/prescription";
 import { PrintButton } from "@/components/shared/print-button";
 import { HospitalLetterhead } from "@/components/shared/hospital-letterhead";
@@ -21,7 +22,12 @@ type Receipt = {
   prescription_number: number | null;
   doctor_name: string | null;
   medicines_paise: number;
+  /** Doctor fee actually paid here (after any discount on it). */
   consultation_paise: number;
+  medicines_discount_paise: number;
+  consultation_discount_paise: number;
+  discount_reason: string | null;
+  discount_note: string | null;
   items: Array<{
     name: string;
     batch: string | null;
@@ -68,13 +74,18 @@ export default async function ReceiptPrintPage({
 
   const identity = await getHospitalIdentity();
   const at = new Date(receipt.created_at);
-  const total = Number(receipt.medicines_paise) + Number(receipt.consultation_paise);
+  const medicinesDiscount = Number(receipt.medicines_discount_paise ?? 0);
+  const consultationDiscount = Number(receipt.consultation_discount_paise ?? 0);
+  const discount = medicinesDiscount + consultationDiscount;
+  // The fee as billed, before the share of the discount that came off it.
+  const consultationFee = Number(receipt.consultation_paise) + consultationDiscount;
+  const total = Number(receipt.medicines_paise) - medicinesDiscount + Number(receipt.consultation_paise);
   const items = receipt.items ?? [];
   const unsupplied = receipt.unsupplied ?? [];
   const isIp = receipt.source.toLowerCase() === "ip";
 
   return (
-    <main className="mx-auto min-h-screen max-w-[210mm] bg-white p-4 text-black sm:p-8">
+    <main className="mx-auto min-h-screen max-w-[210mm] bg-white py-4 text-black sm:py-8">
       <div data-print-hidden className="mb-4 flex justify-end gap-2">
         {unsupplied.length && receipt.prescription_id ? (
           <a
@@ -175,10 +186,19 @@ export default async function ReceiptPrintPage({
             </div>
           ) : null}
           {/* Only shown when the fee was actually taken at this counter. */}
-          {Number(receipt.consultation_paise) > 0 ? (
+          {consultationFee > 0 ? (
             <div className="flex justify-between">
               <dt>Consultation fee{receipt.doctor_name ? ` · ${receipt.doctor_name}` : ""}</dt>
-              <dd className="tabular-nums">{formatInr(receipt.consultation_paise)}</dd>
+              <dd className="tabular-nums">{formatInr(consultationFee)}</dd>
+            </div>
+          ) : null}
+          {discount > 0 ? (
+            <div className="flex justify-between">
+              <dt>
+                Discount
+                {receipt.discount_reason ? ` (${discountReasonLabel(receipt.discount_reason)})` : ""}
+              </dt>
+              <dd className="tabular-nums">−{formatInr(discount)}</dd>
             </div>
           ) : null}
           <div className="flex justify-between border-t border-black pt-2 text-base font-bold">

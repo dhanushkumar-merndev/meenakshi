@@ -34,12 +34,12 @@ test("the dose prompt follows the medicine's dosage form", async ({ page }) => {
   await expect(dose).toHaveAttribute("placeholder", "Dose");
 
   await page.getByRole("combobox", { name: /Search medicine/i }).last().click();
-  await page.getByPlaceholder("Type at least 2 letters").fill(syrup);
+  await page.getByPlaceholder(/Type at least 2/).fill(syrup);
   await page.getByRole("option").filter({ hasText: syrup }).first().click();
   await expect(dose).toHaveAttribute("placeholder", "5 ml");
 
   await page.getByRole("combobox", { name: syrup }).click();
-  await page.getByPlaceholder("Type at least 2 letters").fill(injection);
+  await page.getByPlaceholder(/Type at least 2/).fill(injection);
   await page.getByRole("option").filter({ hasText: injection }).first().click();
   await expect(dose).toHaveAttribute("placeholder", "1 ml");
   // An injection is not given "Oral": picking it sets the route it is

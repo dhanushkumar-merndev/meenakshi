@@ -36,6 +36,10 @@ export default defineConfig({
   use: {
     baseURL,
     trace: "on-first-retry",
+    // Without this a click on an element that never appears waits for the
+    // whole test budget -- 30 minutes for the end-to-end flow -- instead of
+    // failing and pointing at the missing element.
+    actionTimeout: 30_000,
     // Headed runs are watched by a person. PW_SLOW_MO puts a pause between
     // actions so a flow can actually be followed instead of flashing past;
     // unset (CI, and any headless run) it costs nothing.

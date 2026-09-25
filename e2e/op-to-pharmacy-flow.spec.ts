@@ -134,7 +134,7 @@ test.describe("OP visit through to pharmacy", () => {
     // Prescribe from the local directory: type, then take a suggestion.
     await doctor.getByRole("button", { name: "Add Medicine" }).click();
     await doctor.getByRole("combobox", { name: "Search medicine" }).first().click();
-    await doctor.getByPlaceholder("Type at least 2 letters").fill(brand);
+    await doctor.getByPlaceholder(/Type at least 2/).fill(brand);
     const suggestion = doctor.getByRole("option").filter({ hasText: brand }).first();
     await suggestion.waitFor({ timeout: 15_000 });
     const medicineName = (await suggestion.innerText()).split("\n")[0].trim();

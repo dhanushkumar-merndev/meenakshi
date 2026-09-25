@@ -11,7 +11,7 @@ export default async function SettingsPage() {
     supabase
       .from("hospital_settings")
       .select(
-        "hospital_name,tagline,address,phone,email,prescription_footer,token_footer,digital_prescription_text,print_fee_on_prescription",
+        "hospital_name,tagline,address,phone,email,prescription_footer,token_footer,digital_prescription_text,print_fee_on_prescription,max_discount_percent",
       )
       .eq("id", true)
       .maybeSingle(),
@@ -28,6 +28,7 @@ export default async function SettingsPage() {
     token_footer: null,
     digital_prescription_text: null,
     print_fee_on_prescription: false,
+    max_discount_percent: 10,
   };
 
   return (

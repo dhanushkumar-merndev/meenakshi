@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef } from "react";
-import { usePathname, useRouter } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { createSupabaseBrowserClient } from "@/lib/supabase/browser";
 import type { AppRole } from "@/types/hospital";
@@ -23,7 +23,6 @@ const roleTables: Record<AppRole, string[]> = {
 };
 
 export function OperationalLiveSync({ role }: { role: AppRole }) {
-  const pathname = usePathname();
   const router = useRouter();
   const queryClient = useQueryClient();
   const previous = useRef<string | undefined>(undefined);
@@ -110,7 +109,13 @@ export function OperationalLiveSync({ role }: { role: AppRole }) {
       window.removeEventListener("focus", syncWhenVisible);
       void supabase.removeChannel(channel);
     };
-  }, [pathname, queryClient, queryKey, role, router]);
+    // One channel for the whole signed-in session. This lives in the app
+    // layout, so it must not depend on the pathname: re-subscribing on every
+    // navigation made realtime tear down and rebuild its subscriptions in the
+    // database each click, which starved the small instance under quick page
+    // changes until ordinary dashboard queries hit the statement timeout.
+    // supabase-js hands realtime the refreshed token on TOKEN_REFRESHED.
+  }, [queryClient, queryKey, role, router]);
 
   return null;
 }

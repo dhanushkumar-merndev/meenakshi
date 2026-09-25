@@ -14,11 +14,20 @@ export function formatInr(paise: number | bigint) {
   }).format(Number(paise) / 100);
 }
 
-export function paymentSummary(totalDuePaise: number, payments: readonly number[]) {
+/**
+ * A discount settles part of the bill without money changing hands, so it
+ * lowers the balance but never counts as collected.
+ */
+export function paymentSummary(
+  totalDuePaise: number,
+  payments: readonly number[],
+  discountPaise = 0,
+) {
   const totalCollectedPaise = payments.reduce((sum, item) => sum + item, 0);
-  const balancePaise = Math.max(0, totalDuePaise - totalCollectedPaise);
-  const status = totalCollectedPaise === 0 ? "unpaid" : balancePaise === 0 ? "paid" : "partially_paid";
-  return { totalDuePaise, totalCollectedPaise, balancePaise, status } as const;
+  const balancePaise = Math.max(0, totalDuePaise - discountPaise - totalCollectedPaise);
+  const settled = totalCollectedPaise + discountPaise;
+  const status = settled === 0 ? "unpaid" : balancePaise === 0 ? "paid" : "partially_paid";
+  return { totalDuePaise, totalCollectedPaise, discountPaise, balancePaise, status } as const;
 }
 
 /**

@@ -74,8 +74,13 @@ test.describe("every role, one patient, end to end", () => {
 
     await pharmacy.goto("/pharmacy/stock");
     await pharmacy.getByRole("button", { name: "Add Batch" }).first().click();
-    const batchDialog = pharmacy.getByRole("dialog");
+    // By name: the medicine picker's popup is a dialog too, and it is still
+    // fading out when the next assertion runs.
+    const batchDialog = pharmacy.getByRole("dialog", { name: "Add medicine batch" });
     await batchDialog.getByRole("combobox").first().click();
+    // The picker lists the library a page at a time and only searches after
+    // two characters, so a new "ZZ ..." medicine is never on the first page.
+    await pharmacy.getByPlaceholder(/Type at least 2 characters/).fill(brand);
     await pharmacy.getByRole("option", { name: new RegExp(brand) }).click();
     await batchDialog.getByLabel("Batch number").fill(`E2E-${stamp.slice(-5)}`);
     await batchDialog.getByLabel("Expiry date").fill("2027-12-31");
@@ -153,7 +158,7 @@ test.describe("every role, one patient, end to end", () => {
 
     await doctor.getByRole("button", { name: "Add Medicine" }).click();
     await doctor.getByRole("combobox", { name: "Search medicine" }).first().click();
-    await doctor.getByPlaceholder("Type at least 2 letters").fill(brand);
+    await doctor.getByPlaceholder(/Type at least 2/).fill(brand);
     const suggestion = doctor.getByRole("option").filter({ hasText: brand }).first();
     await suggestion.waitFor({ timeout: 20_000 });
     await suggestion.click();
@@ -231,7 +236,7 @@ test.describe("every role, one patient, end to end", () => {
     await ip.getByRole("button", { name: "Request Items" }).click();
     const requestDialog = ip.getByRole("dialog");
     await requestDialog.getByRole("combobox", { name: "Search medicine" }).click();
-    await ip.getByPlaceholder("Type at least 2 letters").fill(brand);
+    await ip.getByPlaceholder(/Type at least 2/).fill(brand);
     await ip.getByRole("option").filter({ hasText: brand }).first().click();
     await requestDialog.getByRole("button", { name: "Send Request" }).click();
     await expect(ip.getByRole("dialog")).toHaveCount(0, { timeout: 30_000 });

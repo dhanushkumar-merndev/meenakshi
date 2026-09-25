@@ -10,6 +10,12 @@ import {
   type IpStockOption,
 } from "./stock-match";
 import { formatInr } from "@/lib/domain/money";
+import { maxDiscountPaise } from "@/lib/domain/discount";
+import {
+  DiscountField,
+  useDiscount,
+  type DiscountPolicyProps,
+} from "@/components/shared/discount-field";
 import { allocateVisibleStock } from "@/lib/domain/stock-allocation";
 import { Button } from "@/components/ui/button";
 import {
@@ -75,11 +81,14 @@ export function FulfillInventoryRequestDialog({
   patientName,
   items,
   stock: initialStock,
+  discountPolicy,
 }: {
   requestId: string;
   patientName: string;
   items: RequestItem[];
   stock: IpStockOption[];
+  /** Only a counter collection can be discounted here. */
+  discountPolicy: DiscountPolicyProps;
 }) {
   const [stock, setStock] = useState(initialStock);
   const [state, action, pending] = useActionState(fulfillIpInventoryRequest, { ok: false });
@@ -218,6 +227,12 @@ export function FulfillInventoryRequestDialog({
   // derived from the live supplied total, so changing a quantity cannot leave
   // a stale amount that would make an IP bill and a counter receipt diverge.
   const invalidCollection = collectNow && totalPaise <= 0;
+  const discount = useDiscount({
+    grossPaise: totalPaise,
+    maxPaise: maxDiscountPaise(totalPaise, discountPolicy.limitPercent, discountPolicy.unlimited),
+    policy: discountPolicy,
+  });
+  const counterDiscountPaise = collectNow ? discount.paise : 0;
 
   if (state.ok) {
     // Whatever fell short of the requested quantity (unmatched entirely, or
@@ -232,6 +247,9 @@ export function FulfillInventoryRequestDialog({
           {state.message ?? "Fulfilled"}
           {state.data?.hasSuppliedItems
             ? ` Supplied total: ${formatInr(totalPaise)}.`
+            : ""}
+          {Number(state.data?.discountPaise ?? 0) > 0
+            ? ` Discount ${formatInr(Number(state.data?.discountPaise))}, collected ${formatInr(totalPaise - Number(state.data?.discountPaise))}.`
             : ""}
         </span>
         <Button size="sm" variant="outline" render={<Link href={`/print/ip-items/${requestId}`} target="_blank" />}>
@@ -523,9 +541,17 @@ export function FulfillInventoryRequestDialog({
                 <div className="space-y-1.5">
                   <Label>Amount to collect</Label>
                   <p className="flex h-9 items-center rounded-md border bg-muted/40 px-3 text-sm font-medium tabular-nums">
-                    {formatInr(totalPaise)}
+                    {formatInr(totalPaise - counterDiscountPaise)}
+                    {counterDiscountPaise > 0 ? (
+                      <span className="ml-2 text-xs font-normal text-muted-foreground">
+                        ({formatInr(totalPaise)} − {formatInr(counterDiscountPaise)} discount)
+                      </span>
+                    ) : null}
                   </p>
-                  <p className="text-xs text-muted-foreground">The full supplied amount is collected here; partial counter collection is not used for IP requests.</p>
+                  <p className="text-xs text-muted-foreground">The full supplied amount (less any discount) is collected here; partial counter collection is not used for IP requests.</p>
+                </div>
+                <div className="sm:col-span-2">
+                  <DiscountField discount={discount} id={`ip-items-${requestId}`} />
                 </div>
                 <div className="space-y-1.5">
                   <Label htmlFor={`ip-item-mode-${requestId}`}>Mode</Label>
@@ -554,7 +580,10 @@ export function FulfillInventoryRequestDialog({
             ) : null}
           </div>
           <DialogFooter showCloseButton>
-            <Button disabled={pending || needsManualPrice || invalidCollection} type="submit">
+            <Button
+              disabled={pending || needsManualPrice || invalidCollection || (collectNow && !discount.valid)}
+              type="submit"
+            >
               {pending ? <LoaderCircle className="animate-spin" /> : <PackageCheck />} Fulfill Request
             </Button>
           </DialogFooter>

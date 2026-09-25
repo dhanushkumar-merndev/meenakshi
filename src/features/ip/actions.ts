@@ -5,6 +5,8 @@ import { requirePermission } from "@/lib/auth/dal";
 import { rupeesToPaise } from "@/lib/domain/money";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { databaseIdSchema } from "@/lib/validation/database-id";
+import { discountFormSchema, discountRpcArgs } from "@/lib/discount-policy";
+import { discountErrorMessage } from "@/lib/domain/discount";
 import type { ActionState } from "@/types/hospital";
 import { isIdempotentReplay } from "@/lib/domain/idempotency";
 const admission = z.object({
@@ -223,13 +225,15 @@ export async function addIpCharge(
     data: { count: parsedLines.length },
   };
 }
-const payment = z.object({
-  ticketId: databaseIdSchema,
-  amount: z.string(),
-  mode: z.enum(["cash", "upi", "card", "bank_transfer", "other"]),
-  reference: z.string().max(100).optional(),
-  idempotencyKey: databaseIdSchema,
-});
+const payment = z
+  .object({
+    ticketId: databaseIdSchema,
+    amount: z.string(),
+    mode: z.enum(["cash", "upi", "card", "bank_transfer", "other"]),
+    reference: z.string().max(100).optional(),
+    idempotencyKey: databaseIdSchema,
+  })
+  .merge(discountFormSchema);
 export async function addIpPayment(
   _: ActionState,
   formData: FormData,
@@ -240,31 +244,44 @@ export async function addIpPayment(
     return { ok: false, fieldErrors: parsed.error.flatten().fieldErrors };
   let amount: number;
   try {
-    amount = rupeesToPaise(parsed.data.amount);
+    amount = parsed.data.amount.trim() ? rupeesToPaise(parsed.data.amount) : 0;
   } catch (error) {
     return { ok: false, message: (error as Error).message };
   }
+  if (amount + parsed.data.discountPaise <= 0)
+    return { ok: false, message: "Enter a payment amount or a discount." };
   const supabase = await createSupabaseServerClient();
-  const { error } = await supabase
-    .from("ip_payments")
-    .insert({
-      ip_ticket_id: parsed.data.ticketId,
-      amount_paise: amount,
-      mode: parsed.data.mode,
-      reference: parsed.data.reference || null,
-      idempotency_key: parsed.data.idempotencyKey,
-    });
-  if (isIdempotentReplay(error))
-    return { ok: true, message: "Payment already recorded." };
+  // Payment and discount are recorded together; add_ip_payment re-checks the
+  // balance, the discount limit and the ticket status under a row lock.
+  const { error } = await supabase.rpc("add_ip_payment", {
+    p_ticket_id: parsed.data.ticketId,
+    p_amount_paise: amount,
+    p_mode: parsed.data.mode,
+    p_reference: parsed.data.reference || null,
+    p_idempotency_key: parsed.data.idempotencyKey,
+    ...discountRpcArgs(parsed.data),
+  });
   if (error)
     return {
       ok: false,
-      message: error.message.toLowerCase().includes("exceeds outstanding")
-        ? "Payment exceeds the current pending balance. Refresh and enter a smaller amount."
-        : "Payment could not be added.",
+      message:
+        discountErrorMessage(error.message) ??
+        (error.message.toLowerCase().includes("exceeds outstanding")
+          ? "Payment exceeds the current pending balance. Refresh and enter a smaller amount."
+          : error.message.includes("not active")
+            ? "Payments can only be recorded on an open IP ticket."
+            : "Payment could not be added."),
     };
   revalidatePath(`/ip/${parsed.data.ticketId}`);
-  return { ok: true, message: "Payment recorded." };
+  return {
+    ok: true,
+    message:
+      amount === 0
+        ? "Discount recorded."
+        : parsed.data.discountPaise > 0
+          ? "Payment and discount recorded."
+          : "Payment recorded.",
+  };
 }
 
 const noteSchema=z.object({ticketId:databaseIdSchema,note:z.string().max(10000).optional(),chargeable:z.string().optional(),fee:z.string().trim().optional(),idempotencyKey:databaseIdSchema,

@@ -29,6 +29,12 @@ import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useAutoCloseDialog } from "@/hooks/use-auto-close-dialog";
 import { formatInr, rupeesToPaise } from "@/lib/domain/money";
+import { maxDiscountPaise } from "@/lib/domain/discount";
+import {
+  DiscountField,
+  useDiscount,
+  type DiscountPolicyProps,
+} from "@/components/shared/discount-field";
 import {
   PatientCombobox,
   type PatientOption,
@@ -497,25 +503,42 @@ export function IpPaymentDialog({
   ticketId,
   totalPaise = 0,
   paidPaise = 0,
+  discountPaise = 0,
+  discountPolicy,
 }: {
   ticketId: string;
   totalPaise?: number;
   paidPaise?: number;
+  /** Discount already given on this ticket (settles part of the bill). */
+  discountPaise?: number;
+  discountPolicy: DiscountPolicyProps;
 }) {
   const [state, action, pending] = useActionState(addIpPayment, initial);
   const [mode, setMode] = useState("cash");
   const [key, setKey] = useState(() => crypto.randomUUID());
-  const balance = Math.max(0, totalPaise - paidPaise);
-  // Pre-filled with what is outstanding, which is what is collected most of the
-  // time; a part payment is just typed over it.
-  const [amount, setAmount] = useState(() => (balance > 0 ? (balance / 100).toFixed(2) : ""));
+  const balance = Math.max(0, totalPaise - paidPaise - discountPaise);
+  const discount = useDiscount({
+    grossPaise: totalPaise,
+    maxPaise: Math.min(
+      balance,
+      maxDiscountPaise(totalPaise, discountPolicy.limitPercent, discountPolicy.unlimited, discountPaise),
+    ),
+    policy: discountPolicy,
+  });
+  // Pre-filled with what is outstanding after any discount, which is what is
+  // collected most of the time; a part payment is just typed over it.
+  const [typedAmount, setTypedAmount] = useState<string | null>(null);
+  const amount =
+    typedAmount ??
+    (balance - discount.paise > 0 ? ((balance - discount.paise) / 100).toFixed(2) : "0");
   const { open, setOpen } = useAutoCloseDialog(state, "IP payment recorded.");
   const handleOpenChange = (nextOpen: boolean) => {
     if (nextOpen && !open) {
       // One key represents one intended payment. Keep it for retries while the
       // dialog remains open, then rotate it for the next separate collection.
       setKey(crypto.randomUUID());
-      setAmount(balance > 0 ? (balance / 100).toFixed(2) : "");
+      setTypedAmount(null);
+      discount.reset();
     }
     setOpen(nextOpen);
   };
@@ -527,11 +550,11 @@ export function IpPaymentDialog({
       enteredPaise = null;
     }
   }
-  const remainingAfterPayment =
-    enteredPaise === null ? balance : balance - enteredPaise;
-  const exceedsBalance = enteredPaise !== null && enteredPaise > balance;
+  const settlesPaise = (enteredPaise ?? 0) + discount.paise;
+  const remainingAfterPayment = balance - settlesPaise;
+  const exceedsBalance = enteredPaise !== null && settlesPaise > balance;
   const validPayment =
-    enteredPaise !== null && enteredPaise > 0 && enteredPaise <= balance;
+    enteredPaise !== null && settlesPaise > 0 && settlesPaise <= balance && discount.valid;
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger render={<Button size="sm" />}>
@@ -552,11 +575,17 @@ export function IpPaymentDialog({
           <div className="space-y-4">
             {/* Whoever is taking the money needs to see what is still owed
                 without leaving the dialog to read the summary behind it. */}
-            <div className="grid grid-cols-3 gap-2 rounded-lg border p-3 text-sm">
+            <div className={`grid gap-2 rounded-lg border p-3 text-sm ${discountPaise > 0 ? "grid-cols-2 sm:grid-cols-4" : "grid-cols-3"}`}>
               <div>
                 <p className="text-xs text-muted-foreground">Total charges</p>
                 <p className="font-medium tabular-nums">{formatInr(totalPaise)}</p>
               </div>
+              {discountPaise > 0 ? (
+                <div>
+                  <p className="text-xs text-muted-foreground">Discount</p>
+                  <p className="font-medium tabular-nums">−{formatInr(discountPaise)}</p>
+                </div>
+              ) : null}
               <div>
                 <p className="text-xs text-muted-foreground">Collected</p>
                 <p className="font-medium tabular-nums">{formatInr(paidPaise)}</p>
@@ -568,6 +597,7 @@ export function IpPaymentDialog({
                 </p>
               </div>
             </div>
+            <DiscountField discount={discount} id={`ip-${ticketId}`} />
             <div className="space-y-2">
               <Label htmlFor="amount">Amount</Label>
               <Input
@@ -575,7 +605,7 @@ export function IpPaymentDialog({
                 name="amount"
                 inputMode="decimal"
                 value={amount}
-                onChange={(event) => setAmount(event.target.value)}
+                onChange={(event) => setTypedAmount(event.target.value)}
                 aria-invalid={Boolean(amount.trim()) && !validPayment}
                 aria-describedby="payment-balance-preview"
                 required
@@ -593,22 +623,22 @@ export function IpPaymentDialog({
                   <p className="text-destructive">
                     Enter a valid amount with up to two decimal places.
                   </p>
-                ) : enteredPaise <= 0 ? (
+                ) : settlesPaise <= 0 ? (
                   <p className="text-destructive">
-                    Payment amount must be greater than zero.
+                    Enter a payment amount or a discount.
                   </p>
                 ) : exceedsBalance ? (
                   <p className="text-destructive">
-                    Amount exceeds the pending balance by{" "}
+                    {discount.paise > 0 ? "Amount and discount exceed" : "Amount exceeds"} the pending balance by{" "}
                     <strong>{formatInr(Math.abs(remainingAfterPayment))}</strong>.
                   </p>
                 ) : remainingAfterPayment === 0 ? (
                   <p className="font-medium text-primary">
-                    Paid in full — no balance will remain.
+                    {discount.paise > 0 ? "Settled in full with the discount" : "Paid in full"} — no balance will remain.
                   </p>
                 ) : (
                   <p>
-                    After this payment,{" "}
+                    After this {discount.paise > 0 ? "payment and discount" : "payment"},{" "}
                     <strong>{formatInr(remainingAfterPayment)}</strong> will
                     remain pending.
                   </p>
@@ -642,7 +672,7 @@ export function IpPaymentDialog({
               ) : (
                 <IndianRupee />
               )}{" "}
-              Record Payment
+              {enteredPaise === 0 && discount.paise > 0 ? "Record Discount" : "Record Payment"}
             </Button>
           </DialogFooter>
         </form>

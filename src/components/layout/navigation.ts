@@ -58,6 +58,7 @@ export const ROLE_NAVIGATION: Record<AppRole, NavigationItem[]> = {
     { title: "IP", href: "/ip", icon: "bed" },
     { title: "Pharmacy", href: "/pharmacy", icon: "pill" },
     { title: "Reports", href: "/admin/analytics", icon: "chart-column" },
+    { title: "Discounts", href: "/admin/discounts", icon: "badge-percent" },
     { title: "Users", href: "/admin/users", icon: "user-cog", group: "Administration" },
     { title: "Doctor Master", href: "/admin/doctors", icon: "briefcase-medical", group: "Administration" },
     { title: "Masters", href: "/admin/masters", icon: "library", group: "Administration" },

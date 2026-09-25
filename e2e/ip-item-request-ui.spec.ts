@@ -23,7 +23,7 @@ test.describe("unified IP pharmacy item workflow", () => {
     await page.getByRole("button", { name: "Request Items" }).click();
     const dialog = page.getByRole("dialog");
     await dialog.getByRole("combobox", { name: "Search medicine" }).click();
-    const search = page.getByPlaceholder("Type at least 2 letters");
+    const search = page.getByPlaceholder(/Type at least 2/);
     await search.fill(inventory);
     const inventoryOption = page.getByRole("option").filter({ hasText: inventory }).first();
     await expect(inventoryOption).toBeVisible({ timeout: 15_000 });

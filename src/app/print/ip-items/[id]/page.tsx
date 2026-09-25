@@ -15,7 +15,9 @@ type Receipt = {
   patient_name: string;
   patient_uhid: string | null;
   total_paise: number;
+  /** Cash taken at the counter, after any discount. */
   collected_paise: number;
+  discount_paise: number;
   settlement: "ip_ticket" | "pharmacy_counter" | "legacy_ip_payment";
   payment_mode: string | null;
   payment_reference: string | null;
@@ -67,11 +69,11 @@ export default async function IpItemsReceiptPage({
     Number(receipt.total_paise) === 0;
 
   return (
-    <main className="mx-auto min-h-screen max-w-[210mm] bg-white p-4 text-black sm:p-8">
+    <main className="mx-auto min-h-screen max-w-[210mm] bg-white py-4 text-black sm:py-8">
       <div data-print-hidden className="mb-4 flex justify-end">
         <PrintButton label="Print Bill / Receipt" />
       </div>
-      <article className="border border-black/20 p-7 font-sans print:border-0 print:p-0">
+      <article className="border border-black/20 p-[10mm] font-sans print:border-0 print:p-0">
         <HospitalLetterhead identity={identity} logoSize={48} />
         <p className="mt-4 border-y border-black py-2 text-center text-sm font-semibold uppercase">
           {collectedAtCounter
@@ -143,6 +145,12 @@ export default async function IpItemsReceiptPage({
           </div>
           {collectedAtCounter ? (
             <>
+              {Number(receipt.discount_paise ?? 0) > 0 ? (
+                <div className="flex justify-between">
+                  <dt>Discount</dt>
+                  <dd>−{formatInr(Number(receipt.discount_paise))}</dd>
+                </div>
+              ) : null}
               <div className="flex justify-between">
                 <dt>Collected at pharmacy</dt>
                 <dd>{formatInr(Number(receipt.collected_paise))}</dd>

@@ -18,6 +18,10 @@ describe("hospital domain rules", () => {
   it("derives append-only payment totals", () => {
     expect(paymentSummary(50000, [30000, 20000])).toMatchObject({ totalCollectedPaise: 50000, balancePaise: 0, status: "paid" });
     expect(paymentSummary(50000, [30000]).status).toBe("partially_paid");
+    // A discount lowers the balance but is never counted as collected.
+    expect(paymentSummary(50000, [45000], 5000)).toMatchObject({ totalCollectedPaise: 45000, balancePaise: 0, status: "paid" });
+    expect(paymentSummary(50000, [], 5000)).toMatchObject({ totalCollectedPaise: 0, balancePaise: 45000, status: "partially_paid" });
+    expect(paymentSummary(50000, [], 50000).status).toBe("paid");
   });
   it("calculates stock and partial dispensing", () => {
     expect(stockStatus(0, 10)).toBe("out_of_stock");
@@ -36,7 +40,8 @@ describe("hospital domain rules", () => {
     expect(() => formatTokenNumber(0)).toThrow();
   });
   it("derives IP running total, paid amount, and balance", () => {
-    expect(ipTotals([50000, 120000, 30000], [100000])).toEqual({ totalPaise: 200000, paidPaise: 100000, balancePaise: 100000, settled: false });
+    expect(ipTotals([50000, 120000, 30000], [100000])).toEqual({ totalPaise: 200000, paidPaise: 100000, discountPaise: 0, balancePaise: 100000, settled: false });
+    expect(ipTotals([200000], [180000], 20000)).toMatchObject({ balancePaise: 0, settled: true });
     expect(ipTotals([50000], [50000]).settled).toBe(true);
   });
 });

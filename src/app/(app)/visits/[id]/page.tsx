@@ -6,6 +6,7 @@ import { hasPermission } from "@/lib/auth/permissions";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { calculateAge, formatHospitalDate } from "@/lib/domain/date";
 import { formatInr, paymentSummary } from "@/lib/domain/money";
+import { getDiscountPolicy } from "@/lib/discount-policy";
 import { formatPrescriptionNumber } from "@/lib/domain/prescription";
 import { ConsultationEditor } from "@/features/clinical/consultation-editor";
 import { AllergyDialog } from "@/features/patients/allergy-dialog";
@@ -138,7 +139,7 @@ export default async function VisitPage({
     .single();
   if (error || !data) notFound();
   const visit = data as unknown as VisitDetail;
-  const [financialResult, reportsResult, categoriesResult, previousPrescriptionResult, diagnosesResult, editableFeeResult] = await Promise.all([
+  const [financialResult, reportsResult, categoriesResult, previousPrescriptionResult, diagnosesResult, editableFeeResult, discountPolicy] = await Promise.all([
     seesBalance
       ? supabase.rpc("get_visit_financial_summaries", { p_visit_ids: [id] })
       : Promise.resolve({ data: [] }),
@@ -191,9 +192,10 @@ export default async function VisitPage({
     hasPermission(profile.role, "pharmacyEnterConsultation")
       ? supabase.rpc("get_editable_consultation_fee", { p_visit_id: id })
       : Promise.resolve({ data: null, error: null }),
+    getDiscountPolicy(supabase, profile.role),
   ]);
   const summary = financialResult.data?.[0] as
-    | { fee_paise?: number; collected_paise?: number }
+    | { fee_paise?: number; collected_paise?: number; discount_paise?: number }
     | undefined;
   const patientReports = (reportsResult.data ?? []) as unknown as VisitReport[];
   visit.fee_paise = Number(summary?.fee_paise ?? 0);
@@ -253,9 +255,11 @@ export default async function VisitPage({
         .map((line) => ({ display_text: line, status: "provisional" as const }));
   // Collected comes from the summary RPC, not the payment rows: OP staff have
   // no read access to visit_payments, only to the totals.
-  const money = paymentSummary(visit.fee_paise, [
-    Number(summary?.collected_paise ?? 0),
-  ]);
+  const money = paymentSummary(
+    visit.fee_paise,
+    [Number(summary?.collected_paise ?? 0)],
+    Number(summary?.discount_paise ?? 0),
+  );
   // A new consultation starts from the doctor's configured fee. Once a draft
   // exists, the fee-only RPC above returns its override without exposing any
   // payment or revenue data to clinical roles.
@@ -426,6 +430,12 @@ export default async function VisitPage({
                 <p className="text-muted-foreground">Visit fee</p>
                 <p className="font-semibold">{formatInr(visit.fee_paise)}</p>
               </div>
+              {money.discountPaise > 0 ? (
+                <div>
+                  <p className="text-muted-foreground">Discount</p>
+                  <p className="font-semibold">−{formatInr(money.discountPaise)}</p>
+                </div>
+              ) : null}
               <div>
                 <p className="text-muted-foreground">Collected</p>
                 <p className="font-semibold">
@@ -442,6 +452,9 @@ export default async function VisitPage({
                 visitId={visit.id}
                 patientId={visit.patient_id}
                 balancePaise={money.balancePaise}
+                feePaise={visit.fee_paise}
+                discountedPaise={money.discountPaise}
+                discountPolicy={discountPolicy}
               />
             ) : null}
           </CardContent>

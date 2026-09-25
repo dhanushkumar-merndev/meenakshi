@@ -105,6 +105,15 @@ const requests = await ids(
   `select id from public.ip_inventory_requests where ip_ticket_id = any($1)`,
   [tickets],
 );
+// Discount ledger rows point at the bills above (or the patient), so they
+// have to go before any of them.
+const discounts = await ids(
+  `select id from public.discounts
+   where patient_id = any($1) or visit_id = any($2) or ip_ticket_id = any($3)
+      or pharmacy_sale_id = any($4) or procedure_sale_id = any($5)
+      or ip_inventory_request_id = any($6)`,
+  [patients, visits, tickets, sales, procedureSales, requests],
+);
 const reports = await ids(
   `select id from public.patient_reports where patient_id = any($1)`,
   [patients],
@@ -154,6 +163,7 @@ const plan = [
   ["pharmacy_sales", sales.length],
   ["pharmacy_sale_items", saleItems.length],
   ["procedure_sales", procedureSales.length],
+  ["discounts", discounts.length],
   ["ip_inventory_requests", requests.length],
   ["patient_reports", reports.length],
   ["stock_movements", movements.length],
@@ -195,6 +205,7 @@ await client.query("begin");
 // out-of-order delete would no longer be caught.
 await client.query("set local session_replication_role = replica");
 
+await del(`delete from public.discounts where id = any($1)`, [discounts]);
 await del(`delete from public.stock_movements where id = any($1)`, [movements]);
 await del(`delete from public.pharmacy_sale_items where sale_id = any($1)`, [sales]);
 await del(`delete from public.pharmacy_sales where id = any($1)`, [sales]);

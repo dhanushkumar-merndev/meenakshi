@@ -8,8 +8,9 @@ import { rupeesToPaise } from "@/lib/domain/money";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { databaseIdSchema } from "@/lib/validation/database-id";
 import type { ActionState } from "@/types/hospital";
-import { isIdempotentReplay } from "@/lib/domain/idempotency";
 import { issueVisit, visitSchema } from "./issue-visit";
+import { discountFormSchema, discountRpcArgs } from "@/lib/discount-policy";
+import { discountErrorMessage } from "@/lib/domain/discount";
 
 export async function createVisit(_: ActionState, formData: FormData): Promise<ActionState> {
   await requirePermission("createVisit");
@@ -66,30 +67,56 @@ export async function addConsultantToToken(_: ActionState, formData: FormData): 
   return { ok: true, message: "Consultant added with a token from that doctor's own series." };
 }
 
-const paymentSchema = z.object({ visitId: databaseIdSchema, patientId: databaseIdSchema.optional().or(z.literal("")), amount: z.string(), mode: z.enum(["cash", "upi", "card", "bank_transfer", "other"]), reference: z.string().max(100).optional(), idempotencyKey: databaseIdSchema });
+const paymentSchema = z
+  .object({
+    visitId: databaseIdSchema,
+    patientId: databaseIdSchema.optional().or(z.literal("")),
+    amount: z.string(),
+    mode: z.enum(["cash", "upi", "card", "bank_transfer", "other"]),
+    reference: z.string().max(100).optional(),
+    idempotencyKey: databaseIdSchema,
+  })
+  .merge(discountFormSchema);
 /**
  * Settles a visit's outstanding fee directly -- the counterpart to the
  * consultation fee dispense_prescription collects when the visit actually
  * has medicines. A visit with none (e.g. referred straight to admission)
  * never reaches the pharmacy queue, so it had no way to ever be settled.
- * The prevent_visit_overpayment trigger is the real guard against collecting
- * more than is owed; this only pre-checks it for a friendlier message.
+ * collect_visit_payment records the payment and any discount together and is
+ * the real guard on the balance and the discount limit; this only pre-checks
+ * the input for a friendlier message.
  */
 export async function addVisitPayment(_: ActionState, formData: FormData): Promise<ActionState> {
   await requirePermission("collectVisitPayment");
   const parsed = paymentSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) return { ok: false, fieldErrors: parsed.error.flatten().fieldErrors };
-  let amount: number; try { amount = rupeesToPaise(parsed.data.amount); } catch (error) { return { ok: false, message: (error as Error).message }; }
-  if (amount <= 0) return { ok: false, fieldErrors: { amount: ["Amount must be greater than zero."] } };
+  let amount: number;
+  try {
+    amount = parsed.data.amount.trim() ? rupeesToPaise(parsed.data.amount) : 0;
+  } catch (error) {
+    return { ok: false, message: (error as Error).message };
+  }
+  if (amount + parsed.data.discountPaise <= 0)
+    return { ok: false, fieldErrors: { amount: ["Amount must be greater than zero."] } };
   const supabase = await createSupabaseServerClient();
-  const { error } = await supabase.from("visit_payments").insert({ visit_id: parsed.data.visitId, amount_paise: amount, mode: parsed.data.mode, reference: parsed.data.reference || null, idempotency_key: parsed.data.idempotencyKey });
-  if (isIdempotentReplay(error)) return { ok: true, message: "Payment was already recorded." };
+  const { error } = await supabase.rpc("collect_visit_payment", {
+    p_visit_id: parsed.data.visitId,
+    p_amount_paise: amount,
+    p_mode: parsed.data.mode,
+    p_reference: parsed.data.reference || null,
+    p_idempotency_key: parsed.data.idempotencyKey,
+    ...discountRpcArgs(parsed.data),
+  });
   if (error)
     return {
       ok: false,
-      message: error.message.includes("exceeds outstanding")
-        ? "That is more than the outstanding balance."
-        : "Payment could not be recorded.",
+      message:
+        discountErrorMessage(error.message) ??
+        (error.message.includes("exceeds outstanding")
+          ? "That is more than the outstanding balance."
+          : error.message.includes("visit unavailable")
+            ? "This visit can no longer take a payment."
+            : "Payment could not be recorded."),
     };
   if (parsed.data.patientId) revalidatePath(`/patients/${parsed.data.patientId}`);
   revalidatePath(`/visits/${parsed.data.visitId}`);
@@ -97,5 +124,13 @@ export async function addVisitPayment(_: ActionState, formData: FormData): Promi
   revalidatePath("/reception/payments");
   revalidatePath("/pharmacy");
   revalidatePath("/dashboard");
-  return { ok: true, message: "Payment recorded." };
+  return {
+    ok: true,
+    message:
+      amount === 0
+        ? "Discount recorded."
+        : parsed.data.discountPaise > 0
+          ? "Payment and discount recorded."
+          : "Payment recorded.",
+  };
 }

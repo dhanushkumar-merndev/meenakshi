@@ -207,12 +207,23 @@ export async function deleteStaffUser(_: ActionState, formData: FormData): Promi
 }
 
 export async function saveHospitalSettings(_: ActionState, formData: FormData): Promise<ActionState> {
-  const parsed = z.object({ hospitalName: z.string().trim().min(2).max(150), tagline: z.string().trim().max(120).optional(), address: z.string().trim().max(1000).optional(), phone: z.string().trim().max(30).optional(), email: z.string().trim().email().optional().or(z.literal("")), prescriptionFooter: z.string().trim().max(1000).optional(), tokenFooter: z.string().trim().max(500).optional(), digitalText: z.string().trim().max(1000).optional(), printFeeOnPrescription: z.string().optional() }).safeParse(Object.fromEntries(formData));
+  const parsed = z.object({ hospitalName: z.string().trim().min(2).max(150), tagline: z.string().trim().max(120).optional(), address: z.string().trim().max(1000).optional(), phone: z.string().trim().max(30).optional(), email: z.string().trim().email().optional().or(z.literal("")), prescriptionFooter: z.string().trim().max(1000).optional(), tokenFooter: z.string().trim().max(500).optional(), digitalText: z.string().trim().max(1000).optional(), printFeeOnPrescription: z.string().optional(), maxDiscountPercent: z.coerce.number({ message: "Enter a whole number from 1 to 100." }).int("Enter a whole number from 1 to 100.").min(1, "Enter a whole number from 1 to 100.").max(100, "Enter a whole number from 1 to 100.") }).safeParse(Object.fromEntries(formData));
   if (!parsed.success) return { ok: false, fieldErrors: parsed.error.flatten().fieldErrors };
   const { actor, admin } = await adminActor();
-  const { error } = await admin.from("hospital_settings").upsert({ id: true, hospital_name: parsed.data.hospitalName, tagline: parsed.data.tagline || null, address: parsed.data.address || null, phone: parsed.data.phone || null, email: parsed.data.email || null, prescription_footer: parsed.data.prescriptionFooter || null, token_footer: parsed.data.tokenFooter || null, digital_prescription_text: parsed.data.digitalText || null, print_fee_on_prescription: parsed.data.printFeeOnPrescription === "on" });
+  const { data: previous } = await admin.from("hospital_settings").select("max_discount_percent").eq("id", true).maybeSingle();
+  const { error } = await admin.from("hospital_settings").upsert({ id: true, max_discount_percent: parsed.data.maxDiscountPercent, hospital_name: parsed.data.hospitalName, tagline: parsed.data.tagline || null, address: parsed.data.address || null, phone: parsed.data.phone || null, email: parsed.data.email || null, prescription_footer: parsed.data.prescriptionFooter || null, token_footer: parsed.data.tokenFooter || null, digital_prescription_text: parsed.data.digitalText || null, print_fee_on_prescription: parsed.data.printFeeOnPrescription === "on" });
   if (error) return { ok: false, message: "Hospital settings could not be saved." };
   await admin.from("audit_logs").insert({ actor_user_id: actor.id, action: "SETTINGS_UPDATED", entity_type: "hospital_settings" });
+  // The limit decides how much money staff may waive, so its changes carry
+  // their own audit entry with the old and new value.
+  const previousLimit = previous?.max_discount_percent ?? null;
+  if (previousLimit !== parsed.data.maxDiscountPercent)
+    await admin.from("audit_logs").insert({
+      actor_user_id: actor.id,
+      action: "DISCOUNT_LIMIT_CHANGED",
+      entity_type: "hospital_settings",
+      metadata: { from_percent: previousLimit, to_percent: parsed.data.maxDiscountPercent },
+    });
   revalidatePath("/admin/settings");
   return { ok: true, message: "Hospital settings saved." };
 }

@@ -44,16 +44,18 @@ test("reception can name the IP staff member when converting a visit", async ({ 
 test("assigning a ticket makes it show up under My Patients", async ({ page }) => {
   await signIn(page, "ip");
   await page.goto("/ip/current");
-  const assign = page.getByRole("button", { name: "Assign" }).first();
-  test.skip(!(await assign.count()), "No open IP ticket in this database.");
-  const ticketNumber = await page
+  // An unassigned ticket: "Assign to me" on a ticket this account already
+  // holds changes nothing, so Save stays disabled. Other specs (the all-roles
+  // flow) leave tickets assigned to this IP account.
+  const row = page
     .getByRole("row")
-    .filter({ has: assign })
-    .locator("td")
-    .first()
-    .innerText();
+    .filter({ hasText: "Unassigned" })
+    .filter({ has: page.getByRole("button", { name: "Assign" }) })
+    .first();
+  test.skip(!(await row.count()), "No unassigned open IP ticket in this database.");
+  const ticketNumber = await row.locator("td").first().innerText();
 
-  await assign.click();
+  await row.getByRole("button", { name: "Assign" }).click();
   // The account claims the ticket itself. This is independent of a hospital's
   // chosen staff display name (for example, "IP Desk").
   await page.getByRole("button", { name: "Assign to me" }).click();

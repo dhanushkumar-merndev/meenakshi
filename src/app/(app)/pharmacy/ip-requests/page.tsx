@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Printer } from "lucide-react";
 import { requireRoute } from "@/lib/auth/dal";
+import { getDiscountPolicy } from "@/lib/discount-policy";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { formatHospitalDate } from "@/lib/domain/date";
 import { formatInr } from "@/lib/domain/money";
@@ -50,14 +51,14 @@ export default async function IpInventoryRequestsPage({
 }: {
   searchParams: Promise<{ tab?: string; q?: string; page?: string }>;
 }) {
-  await requireRoute("/pharmacy");
+  const profile = await requireRoute("/pharmacy");
   const params = await searchParams;
   const q = params.q?.trim() ?? "";
   const tab = params.tab === "completed" ? "completed" : "pending";
   const page = Math.max(1, Number(params.page) || 1);
   const size = 50;
   const supabase = await createSupabaseServerClient();
-  const [{ data: requestData, error }, { data: stockData, error: stockError }] =
+  const [{ data: requestData, error }, { data: stockData, error: stockError }, discountPolicy] =
     await Promise.all([
       supabase.rpc("list_ip_inventory_requests", {
         p_view: tab,
@@ -71,6 +72,7 @@ export default async function IpInventoryRequestsPage({
             p_limit: 500,
           })
         : Promise.resolve({ data: [], error: null }),
+      getDiscountPolicy(supabase, profile.role),
     ]);
   if (error) throw new Error("Pharmacy item requests could not be loaded.");
   if (stockError) throw new Error("Pharmacy stock options could not be loaded.");
@@ -207,6 +209,7 @@ export default async function IpInventoryRequestsPage({
                             patientName={request.patient_name}
                             items={itemsByRequest.get(request.request_id) ?? []}
                             stock={stock}
+                            discountPolicy={discountPolicy}
                           />
                         ) : (
                           <div className="flex justify-end gap-2">

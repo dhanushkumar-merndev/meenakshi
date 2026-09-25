@@ -57,7 +57,12 @@ export const METRIC_HELP: Record<string, { what: string; note?: string }> = {
   reports_pending: { what: "Tests ordered where the report has not arrived yet." },
   followups_due: { what: "Completed consultations with a follow-up that is now due." },
   collected_today_paise: {
-    what: "All money collected today — OP consultations, IP payments, pharmacy sales, and direct pharmacy-counter collections for IP items combined.",
+    what: "All money collected today — OP consultations, IP payments, pharmacy sales, procedure bills, and direct pharmacy-counter collections for IP items combined.",
+    note: "Net of discounts: only money actually received is counted.",
+  },
+  discount_today_paise: {
+    what: "Discounts given today across OP fees, IP bills and pharmacy counter bills.",
+    note: "A discount reduces what the patient owes; it is never counted in Collected Today.",
   },
   op_collection_paise: { what: "Consultation fees collected today at reception and the pharmacy counter." },
   ip_collection_paise: { what: "Payments collected today against IP tickets." },

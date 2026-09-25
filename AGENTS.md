@@ -1100,6 +1100,56 @@ Refunded / Adjusted if later implemented
 
 ---
 
+# 17A. DISCOUNTS
+
+Discounts reduce what a patient owes. They are never money received and never a payment mode.
+
+Where a discount can be given (each dialog has an optional **Add discount**, ₹ or %):
+
+```text
+Pharmacy dispense (OP)      → medicines first, then the doctor fee collected there
+Visit Collect payment       → the visit fee
+IP Add Payment              → the IP bill (any payment, including the final one)
+IP items "Collect now"      → that counter bill
+Procedure bill              → that counter bill (not when billed to an IP ticket)
+```
+
+Rules (enforced in the database, mirrored in the dialogs):
+
+```text
+Reason required: Senior citizen / Staff / Doctor advised / Charity / Round-off / Other (Other needs a note)
+Staff limit: Admin → Settings → Billing → Maximum discount for staff (%), whole number 1–100, default 10
+Admin: no limit, up to the full bill
+Limit is cumulative per bill (visit fee, IP bill)
+Discount + payment can never exceed the balance
+Stock is unaffected: dispensing still reduces the full dispensed quantity
+```
+
+Ledger:
+
+```text
+public.discounts — append-only, exactly one bill per row, idempotency key
+Bill totals (visits / ip_tickets / pharmacy_sales / procedure_sales .discount_paise,
+ip_inventory_requests.counter_discount_paise) are maintained only by the ledger trigger
+Balance = gross − discount − payments
+Admin may void a visit-fee or open-IP-bill discount (row kept, balance reopens)
+Counter discounts (pharmacy, IP items, procedures) are final — settled in cash at the discounted amount
+Audit: DISCOUNT_APPLIED, DISCOUNT_VOIDED, DISCOUNT_LIMIT_CHANGED
+```
+
+Reporting:
+
+```text
+All "Collected" figures are net cash; discounts are reported separately
+Admin Reports → Discounts tab (by day, desk, reason, staff) and Admin → Discounts register
+Admin dashboard "Discounts Today"; Staff activity shows discounts given per person
+Monthly export includes discounts.csv
+Receipts and IP bills print Subtotal / Discount (reason) / Net
+Token never shows money, including discounts
+```
+
+---
+
 # 18. OP WORKFLOW
 
 Flow:
@@ -2413,7 +2463,9 @@ Doctors
 IP
 Pharmacy
 Collections
+Discounts
 Patients
+Staff
 ```
 
 Common date filter:

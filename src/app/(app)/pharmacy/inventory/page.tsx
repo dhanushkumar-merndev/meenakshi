@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Printer } from "lucide-react";
 import { requireRoute } from "@/lib/auth/dal";
+import { getDiscountPolicy } from "@/lib/discount-policy";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { formatHospitalDate } from "@/lib/domain/date";
 import { formatInr } from "@/lib/domain/money";
@@ -32,6 +33,7 @@ type Sale = {
   procedure_fee_paise: number;
   items_total_paise: number;
   total_paise: number;
+  discount_paise: number;
   payment_mode: string | null;
   ip_ticket_id: string | null;
   created_at: string;
@@ -45,7 +47,7 @@ export default async function InventoryPage({
 }: {
   searchParams: Promise<{ tab?: string; q?: string; page?: string }>;
 }) {
-  await requireRoute("/pharmacy");
+  const profile = await requireRoute("/pharmacy");
   const params = await searchParams;
   const q = params.q?.trim() ?? "";
   const tab = params.tab === "bills" ? "bills" : "stock";
@@ -53,7 +55,7 @@ export default async function InventoryPage({
   const offset = (page - 1) * PAGE_SIZE;
   const supabase = await createSupabaseServerClient();
 
-  const [itemsResult, doctorsResult, salesResult] = await Promise.all([
+  const [itemsResult, doctorsResult, salesResult, discountPolicy] = await Promise.all([
     supabase.rpc("search_inventory_items", {
       p_query: tab === "stock" ? q || null : null,
       p_limit: PAGE_SIZE,
@@ -63,6 +65,7 @@ export default async function InventoryPage({
     tab === "bills"
       ? supabase.rpc("list_procedure_sales", { p_query: null, p_limit: PAGE_SIZE, p_offset: offset })
       : Promise.resolve({ data: [] }),
+    getDiscountPolicy(supabase, profile.role),
   ]);
 
   const items = (itemsResult.data ?? []) as unknown as InventoryItem[];
@@ -92,7 +95,7 @@ export default async function InventoryPage({
               className="mb-0"
             />
             <InventoryItemDialog />
-            <ProcedureBillDialog doctors={doctors} />
+            <ProcedureBillDialog doctors={doctors} discountPolicy={discountPolicy} />
           </>
         }
       />
@@ -195,7 +198,14 @@ export default async function InventoryPage({
                         <TableCell>{sale.procedure_name}</TableCell>
                         <TableCell className="tabular-nums">{formatInr(sale.procedure_fee_paise)}</TableCell>
                         <TableCell className="tabular-nums">{formatInr(sale.items_total_paise)}</TableCell>
-                        <TableCell className="font-medium tabular-nums">{formatInr(sale.total_paise)}</TableCell>
+                        <TableCell className="font-medium tabular-nums">
+                          {formatInr(sale.total_paise - Number(sale.discount_paise ?? 0))}
+                          {Number(sale.discount_paise ?? 0) > 0 ? (
+                            <span className="block text-xs font-normal text-muted-foreground">
+                              −{formatInr(sale.discount_paise)} discount
+                            </span>
+                          ) : null}
+                        </TableCell>
                         <TableCell>
                           {sale.ip_ticket_id ? (
                             <StatusBadge status="on IP ticket" />

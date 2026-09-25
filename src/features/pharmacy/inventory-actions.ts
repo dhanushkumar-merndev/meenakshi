@@ -7,6 +7,8 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { rupeesToPaise } from "@/lib/domain/money";
 import { databaseIdSchema } from "@/lib/validation/database-id";
 import type { ActionState } from "@/types/hospital";
+import { discountFormSchema, discountRpcArgs } from "@/lib/discount-policy";
+import { discountErrorMessage } from "@/lib/domain/discount";
 
 const itemSchema = z.object({
   id: z.string().optional(),
@@ -71,7 +73,7 @@ const saleSchema = z.object({
   paymentMode: z.enum(["cash", "upi", "card", "bank_transfer", "other"]),
   notes: z.string().trim().max(500).optional(),
   idempotencyKey: databaseIdSchema,
-});
+}).merge(discountFormSchema);
 const lineSchema = z
   .array(z.object({ inventory_item_id: databaseIdSchema, quantity: z.number().int().positive() }))
   .max(40);
@@ -100,16 +102,17 @@ export async function createProcedureSale(_: ActionState, formData: FormData): P
     p_payment_mode: parsed.data.paymentMode,
     p_notes: parsed.data.notes || null,
     p_idempotency_key: parsed.data.idempotencyKey,
+    ...discountRpcArgs(parsed.data),
   });
 
   if (error)
     return {
       ok: false,
-      message: error.message.includes("insufficient inventory stock")
+      message: discountErrorMessage(error.message) ?? (error.message.includes("insufficient inventory stock")
         ? "Not enough stock for one of the selected items. Nothing was billed."
         : error.message.includes("inventory item unavailable")
           ? "One of the selected items is no longer available."
-          : "The procedure bill could not be created.",
+          : "The procedure bill could not be created."),
     };
 
   revalidatePath("/pharmacy/inventory");

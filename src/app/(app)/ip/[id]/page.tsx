@@ -2,6 +2,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Printer } from "lucide-react";
 import { requireRoute } from "@/lib/auth/dal";
+import { getDiscountPolicy } from "@/lib/discount-policy";
+import { discountReasonLabel } from "@/lib/domain/discount";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { formatHospitalDate } from "@/lib/domain/date";
 import { formatInr } from "@/lib/domain/money";
@@ -113,9 +115,28 @@ export default async function IpTicketPage({
   const canDoctor = profile.role === "admin" || profile.role === "doctor";
   const canPrepareDischarge = canDoctor || profile.role === "ip";
   const canRequestItems = ["admin", "reception", "ip", "doctor"].includes(profile.role);
-  const { data: chargeRows } = canManage ? await supabase.from("charges").select("id,category,charge_name,amount_paise").eq("active", true).in("category", IP_CHARGE_MASTER_CATEGORIES).order("category").order("charge_name") : { data: [] };
+  const [{ data: chargeRows }, { data: discountRows }, discountPolicy] = await Promise.all([
+    canManage
+      ? supabase.from("charges").select("id,category,charge_name,amount_paise").eq("active", true).in("category", IP_CHARGE_MASTER_CATEGORIES).order("category").order("charge_name")
+      : Promise.resolve({ data: [] }),
+    canFinance
+      ? supabase.from("discounts").select("id,created_at,amount_paise,reason,note,voided_at").eq("ip_ticket_id", id).order("created_at")
+      : Promise.resolve({ data: [] }),
+    getDiscountPolicy(supabase, profile.role),
+  ]);
+  const discounts = (discountRows ?? []) as Array<{
+    id: string;
+    created_at: string;
+    amount_paise: number;
+    reason: string;
+    note: string | null;
+    voided_at: string | null;
+  }>;
+  const discounted = discounts
+    .filter((row) => !row.voided_at)
+    .reduce((sum, row) => sum + Number(row.amount_paise), 0);
   const chargePresets = (chargeRows ?? []).map((charge) => ({ id: charge.id, category: charge.category, name: charge.charge_name, rate: (charge.amount_paise / 100).toFixed(2) }));
-  const balance = Math.max(0, total - paid);
+  const balance = Math.max(0, total - paid - discounted);
   return (
     <div>
       <PageHeader
@@ -133,7 +154,13 @@ export default async function IpTicketPage({
             ) : null}
             {canManage && ticket.status !== "discharged" ? <>
               <ChargeDialog ticketId={ticket.id} presets={chargePresets} />
-              <IpPaymentDialog ticketId={ticket.id} totalPaise={total} paidPaise={paid} />
+              <IpPaymentDialog
+                ticketId={ticket.id}
+                totalPaise={total}
+                paidPaise={paid}
+                discountPaise={discounted}
+                discountPolicy={discountPolicy}
+              />
             </> : null}
             {canManage && ticket.status === "discharge_pending" && ticket.patient_id ? <CompleteDischargeDialog ticketId={ticket.id} balancePaise={balance} /> : null}
           </>
@@ -155,13 +182,21 @@ export default async function IpTicketPage({
           {ticket.room ?? "—"}/{ticket.bed ?? "—"}
         </span>
       </div>
-      {canFinance ? <section className="mb-5 grid gap-3 sm:grid-cols-3">
+      {canFinance ? <section className={`mb-5 grid gap-3 ${discounted > 0 ? "grid-cols-2 lg:grid-cols-4" : "sm:grid-cols-3"}`}>
         <Card>
           <CardContent className="p-4">
             <p className="text-xs text-muted-foreground">Running Total</p>
             <p className="text-2xl font-semibold">{formatInr(total)}</p>
           </CardContent>
         </Card>
+        {discounted > 0 ? (
+          <Card>
+            <CardContent className="p-4">
+              <p className="text-xs text-muted-foreground">Discount</p>
+              <p className="text-2xl font-semibold">−{formatInr(discounted)}</p>
+            </CardContent>
+          </Card>
+        ) : null}
         <Card>
           <CardContent className="p-4">
             <p className="text-xs text-muted-foreground">Collected</p>
@@ -251,6 +286,40 @@ export default async function IpTicketPage({
               </div>
             </CardContent>
           </Card>
+          {discounts.length ? (
+            <Card className="mt-4">
+              <CardHeader>
+                <CardTitle className="text-base">Discounts</CardTitle>
+              </CardHeader>
+              <CardContent className="p-0">
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Date/Time</TableHead>
+                        <TableHead>Discount</TableHead>
+                        <TableHead>Reason</TableHead>
+                        <TableHead>Note</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {discounts.map((row) => (
+                        <TableRow key={row.id} className={row.voided_at ? "text-muted-foreground line-through" : undefined}>
+                          <TableCell>{formatHospitalDate(row.created_at, true)}</TableCell>
+                          <TableCell>
+                            {formatInr(row.amount_paise)}
+                            {row.voided_at ? <span className="ml-1 text-xs no-underline">(voided)</span> : null}
+                          </TableCell>
+                          <TableCell>{discountReasonLabel(row.reason)}</TableCell>
+                          <TableCell>{row.note ?? "—"}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              </CardContent>
+            </Card>
+          ) : null}
         </TabsContent> : null}
         <TabsContent value="notes">
           <Card>

@@ -290,6 +290,18 @@ Retain independent OP scenarios because the requested V1 model has six roles. Th
 | IMP-06 | Re-upload previously imported file | Detect or clearly warn that a fresh import can add stock again; operational retry differs from a new receipt |
 | IMP-07 | Import as each non-authorized role or via forged action | Admin/pharmacy only at UI, server, RPC, and database |
 
+### Discounts
+
+| ID | Steps | Expected result and where it reflects |
+| --- | --- | --- |
+| DISC-01 | Reception → visit → Collect → Add discount 10% "Senior citizen" | Amount pre-fills to balance less discount; visit shows Discount and balance 0; payment row is net cash only |
+| DISC-02 | Pharmacy dispenses OP Rx with a discount | Medicines discounted first, then doctor fee; stock drops by the full dispensed quantity; receipt shows Subtotal / Discount (reason) / Total paid |
+| DISC-03 | Staff enter more than the Settings limit | Dialog shows "Maximum N% discount allowed." and blocks; the database also refuses a stale page |
+| DISC-04 | IP Add Payment with discount; later Complete Discharge | Balance nets the discount; discharge is allowed once paid + discount covers charges; final bill lists the discount |
+| DISC-05 | Admin voids an OP-fee or open IP-bill discount in Discount Register | Row stays as Voided with reason; balance reopens; counter (pharmacy/IP items/procedure) discounts cannot be voided |
+| DISC-06 | Admin changes the limit in Settings → Billing | Next discount uses the new limit immediately; audit DISCOUNT_LIMIT_CHANGED records from/to |
+| DISC-07 | Reports → Discounts, dashboard Discounts Today, Staff tab, monthly export | Same totals everywhere; Collected figures exclude discounts |
+
 ## 11. Reports, follow-up, and patient history
 
 | ID | Steps | Expected result and where it reflects |
@@ -410,6 +422,7 @@ Apply these cases to every relevant create/edit/save/import/dispense/collect/com
 | EDGE-D02 | Split payment, partial payment, later payment, multiple payment modes | Separate attributable rows; total collected and remaining balance reconcile |
 | EDGE-D03 | Edit master fee or selling price after a charge/sale | Historical rate, total, payment, and final bill are unchanged |
 | EDGE-D04 | Charge total versus actual collection; IP pharmacy charge versus counter receipt | Never count an unpaid charge as cash received or collect the same amount through two channels |
+| EDGE-D05 | Discount retried, double-clicked, larger than the balance, or given on an IP-ticket-billed item at the counter | One ledger row per idempotency key; over-balance refused; IP-billed items are discounted only on the IP bill |
 | EDGE-D05 | End of day/month/year, leap day, different browser timezone | Asia/Kolkata business date consistent across tokens, queues, expiry, reports, dashboard, and export |
 | EDGE-D06 | Range with no transactions; reversed dates; invalid/very large range | Clear validation/empty results; bounded queries; no misleading stale chart |
 | EDGE-D07 | One patient, multiple doctors/visits, partial sales, repeated payments | Patients, visits, tokens, sales, units, and collections use the correct distinct/count/sum definitions |

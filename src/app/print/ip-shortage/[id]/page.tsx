@@ -53,11 +53,11 @@ export default async function IpShortagePrintPage({
     .filter((item) => item.shortfall > 0);
 
   return (
-    <main className="mx-auto min-h-screen max-w-[210mm] bg-white p-4 text-black sm:p-8">
+    <main className="mx-auto min-h-screen max-w-[210mm] bg-white py-4 text-black sm:py-8">
       <div data-print-hidden className="mb-4 flex justify-end">
         <PrintButton label="Print Shortage Note" />
       </div>
-      <article className="border border-black/20 p-7 font-sans print:border-0 print:p-0">
+      <article className="border border-black/20 p-[10mm] font-sans print:border-0 print:p-0">
         <HospitalLetterhead identity={identity} logoSize={48} />
         <p className="mt-4 border-y border-black py-2 text-center text-sm font-semibold uppercase">
           Items Not Available In-House

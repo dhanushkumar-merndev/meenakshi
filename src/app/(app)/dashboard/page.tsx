@@ -1,4 +1,4 @@
-import { Activity, BedDouble, ClipboardCheck, Clock3, IndianRupee, PackageX, UserRound, Users } from "lucide-react";
+import { Activity, BadgePercent, BedDouble, ClipboardCheck, Clock3, IndianRupee, PackageX, UserRound, Users } from "lucide-react";
 import { getCurrentProfile } from "@/lib/auth/dal";
 import { getDashboardData } from "@/features/dashboard/data";
 import { KpiCard } from "@/features/dashboard/kpi-card";
@@ -15,7 +15,8 @@ const metricSets = {
     ["patients_seen_today", "Patients Seen Today", Users], ["patients_today", "New Patients Today", Users],
     ["visits_today", "OP Visits Today", UserRound],
     ["waiting", "Waiting", Clock3], ["current_ip", "Current IP", BedDouble],
-    ["collected_today_paise", "Collected Today", IndianRupee], ["low_stock", "Low Stock", PackageX],
+    ["collected_today_paise", "Collected Today", IndianRupee], ["discount_today_paise", "Discounts Today", BadgePercent],
+    ["low_stock", "Low Stock", PackageX],
     ["completed", "Completed Today", UserRound], ["admissions_today", "Admissions Today", BedDouble],
     ["reports_pending", "Reports Pending", Activity],
     ["pending_prescriptions", "Pending Prescriptions", ClipboardCheck],

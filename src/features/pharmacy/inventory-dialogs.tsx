@@ -7,6 +7,12 @@ import { CheckCircle2, LoaderCircle, Pencil, Plus, Printer, Receipt } from "luci
 import { createProcedureSale, saveInventoryItem } from "./inventory-actions";
 import type { ActionState } from "@/types/hospital";
 import { formatInr } from "@/lib/domain/money";
+import { maxDiscountPaise } from "@/lib/domain/discount";
+import {
+  DiscountField,
+  useDiscount,
+  type DiscountPolicyProps,
+} from "@/components/shared/discount-field";
 import { PatientCombobox, type PatientOption } from "@/components/shared/patient-combobox";
 import { Button } from "@/components/ui/button";
 import {
@@ -150,8 +156,11 @@ export function InventoryItemDialog({ item }: { item?: InventoryItem }) {
  */
 export function ProcedureBillDialog({
   doctors,
+  discountPolicy,
 }: {
   doctors: Array<{ id: string; label: string }>;
+  /** Counter bills only; an admitted patient's bill goes to the IP ticket. */
+  discountPolicy: DiscountPolicyProps;
 }) {
   const [open, setOpen] = useState(false);
   const [state, action, pending] = useActionState(createProcedureSale, initial);
@@ -172,6 +181,11 @@ export function ProcedureBillDialog({
   );
   const feePaise = Math.round((Number(fee) || 0) * 100);
   const total = itemsTotal + feePaise;
+  const discount = useDiscount({
+    grossPaise: total,
+    maxPaise: maxDiscountPaise(total, discountPolicy.limitPercent, discountPolicy.unlimited),
+    policy: discountPolicy,
+  });
 
   if (state.ok && state.data?.saleId) {
     return (
@@ -185,7 +199,8 @@ export function ProcedureBillDialog({
               <CheckCircle2 className="text-primary" /> Bill created
             </DialogTitle>
             <DialogDescription>
-              {formatInr(total)} billed for {patient?.label ?? "the patient"}.
+              {formatInr(total - discount.paise)} billed for {patient?.label ?? "the patient"}
+              {discount.paise > 0 ? ` (after ${formatInr(discount.paise)} discount)` : ""}.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter showCloseButton>
@@ -336,11 +351,15 @@ export function ProcedureBillDialog({
           <div className="rounded-md border p-3 text-sm">
             <div className="flex justify-between"><span className="text-muted-foreground">Procedure fee</span><span className="tabular-nums">{formatInr(feePaise)}</span></div>
             <div className="flex justify-between"><span className="text-muted-foreground">Inventory items</span><span className="tabular-nums">{formatInr(itemsTotal)}</span></div>
-            <div className="mt-1 flex justify-between border-t pt-1 font-medium"><span>Total</span><span className="tabular-nums">{formatInr(total)}</span></div>
+            {discount.paise > 0 ? (
+              <div className="flex justify-between"><span className="text-muted-foreground">Discount</span><span className="tabular-nums">−{formatInr(discount.paise)}</span></div>
+            ) : null}
+            <div className="mt-1 flex justify-between border-t pt-1 font-medium"><span>Total</span><span className="tabular-nums">{formatInr(total - discount.paise)}</span></div>
           </div>
+          <DiscountField discount={discount} id="procedure-bill" />
 
           <DialogFooter showCloseButton>
-            <Button disabled={pending || !patient || total <= 0} type="submit">
+            <Button disabled={pending || !patient || total <= 0 || !discount.valid} type="submit">
               {pending ? <LoaderCircle className="animate-spin" /> : <Receipt />} Create Bill
             </Button>
           </DialogFooter>

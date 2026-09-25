@@ -90,11 +90,11 @@ export default async function OutsidePurchasePrintPage({
   const date = rx.visits?.created_at ?? rx.ip_tickets?.admission_at ?? rx.created_at;
 
   return (
-    <main className="mx-auto min-h-screen max-w-[210mm] bg-white p-4 text-[11px] text-black sm:p-8">
+    <main className="mx-auto min-h-screen max-w-[210mm] bg-white py-4 text-[11px] text-black sm:py-8">
       <div data-print-hidden className="mb-4 flex justify-end">
         <PrintButton label="Print Outside Purchase Slip" />
       </div>
-      <article className="border border-black/20 p-7 print:border-0 print:p-0">
+      <article className="border border-black/20 p-[10mm] print:border-0 print:p-0">
         <header>
           <HospitalLetterhead identity={identity} logoSize={56} />
           <div className="my-3 h-1 bg-primary" />

@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { formatInr } from "@/lib/domain/money";
+import { discountReasonLabel } from "@/lib/domain/discount";
 import { PrintButton } from "@/components/shared/print-button";
 import { HospitalLetterhead } from "@/components/shared/hospital-letterhead";
 import { getHospitalIdentity } from "@/lib/print/hospital-identity.server";
@@ -13,6 +14,8 @@ type Receipt = {
   procedure_fee_paise: number;
   items_total_paise: number;
   total_paise: number;
+  discount_paise: number;
+  discount_reason: string | null;
   payment_mode: string;
   ip_ticket_id: string | null;
   patient_name: string | null;
@@ -56,11 +59,11 @@ export default async function ProcedureBillReceiptPage({
   const items = receipt.items ?? [];
 
   return (
-    <main className="mx-auto min-h-screen max-w-[210mm] bg-white p-4 text-black sm:p-8">
+    <main className="mx-auto min-h-screen max-w-[210mm] bg-white py-4 text-black sm:py-8">
       <div data-print-hidden className="mb-4 flex justify-end">
         <PrintButton label="Print Bill" />
       </div>
-      <article className="border border-black/20 p-7 font-sans print:border-0 print:p-0">
+      <article className="border border-black/20 p-[10mm] font-sans print:border-0 print:p-0">
         <HospitalLetterhead identity={identity} logoSize={48} />
         <p className="mt-4 border-y border-black py-2 text-center text-sm font-semibold uppercase">
           Procedure Bill
@@ -137,9 +140,21 @@ export default async function ProcedureBillReceiptPage({
               <dd className="tabular-nums">{formatInr(receipt.items_total_paise)}</dd>
             </div>
           ) : null}
+          {Number(receipt.discount_paise) > 0 ? (
+            <>
+              <div className="flex justify-between">
+                <dt>Subtotal</dt>
+                <dd className="tabular-nums">{formatInr(receipt.total_paise)}</dd>
+              </div>
+              <div className="flex justify-between">
+                <dt>Discount{receipt.discount_reason ? ` (${discountReasonLabel(receipt.discount_reason)})` : ""}</dt>
+                <dd className="tabular-nums">−{formatInr(receipt.discount_paise)}</dd>
+              </div>
+            </>
+          ) : null}
           <div className="flex justify-between border-t border-black pt-2 text-base font-bold">
-            <dt>Total</dt>
-            <dd className="tabular-nums">{formatInr(receipt.total_paise)}</dd>
+            <dt>{Number(receipt.discount_paise) > 0 ? "Net paid" : "Total"}</dt>
+            <dd className="tabular-nums">{formatInr(receipt.total_paise - Number(receipt.discount_paise ?? 0))}</dd>
           </div>
           <div className="flex justify-between text-xs">
             <dt>Payment mode</dt>
