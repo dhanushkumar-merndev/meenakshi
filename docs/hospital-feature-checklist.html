@@ -153,6 +153,7 @@ const MODULES = [
   ["c","Audit log","Who created, changed, printed, dispensed or exported what, and when."],
   ["c","Works on phone, tablet and desktop","Same screens from 375 px phones to wide monitors."],
   ["c","Live updates between desks","Queues and pharmacy lists refresh as other staff work."],
+  ["c","Offline screen when the internet drops","Visited pages stay cached; staff see a clear retry screen."],
   ["c","Hospital letterhead on all prints","Name, logo, address and footer set once in Settings."]]},
  {id:"pat", name:"Patients", blurb:"One patient record holds all visits, admissions, reports and payments.", items:[
   ["r","UHID patient number","Unique hospital ID printed on tokens and prescriptions. Families can share one phone number."],
@@ -162,6 +163,8 @@ const MODULES = [
   ["r","Bulk import patients from Excel","Bring old patient lists in one upload with error checking."]]},
  {id:"rec", name:"Reception, tokens and OP desk", blurb:"From walk-in to the doctor's queue.", items:[
   ["r","Create OP and follow-up visits","Doctor, department and fee filled automatically."],
+  ["r","Register a new patient and create the visit in one step",""],
+  ["r","Doctor's current load shown while choosing a doctor","Live OP queue and IP patients per doctor, to spread the load."],
   ["r","Separate token series per doctor, reset daily","Two desks can never issue the same token."],
   ["r","One visit with more than one consultant",""],
   ["r","Move a patient to another doctor",""],
@@ -210,6 +213,8 @@ const MODULES = [
   ["r","Outside-purchase slip for items not in stock",""],
   ["r","Low stock, out of stock and expiry alerts","Expiry alert for batches expiring within 30 days."],
   ["r","Stock movement ledger","Every in and out is traceable."],
+  ["r","Medicine form learns new values","A new dosage form or strength typed once is offered in the list next time."],
+  ["r","Archive and restore medicines","Medicines with history are never hard-deleted."],
   ["r","Bulk import medicines from Excel / CSV","Up to 1,000 rows per file, template, preview and error rows."],
   ["s","Purchase orders and supplier management",""],
   ["s","GST tax invoice format",""]]},
@@ -234,10 +239,11 @@ const MODULES = [
   ["s","Nursing charts (medication rounds, intake-output)",""],
   ["s","Operation theatre scheduling",""]]},
  {id:"disc", name:"Discounts", blurb:"Discounts are tracked separately from cash collected.", items:[
-  ["r","Discount in ₹ or % on visit, pharmacy, procedure and IP bills",""],
-  ["r","Reason required (senior citizen, staff, charity…)",""],
-  ["r","Maximum discount limit for staff; admin has no limit",""],
-  ["r","Discount register and report",""]]},
+  ["r","Discount in ₹ or % on 5 bill types","Visit fee, pharmacy sale, procedure bill, IP bill and IP item counter bill."],
+  ["r","Reason required","Senior citizen, staff, doctor advised, charity, round-off, or other with a note."],
+  ["r","Maximum discount limit for staff; admin has no limit","Limit counts the whole bill, not each payment."],
+  ["r","Admin can void a visit or open IP bill discount","The original entry is kept; the balance reopens."],
+  ["r","Discount register, reports and Subtotal / Discount / Net on receipts","Collections always show cash received; discounts are reported separately."]]},
  {id:"ana", name:"Dashboards and reports", blurb:"Each role gets its own dashboard; admin sees everything.", items:[
   ["r","Role dashboards with live counts",""],
   ["r","Admin analytics: OP, doctors, IP, pharmacy, collections, patients",""],
@@ -250,7 +256,7 @@ const MODULES = [
  {id:"adm", name:"Administration and data", blurb:"Set up once; change without a developer.", items:[
   ["r","Users: add, edit, activate, deactivate, set a new password",""],
   ["r","Doctors with OP, follow-up and IP visit fees",""],
-  ["r","Masters: departments, charges, rooms and beds, report categories",""],
+  ["r","Masters: departments, charges, rooms and beds, report categories","Archive and restore instead of delete."],
   ["r","Audit log retention setting",""],
   ["r","Clinical and medicine directory editor with bulk import",""],
   ["r","Settings: hospital details, print footers, presets",""],
