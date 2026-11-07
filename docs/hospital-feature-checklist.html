@@ -1,0 +1,371 @@
+<title>Hospital Software Feature Checklist</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,650&family=Public+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@500&display=swap">
+<style>
+/* Layout: a single form column like a paper intake sheet, with a sticky tally bar and a summary panel at the end */
+:root {
+  --bg: #f4f7f6; --paper: #ffffff; --ink: #18302e; --muted: #5b6f6c; --line: #d9e3e1;
+  --accent: #0d6b63; --accent-soft: #e2f1ee; --core: #6a5a1e; --core-soft: #f6efd6; --soon: #7a4a8c; --soon-soft: #f1e8f5;
+  --display: "Fraunces", Georgia, serif; --body: "Public Sans", system-ui, sans-serif; --mono: "IBM Plex Mono", ui-monospace, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #0f1716; --paper: #16211f; --ink: #e3eeec; --muted: #9db1ad; --line: #2a3a37;
+  --accent: #5cc4b6; --accent-soft: #17312d; --core: #e0c56b; --core-soft: #2e2914; --soon: #cfa2e0; --soon-soft: #2a1f30; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #0f1716; --paper: #16211f; --ink: #e3eeec; --muted: #9db1ad; --line: #2a3a37;
+  --accent: #5cc4b6; --accent-soft: #17312d; --core: #e0c56b; --core-soft: #2e2914; --soon: #cfa2e0; --soon-soft: #2a1f30; color-scheme: dark }
+* { box-sizing: border-box }
+body { background: var(--bg); color: var(--ink); font-family: var(--body); font-size: 15px; line-height: 1.55;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 0 48px }
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--paper) }
+.wrap { max-width: 860px; margin: 0 auto; display: grid; gap: 20px }
+header.intro { padding-block: 36px 8px; display: grid; gap: 10px }
+.eyebrow { font-family: var(--mono); font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--accent) }
+h1 { font-family: var(--display); font-weight: 650; font-size: clamp(28px, 5vw, 40px); line-height: 1.12; margin: 0; text-wrap: balance }
+h2 { font-family: var(--display); font-weight: 600; font-size: 21px; margin: 0; text-wrap: balance }
+h3 { font-size: 13px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); margin: 0 }
+p { margin: 0; max-width: 65ch }
+.lede { color: var(--muted) }
+.legend { display: flex; flex-wrap: wrap; gap: 8px 16px; font-size: 13px; color: var(--muted) }
+.tag { font-family: var(--mono); font-size: 11px; padding: 2px 7px; border-radius: 4px; white-space: nowrap }
+.tag.core { background: var(--core-soft); color: var(--core) }
+.tag.soon { background: var(--soon-soft); color: var(--soon) }
+.tag.live { background: var(--accent-soft); color: var(--accent) }
+
+.bar { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; background: var(--paper); border: 1px solid var(--line); border-radius: 10px;
+  padding: 10px 14px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap }
+.bar .count { font-family: var(--mono); font-variant-numeric: tabular-nums; font-size: 13px }
+.meter { flex: 1 1 140px; height: 6px; background: var(--line); border-radius: 3px; overflow: hidden }
+.meter i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .2s }
+.bar nav { display: flex; gap: 6px; flex-wrap: wrap }
+
+section.card { background: var(--paper); border: 1px solid var(--line); border-radius: 12px; padding: 20px; display: grid; gap: 14px; min-width: 0 }
+.sec-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap }
+.sec-head .num { font-family: var(--mono); font-size: 12px; color: var(--muted) }
+.sec-head p { color: var(--muted); font-size: 14px; margin-top: 4px }
+.mini { display: flex; gap: 6px }
+
+.fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 12px }
+label.f { display: grid; gap: 4px; font-size: 13px; font-weight: 500 }
+label.f.wide { grid-column: 1 / -1 }
+input[type=text], input[type=email], input[type=tel], input[type=number], input[type=date], select, textarea {
+  font: inherit; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; width: 100%; min-width: 0 }
+textarea { min-height: 80px; resize: vertical }
+input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-visible, .item input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px }
+
+.items { display: grid; gap: 2px }
+.item { display: grid; grid-template-columns: 22px 1fr auto; gap: 10px; align-items: start; padding: 9px 8px; border-radius: 8px; cursor: pointer }
+.item:hover { background: var(--bg) }
+.item input { width: 18px; height: 18px; margin: 2px 0 0; accent-color: var(--accent) }
+.item b { font-weight: 600 }
+.item small { display: block; color: var(--muted); font-size: 13px }
+.item.locked { cursor: default }
+.item.locked input { accent-color: var(--core) }
+
+button { font: inherit; font-size: 13px; font-weight: 600; border-radius: 8px; padding: 7px 12px; cursor: pointer; border: 1px solid var(--line); background: var(--paper); color: var(--ink) }
+button.primary { background: var(--accent); border-color: var(--accent); color: var(--paper) }
+button.ghost { background: transparent; border-color: transparent; color: var(--accent); padding: 4px 8px }
+button:disabled { opacity: .5; cursor: default }
+
+.summary pre { font-family: var(--mono); font-size: 12.5px; white-space: pre-wrap; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 14px; margin: 0; max-height: 420px; overflow: auto }
+.actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center }
+.note { font-size: 13px; color: var(--muted) }
+.toast { font-size: 13px; color: var(--accent); min-height: 1.2em }
+.radios { display: flex; flex-wrap: wrap; gap: 8px 18px; font-size: 14px }
+.radios label { display: flex; gap: 6px; align-items: center }
+@media (max-width: 520px) { section.card { padding: 16px } .item { grid-template-columns: 22px 1fr } .item .tag { grid-column: 2; justify-self: start } }
+@media (prefers-reduced-motion: reduce) { .meter i { transition: none } }
+</style>
+
+<div class="wrap">
+  <header class="intro">
+    <div class="eyebrow">Hospital management system · requirement form</div>
+    <h1>Pick the features your hospital needs</h1>
+    <p class="lede">This list comes from a hospital system that is already running in production: OP, doctor consultation, pharmacy, IP billing and reports. Tick what you want. Items marked <span class="tag core">CORE</span> are always included. Items marked <span class="tag soon">ON REQUEST</span> are not built yet and can be added. When you finish, copy or download the summary at the bottom and send it to us.</p>
+    <div class="legend"><span><span class="tag live">READY</span> built and in use</span><span><span class="tag core">CORE</span> always included</span><span><span class="tag soon">ON REQUEST</span> custom work</span></div>
+  </header>
+
+  <div class="bar" role="status" aria-live="polite">
+    <span class="count" id="count">0 selected</span>
+    <div class="meter" aria-hidden="true"><i id="meterFill"></i></div>
+    <nav>
+      <button type="button" class="ghost" id="jumpSummary">Go to summary ↓</button>
+    </nav>
+  </div>
+
+  <section class="card" aria-labelledby="h-hosp">
+    <div class="sec-head"><div><div class="num">Part A</div><h2 id="h-hosp">About your hospital</h2></div></div>
+    <div class="fields">
+      <label class="f">Hospital name<input type="text" id="hName" placeholder="e.g. Sri Lakshmi Nursing Home"></label>
+      <label class="f">City / district<input type="text" id="hCity" placeholder="e.g. Madurai"></label>
+      <label class="f">Contact person<input type="text" id="hPerson"></label>
+      <label class="f">Phone / WhatsApp<input type="tel" id="hPhone"></label>
+      <label class="f">Email<input type="email" id="hEmail"></label>
+      <label class="f">Hospital type
+        <select id="hType"><option value="">Select</option><option>Clinic (OP only)</option><option>Nursing home (OP + small IP)</option><option>Multi-speciality hospital</option><option>Speciality centre</option></select></label>
+      <label class="f">Number of doctors<input type="number" min="0" id="hDocs"></label>
+      <label class="f">Number of beds<input type="number" min="0" id="hBeds"></label>
+      <label class="f">OP patients per day (approx.)<input type="number" min="0" id="hOp"></label>
+      <label class="f">Staff who will log in<input type="number" min="0" id="hUsers"></label>
+      <label class="f">Software used today<input type="text" id="hCurrent" placeholder="Paper, Excel, another software…"></label>
+      <label class="f">Wanted go-live date<input type="date" id="hDate"></label>
+    </div>
+    <div class="fields">
+      <div class="f wide"><span style="font-size:13px;font-weight:500">Do you have a pharmacy inside the hospital?</span>
+        <div class="radios" role="radiogroup" aria-label="In-house pharmacy">
+          <label><input type="radio" name="hPharm" value="Yes"> Yes</label><label><input type="radio" name="hPharm" value="No"> No</label><label><input type="radio" name="hPharm" value="Planned"> Planned</label></div></div>
+      <div class="f wide"><span style="font-size:13px;font-weight:500">Old patient data to bring in?</span>
+        <div class="radios" role="radiogroup" aria-label="Data migration">
+          <label><input type="radio" name="hMig" value="None"> None</label><label><input type="radio" name="hMig" value="Excel / CSV"> Excel / CSV</label><label><input type="radio" name="hMig" value="Another software"> Another software</label><label><input type="radio" name="hMig" value="Paper only"> Paper only</label></div></div>
+    </div>
+  </section>
+
+  <div id="modules" class="wrap" style="gap:20px"></div>
+
+  <section class="card" aria-labelledby="h-extra">
+    <div class="sec-head"><div><div class="num">Part C</div><h2 id="h-extra">Anything else?</h2><p>Your own workflow, reports you print today, or problems you want solved.</p></div></div>
+    <label class="f wide">Notes<textarea id="hNotes" placeholder="e.g. We need prescriptions printed in Tamil; our lab is run by a partner…"></textarea></label>
+  </section>
+
+  <section class="card summary" id="summary" aria-labelledby="h-sum">
+    <div class="sec-head"><div><div class="num">Part D</div><h2 id="h-sum">Your summary</h2><p>Updates as you tick. Copy it into WhatsApp or email, or download it as a spreadsheet.</p></div></div>
+    <pre id="sumText"></pre>
+    <div class="actions">
+      <button type="button" class="primary" id="copyBtn">Copy summary</button>
+      <button type="button" id="dlCsv" hidden>Download spreadsheet (.csv)</button>
+      <button type="button" id="dlTxt" hidden>Download text (.txt)</button>
+      <button type="button" class="ghost" id="resetBtn">Clear form</button>
+      <button type="button" id="resetConfirm" hidden>Yes, clear everything</button>
+    </div>
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+    <p class="note">Your answers stay in this browser until you send them. Nothing is uploaded.</p>
+  </section>
+</div>
+
+<script>
+// type: c = core (always on), r = ready (optional), s = on request (not built)
+const MODULES = [
+ {id:"core", name:"Core platform", blurb:"Included with every installation.", items:[
+  ["c","Staff login with email + password","Admin creates staff accounts. No public sign-up."],
+  ["c","Role-based access","Admin, Reception (with OP desk), Doctor, IP, Pharmacy. Each role sees only its own screens."],
+  ["c","Database-level security","Every rule is enforced on the server and in the database, not only by hiding buttons."],
+  ["c","Audit log","Who created, changed, printed, dispensed or exported what, and when."],
+  ["c","Works on phone, tablet and desktop","Same screens from 375 px phones to wide monitors."],
+  ["c","Live updates between desks","Queues and pharmacy lists refresh as other staff work."],
+  ["c","Hospital letterhead on all prints","Name, logo, address and footer set once in Settings."]]},
+ {id:"pat", name:"Patients", blurb:"One patient record holds all visits, admissions, reports and payments.", items:[
+  ["r","UHID patient number","Unique hospital ID printed on tokens and prescriptions. Families can share one phone number."],
+  ["r","Fast search by phone, name or UHID","Results while typing, even with lakhs of patients."],
+  ["r","Patient profile with full history","Visits, IP admissions, reports and payments in tabs."],
+  ["r","Known allergies on the patient","Shown to doctors during consultation."],
+  ["r","Bulk import patients from Excel","Bring old patient lists in one upload with error checking."]]},
+ {id:"rec", name:"Reception, tokens and OP desk", blurb:"From walk-in to the doctor's queue.", items:[
+  ["r","Create OP and follow-up visits","Doctor, department and fee filled automatically."],
+  ["r","Separate token series per doctor, reset daily","Two desks can never issue the same token."],
+  ["r","One visit with more than one consultant",""],
+  ["r","Move a patient to another doctor",""],
+  ["r","Token print with no money on it","Thermal or A4."],
+  ["r","Cash, UPI, card and bank transfer recorded","Part payments allowed; balance tracked."],
+  ["r","Payment receipt print",""],
+  ["r","Vitals entry","Weight, height, temperature (°F), BP, pulse, SpO₂, respiratory rate."],
+  ["r","Follow-up list and “report ready” alerts","Reception sees who should come back."],
+  ["r","Old waiting visits closed automatically at day end",""],
+  ["s","Online appointment booking","Patients book a slot from a link."],
+  ["s","SMS / WhatsApp token and follow-up reminders",""]]},
+ {id:"doc", name:"Doctor consultation", blurb:"A fast single screen for the doctor.", items:[
+  ["r","My Queue with waiting time and vitals",""],
+  ["r","Previous visits, diagnoses, prescriptions and reports",""],
+  ["r","Type-ahead for symptoms, diagnoses and tests","Local directory; works without internet search."],
+  ["r","ICD-10 diagnosis search","Optional SNOMED-ready terms."],
+  ["r","Prescription table with 1-0-1 style presets","Dose, frequency, duration, route and notes per line."],
+  ["r","See pharmacy stock while prescribing","Prescribing never reduces stock."],
+  ["r","Order tests and investigations",""],
+  ["r","Follow-up: after report, on a date, or after N days",""],
+  ["r","Save draft, then complete",""],
+  ["r","A4 prescription print with page numbers and reprint",""],
+  ["r","Recommend admission to IP",""],
+  ["s","Prescription in Tamil or another regional language",""],
+  ["s","Voice dictation for notes",""]]},
+ {id:"rep", name:"Reports and documents", blurb:"Lab reports, X-rays, scans and photos stored privately.", items:[
+  ["r","Upload PDF or photo reports linked to visit or IP stay",""],
+  ["r","Camera upload from mobile",""],
+  ["r","Images compressed on the phone before upload","Keeps files under 1 MB, readable."],
+  ["r","Private storage with time-limited viewing links",""],
+  ["r","Report status: pending, ready, reviewed",""],
+  ["s","Full lab module (sample collection, results entry, machine interface)",""]]},
+ {id:"pha", name:"Pharmacy and stock", blurb:"Stock goes down only when medicine is actually handed over.", items:[
+  ["r","Medicine list kept separate from actual stock",""],
+  ["r","Batches with expiry, pack size and price",""],
+  ["r","Earliest-expiry batch suggested first (FEFO)",""],
+  ["r","Pending prescriptions from doctors",""],
+  ["r","Full, partial and “not available” dispensing","Only the quantity given is deducted."],
+  ["r","Walk-in / manual prescription sales",""],
+  ["r","Collect the doctor fee at the pharmacy counter",""],
+  ["r","Sales list and pharmacy receipt",""],
+  ["r","Outside-purchase slip for items not in stock",""],
+  ["r","Low stock, out of stock and expiry alerts","30 / 60 / 90 days."],
+  ["r","Stock movement ledger","Every in and out is traceable."],
+  ["r","Bulk import medicines from Excel / CSV","Up to 1,000 rows per file, template, preview and error rows."],
+  ["s","Purchase orders and supplier management",""],
+  ["s","GST tax invoice format",""]]},
+ {id:"inv", name:"General inventory and procedures", blurb:"Consumables and procedures billed at the counter or to an IP bill.", items:[
+  ["r","Inventory items (gloves, syringes, dressings…)",""],
+  ["r","Procedure billing with receipt",""],
+  ["r","IP ward item requests to pharmacy / store",""],
+  ["r","Shortage print for unavailable items",""]]},
+ {id:"ip", name:"In-patient (IP)", blurb:"One IP ticket holds every charge and payment for the stay.", items:[
+  ["r","Admission from doctor referral, direct or emergency",""],
+  ["r","Rooms and beds management",""],
+  ["r","Charges: doctor, room, bed, ward, treatment, test, pharmacy, other",""],
+  ["r","Charge master with fixed rates; custom charges allowed",""],
+  ["r","Add many charges at once",""],
+  ["r","Pharmacy issues added to the IP bill automatically",""],
+  ["r","Doctor progress notes; visit fee added once",""],
+  ["r","Advance and part payments",""],
+  ["r","Assign IP staff to patients",""],
+  ["r","Discharge workflow with balance check",""],
+  ["r","Prints: running bill, final bill, discharge summary",""],
+  ["s","Insurance / TPA claim tracking",""],
+  ["s","Nursing charts (medication rounds, intake-output)",""],
+  ["s","Operation theatre scheduling",""]]},
+ {id:"disc", name:"Discounts", blurb:"Discounts are tracked separately from cash collected.", items:[
+  ["r","Discount in ₹ or % on visit, pharmacy, procedure and IP bills",""],
+  ["r","Reason required (senior citizen, staff, charity…)",""],
+  ["r","Maximum discount limit for staff; admin has no limit",""],
+  ["r","Discount register and report",""]]},
+ {id:"ana", name:"Dashboards and reports", blurb:"Each role gets its own dashboard; admin sees everything.", items:[
+  ["r","Role dashboards with live counts",""],
+  ["r","Admin analytics: OP, doctors, IP, pharmacy, collections, patients",""],
+  ["r","Date filters: today, 7 days, 30 days, month, custom",""],
+  ["r","Click a number to see the patient list behind it",""],
+  ["r","Staff activity report","Who registered, collected or dispensed what."],
+  ["r","Doctor workload",""],
+  ["r","Storage and database usage meter",""],
+  ["s","Daily summary sent to owner on WhatsApp / email",""]]},
+ {id:"adm", name:"Administration and data", blurb:"Set up once; change without a developer.", items:[
+  ["r","Users: add, edit, activate, deactivate, reset password",""],
+  ["r","Doctors with OP, follow-up and IP visit fees",""],
+  ["r","Departments and charge master",""],
+  ["r","Clinical and medicine directory editor with bulk import",""],
+  ["r","Settings: hospital details, print footers, presets",""],
+  ["r","Monthly data export ZIP (CSV), optionally with documents",""],
+  ["r","Notifications inside the app",""],
+  ["s","Multiple branches under one login",""],
+  ["s","Tamil / regional language screens",""]]}
+];
+
+const KEY = "hms-feature-checklist-v1";
+let state = { sel: {}, form: {} };
+try { const s = JSON.parse(localStorage.getItem(KEY) || "null"); if (s && s.sel) state = s; } catch (e) {}
+const save = () => { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) {} };
+
+const host = document.getElementById("modules");
+let optionalTotal = 0;
+MODULES.forEach((m, mi) => {
+  const sec = document.createElement("section");
+  sec.className = "card"; sec.id = "m-" + m.id;
+  sec.setAttribute("aria-labelledby", "h-" + m.id);
+  const isCore = m.id === "core";
+  sec.innerHTML = `<div class="sec-head"><div><div class="num">Part B · ${mi + 1} of ${MODULES.length}</div><h2 id="h-${m.id}"></h2><p></p></div>${isCore ? "" : `<div class="mini"><button type="button" class="ghost" data-all="${m.id}">Select all ready</button><button type="button" class="ghost" data-none="${m.id}">Clear</button></div>`}</div><div class="items"></div>`;
+  sec.querySelector("h2").textContent = m.name;
+  sec.querySelector("p").textContent = m.blurb;
+  const list = sec.querySelector(".items");
+  m.items.forEach(([t, name, sub], i) => {
+    const id = m.id + "-" + i;
+    if (t !== "c") optionalTotal++;
+    const row = document.createElement("label");
+    row.className = "item" + (t === "c" ? " locked" : "");
+    row.setAttribute("for", id);
+    row.innerHTML = `<input type="checkbox" id="${id}"><span><b></b><small></small></span><span class="tag ${t === "c" ? "core" : t === "s" ? "soon" : "live"}">${t === "c" ? "CORE" : t === "s" ? "ON REQUEST" : "READY"}</span>`;
+    row.querySelector("b").textContent = name;
+    const sm = row.querySelector("small"); if (sub) sm.textContent = sub; else sm.remove();
+    const cb = row.querySelector("input");
+    if (t === "c") { cb.checked = true; cb.disabled = true; }
+    else { cb.checked = !!state.sel[id]; cb.dataset.type = t; cb.addEventListener("change", () => { state.sel[id] = cb.checked; if (!cb.checked) delete state.sel[id]; save(); update(); }); }
+    list.appendChild(row);
+  });
+  host.appendChild(sec);
+});
+host.addEventListener("click", e => {
+  const a = e.target.closest("[data-all]"), n = e.target.closest("[data-none]");
+  if (!a && !n) return;
+  const sec = document.getElementById("m-" + (a ? a.dataset.all : n.dataset.none));
+  sec.querySelectorAll("input[type=checkbox]:not(:disabled)").forEach(cb => {
+    if (a && cb.dataset.type !== "r") return;
+    cb.checked = !!a; if (a) state.sel[cb.id] = true; else delete state.sel[cb.id];
+  });
+  save(); update();
+});
+
+const FIELDS = [["hName","Hospital"],["hCity","City"],["hPerson","Contact person"],["hPhone","Phone"],["hEmail","Email"],["hType","Type"],["hDocs","Doctors"],["hBeds","Beds"],["hOp","OP per day"],["hUsers","Staff logins"],["hCurrent","Current software"],["hDate","Go-live"],["hNotes","Notes"]];
+const RADIOS = [["hPharm","In-house pharmacy"],["hMig","Old data"]];
+FIELDS.forEach(([id]) => { const el = document.getElementById(id); if (state.form[id]) el.value = state.form[id]; el.addEventListener("input", () => { state.form[id] = el.value; save(); update(); }); });
+RADIOS.forEach(([n]) => document.querySelectorAll(`input[name=${n}]`).forEach(r => { if (state.form[n] === r.value) r.checked = true; r.addEventListener("change", () => { state.form[n] = r.value; save(); update(); }); }));
+
+function rows() {
+  const out = [];
+  MODULES.forEach(m => m.items.forEach(([t, name], i) => {
+    const id = m.id + "-" + i;
+    if (t === "c" || state.sel[id]) out.push({ module: m.name, feature: name, status: t === "c" ? "Core" : t === "s" ? "On request" : "Ready" });
+  }));
+  return out;
+}
+function summary() {
+  const f = state.form, lines = ["HOSPITAL SOFTWARE – FEATURE SELECTION", ""];
+  FIELDS.forEach(([id, l]) => { if (id !== "hNotes" && f[id]) lines.push(`${l}: ${f[id]}`); });
+  RADIOS.forEach(([n, l]) => { if (f[n]) lines.push(`${l}: ${f[n]}`); });
+  const r = rows(); let cur = "";
+  const picked = r.filter(x => x.status !== "Core").length;
+  lines.push("", `Selected: ${picked} optional features (+ core platform)`);
+  r.forEach(x => { if (x.module !== cur) { cur = x.module; lines.push("", cur.toUpperCase()); } lines.push(`  ✓ ${x.feature}${x.status === "On request" ? "  [on request]" : ""}`); });
+  if (f.hNotes) lines.push("", "NOTES", f.hNotes);
+  return lines.join("\n");
+}
+function csv() {
+  const esc = v => `"${String(v ?? "").replace(/"/g, '""')}"`;
+  const f = state.form, out = [["Section","Item","Value / Status"].map(esc).join(",")];
+  FIELDS.forEach(([id, l]) => out.push(["Hospital", l, f[id] || ""].map(esc).join(",")));
+  RADIOS.forEach(([n, l]) => out.push(["Hospital", l, f[n] || ""].map(esc).join(",")));
+  rows().forEach(x => out.push([x.module, x.feature, x.status].map(esc).join(",")));
+  return out.join("\r\n");
+}
+const sumEl = document.getElementById("sumText");
+function update() {
+  const n = Object.keys(state.sel).length;
+  document.getElementById("count").textContent = `${n} of ${optionalTotal} optional features selected`;
+  document.getElementById("meterFill").style.width = (100 * n / optionalTotal) + "%";
+  sumEl.textContent = summary();
+}
+update();
+
+const toast = m => { const t = document.getElementById("toast"); t.textContent = m; clearTimeout(toast._t); toast._t = setTimeout(() => t.textContent = "", 4000); };
+document.getElementById("jumpSummary").onclick = () => document.getElementById("summary").scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+document.getElementById("copyBtn").onclick = () => {
+  const text = summary();
+  try {
+    navigator.clipboard.writeText(text).then(() => toast("Copied. Paste it into WhatsApp or email."), selectSum);
+  } catch (e) { selectSum(); }
+};
+function selectSum() { const r = document.createRange(); r.selectNodeContents(sumEl); const s = getSelection(); s.removeAllRanges(); s.addRange(r); toast("Copy did not work here. The summary is selected; press Ctrl+C or long-press to copy."); }
+const resetBtn = document.getElementById("resetBtn"), resetConfirm = document.getElementById("resetConfirm");
+resetBtn.onclick = () => { resetConfirm.hidden = !resetConfirm.hidden; };
+resetConfirm.onclick = () => {
+  state = { sel: {}, form: {} }; save();
+  document.querySelectorAll("input[type=checkbox]:not(:disabled)").forEach(cb => cb.checked = false);
+  FIELDS.forEach(([id]) => document.getElementById(id).value = "");
+  document.querySelectorAll("input[type=radio]").forEach(r => r.checked = false);
+  resetConfirm.hidden = true; update(); toast("Form cleared.");
+};
+
+(async () => {
+  const dl = window.claude?.use ? await window.claude.use("downloads") : null;
+  if (!dl) return;
+  const fname = ext => `feature-selection-${(state.form.hName || "hospital").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "hospital"}.${ext}`;
+  const go = async (ext, data) => { try { await dl.save({ filename: fname(ext), data }); toast("Saved."); } catch (e) { toast("Download was cancelled or is not allowed here. Use Copy summary instead."); } };
+  const c = document.getElementById("dlCsv"), t = document.getElementById("dlTxt");
+  c.hidden = t.hidden = false;
+  c.onclick = () => go("csv", "﻿" + csv());
+  t.onclick = () => go("txt", summary());
+})();
+</script>
